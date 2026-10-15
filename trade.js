@@ -234,14 +234,14 @@
   $('ticket').innerHTML = `
     <div class="tk-mod" id="tkMod" hidden><span id="tkModTxt"></span></div>
     <div class="tk-row">
-      <button class="tk-lvl sl" id="tkSL"><small>SL</small><b>ปิด</b><em></em></button>
-      <button class="tk-lvl tp" id="tkTP"><small>TP</small><b>ปิด</b><em></em></button>
+      <button class="tk-lvl sl" id="tkSL"><small>SL</small><b></b><em></em></button>
+      <button class="tk-lvl tp" id="tkTP"><small>TP</small><b></b><em></em></button>
       <div class="tk-rr" id="tkRR"><small>R:R</small>–</div>
       <button class="tk-snap" id="tkSnap" title="ดูดเข้า OI wall">🧲</button>
     </div>
     <div class="tk-row" id="tkOpts">
       <div class="tk-lot" id="tkLotBox"><button data-lot="-1">−</button><input id="tkLot" inputmode="decimal" aria-label="lot"><button data-lot="1">+</button></div>
-      <button class="tk-risk" id="tkRisk">เสี่ยง –</button>
+      <button class="tk-risk" id="tkRisk">risk –</button>
     </div>
     <div class="tk-row tk-pend" id="tkPend">
       <button class="tk-p sell" data-pend="SELL">ตั้งราคา SELL</button>
@@ -314,7 +314,7 @@
     const auto = !T.mod && T.risk > 0 && T.slOn;
     $('tkLotBox').classList.toggle('auto', auto);
     if (document.activeElement !== $('tkLot')) $('tkLot').value = (lots ?? 0).toFixed(stepDec());
-    $('tkRisk').textContent = T.risk > 0 ? `เสี่ยง ${T.risk}%` : 'เสี่ยง –';
+    $('tkRisk').textContent = T.risk > 0 ? `risk ${T.risk}%` : 'risk –';
     $('tkRisk').classList.toggle('on', T.risk > 0);
     $('tkSnap').classList.toggle('on', T.snap);
 
@@ -324,13 +324,13 @@
       const el = $('tk' + k.toUpperCase()), on = T[k + 'On'];
       el.classList.toggle('on', on);
       el.classList.toggle('bad', on && wrongSide(k, T[k]));
-      el.querySelector('b').textContent = on ? fx(T[k], d) : 'แตะเพื่อตั้ง';
+      el.querySelector('b').textContent = on ? fx(T[k], d) : '';
       el.title = on ? 'แตะ = ปิด · กดค้าง = พิมพ์ราคา' : 'แตะ = เปิด';
       const m = on ? money(e, T[k]) : null;
-      el.querySelector('em').textContent = on ? `${sg(m)} · ${Math.abs(T[k] - e).toFixed(2)}$` : '';
+      el.querySelector('em').textContent = on ? sg(m) : '';
     }
     const risk = T.slOn ? -money(e, T.sl) : null, rew = T.tpOn ? money(e, T.tp) : null;
-    $('tkRR').innerHTML = `<small>R:R</small>${risk > 0 && rew > 0 ? '1 : ' + (rew / risk).toFixed(2) : '–'}`;
+    $('tkRR').innerHTML = `<small>R:R</small>${risk > 0 && rew > 0 ? '1:' + (rew / risk).toFixed(2) : '–'}`;
 
     // modify save button / offline note
     const go = $('tkGo');
