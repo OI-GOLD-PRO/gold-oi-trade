@@ -78,6 +78,23 @@
   .tfs { display: flex; gap: 3px; padding: 0 14px 6px; }
   .tfs button { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 3px 0; font: 600 10.5px var(--mono); }
   .tfs button.on { background: var(--gold); border-color: var(--gold); color: #1a1405; }
+  .tfs button#indBtn, .tfs button#drawBtn { flex: none; padding: 3px 9px; font-style: italic; }
+  .tfs button#indBtn.has, .tfs button#drawBtn.has { border-color: var(--gold); color: var(--gold); }
+  #drawBar { position: absolute; left: 8px; right: 8px; top: 6px; z-index: 6; display: flex; flex-wrap: wrap; gap: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
+  #drawBar button { background: transparent; border: 1px solid var(--line); color: var(--fg); border-radius: 7px; padding: 6px 8px; font: 600 11.5px var(--sans); }
+  #drawBar button.on { background: var(--gold); border-color: var(--gold); color: #1a1405; }
+  #indMenu { max-height: 62vh; overflow: auto; }
+  #indMenu .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+  #indMenu .row > button { min-width: 112px; }
+  #indMenu .ps { display: flex; gap: 4px; flex-wrap: wrap; }
+  #indMenu label { display: flex; flex-direction: column; font: 9.5px var(--sans); color: var(--muted); }
+  #indMenu input { width: 46px; padding: 3px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: 600 12px var(--mono); }
+  #indMenu .reset { justify-content: center; font: 600 11px var(--sans); }
+  #indMenu { position: absolute; right: 8px; top: 6px; z-index: 6; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; gap: 5px; box-shadow: 0 6px 20px rgba(0,0,0,.45); min-width: 170px; }
+  #indMenu .t { font: 600 11px var(--sans); color: var(--muted); padding: 0 2px 2px; }
+  #indMenu button { display: flex; align-items: center; gap: 8px; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 7px; padding: 6px 9px; font: 600 12px var(--mono); text-align: left; }
+  #indMenu button i { width: 14px; height: 3px; border-radius: 2px; flex: none; }
+  #indMenu button.on { color: var(--fg); border-color: var(--gold); background: rgba(224,180,76,.12); }
   #wrap { position: relative; flex: 1; min-height: 0; border-top: 1px solid var(--line); }
   #chart, #ov { position: absolute; inset: 0; }
   #ov { pointer-events: none; z-index: 2; }
@@ -123,12 +140,16 @@
     <button data-tf="1h">H1</button>
     <button data-tf="4h">H4</button>
     <button data-tf="1d">D1</button>
+    <button id="indBtn" aria-label="เลือกอินดิเคเตอร์">ƒx</button>
+    <button id="drawBtn" aria-label="เครื่องมือวาดกราฟ">✏️</button>
   </div>
   <div id="wrap">
     <div id="chart"></div>
     <canvas id="ov"></canvas>
     <div id="tip" hidden></div>
     <div id="toast" hidden></div>
+    <div id="indMenu" hidden></div>
+    <div id="drawBar" hidden></div>
     <div id="msg">กำลังโหลดกราฟ…</div>
   </div>
   <div class="legend">
@@ -147,7 +168,7 @@
 (function () {
   const SYMBOL = 'XAUUSDT';
   // เวอร์ชันแอป: แก้เล็กเพิ่มเลขท้าย (2 หลัก), เพิ่มฟีเจอร์ใหญ่เพิ่มเลขกลาง
-  const APP_VER = '0.2.00';
+  const APP_VER = '0.3.00'; // based on OI Gold Pro V1.7.00
   const ZONE_HALF = 2.5; // ครึ่งความกว้างโซนกำแพง OI ($) รวมเป็นโซน $5
   const TZ_SHIFT = 7 * 3600; // แสดงเวลาไทยบนแกนเวลา
 
@@ -290,6 +311,7 @@
     drawNews(w, h);
     drawOIBars(w, h);
     drawSpotAxis(w, h);
+    drawDrawings(w, h);
     drawMeasure(w, h);
     overlayHooks.forEach(f => { try { f(ctx, w, h); } catch (e) { console.error(e); } });
   }
@@ -395,7 +417,8 @@
     const plotW = chart.timeScale().width();
     const plotH = h - chart.timeScale().height();
     const barMax = Math.min(plotW * 0.32, 150);
-    const pts = oi.rows.map(r => ({ r, y: series.priceToCoordinate(r.price) })).filter(o => o.y !== null && o.y > 2 && o.y < plotH - 2);
+    const yMax = plotH * (1 - oscFrac) - 2;
+    const pts = oi.rows.map(r => ({ r, y: series.priceToCoordinate(r.price) })).filter(o => o.y !== null && o.y > 2 && o.y < yMax);
     if (!pts.length) return;
     let gap = Infinity;
     for (let i = 1; i < pts.length; i++) gap = Math.min(gap, Math.abs(pts[i].y - pts[i - 1].y));
@@ -784,6 +807,7 @@
     dirty = true;
   }
   chartEl.addEventListener('touchstart', e => {
+    if (drawTool) return;
     for (const t of e.changedTouches) {
       const p = ptOf(t);
       if (!g1) {
@@ -811,9 +835,10 @@
         meas.bx = p.x; meas.by = p.y; dirty = true;
       }
     }
-    if (meas) e.preventDefault();
+    if (meas || drawTool) e.preventDefault();
   }, { passive: false, capture: true });
   const touchEnd = e => {
+    if (drawTool) { g1 = null; return; }
     for (const t of e.changedTouches) {
       if (g1 && t.identifier === g1.id) {
         clearTimeout(lpTimer);
@@ -947,7 +972,7 @@
     next = Math.round(next * 100) / 100;
     if (next === adj) return;
     adj = next;
-    if (rawBars.length) { try { series.setData(rawBars.map(toBar)); } catch (e) {} }
+    if (rawBars.length) { try { series.setData(rawBars.map(toBar)); } catch (e) {} if (typeof indRefresh === 'function') indRefresh(); }
     if (rawClose !== null) lastClose = rawClose - adj;
     rebaseOI(); showPrice(); paintOff();
   }
@@ -1026,6 +1051,7 @@
         rawBars = rows;
         const bars = rows.map(toBar);
         series.setData(bars);
+        indRefresh();
         rawClose = rows[rows.length - 1][4];
         lastClose = rawClose - adj;
         lastBarTime = bars[bars.length - 1].time;
@@ -1069,11 +1095,331 @@
         } catch (e) {}
       });
       showPrice();
+      indTick();
       checkAlerts(lastClose);
     };
     ws.onclose = () => { clearInterval(pingTimer); $('dot').classList.remove('live'); wsTimer = setTimeout(openWS, 3000); };
     ws.onerror = () => { try { ws.close(); } catch (e) {} };
   }
+
+  // ---------- อินดิเคเตอร์ (ปุ่ม ƒx: เปิด/ปิด และปรับค่าได้ จำไว้ในเครื่อง) ----------
+  // คำนวณจากแท่งที่แสดงบนกราฟ (สเกล GC หลังบวก offset)
+  const IND = [
+    { id: 'ema1', type: 'ema', name: 'EMA', p: { n: 20 }, col: '#f5d76e' },
+    { id: 'ema2', type: 'ema', name: 'EMA', p: { n: 50 }, col: '#4fc3f7' },
+    { id: 'ema3', type: 'ema', name: 'EMA', p: { n: 200 }, col: '#ba68c8', w: 2 },
+    { id: 'sma1', type: 'sma', name: 'SMA', p: { n: 20 }, col: '#e57373' },
+    { id: 'sma2', type: 'sma', name: 'SMA', p: { n: 100 }, col: '#81c784' },
+    { id: 'bb', type: 'bb', name: 'Bollinger', p: { n: 20, k: 2 }, col: '#90a4ae' },
+    { id: 'st', type: 'st', name: 'Supertrend', p: { n: 10, k: 3 }, col: '#26a69a' },
+    { id: 'rsi', type: 'rsi', name: 'RSI', p: { n: 14, ob: 70, os: 30 }, col: '#ffb74d', osc: true },
+    { id: 'macd', type: 'macd', name: 'MACD', p: { f: 12, s: 26, g: 9 }, col: '#4fc3f7', osc: true },
+    { id: 'stoch', type: 'stoch', name: 'Stochastic', p: { k: 14, d: 3, sm: 3, ob: 80, os: 20 }, col: '#4dd0e1', osc: true },
+    { id: 'atr', type: 'atr', name: 'ATR', p: { n: 14 }, col: '#ce93d8', osc: true },
+  ];
+  const PLABEL = { n: 'คาบ', k: 'ตัวคูณ', ob: 'บน', os: 'ล่าง', f: 'เร็ว', s: 'ช้า', g: 'สัญญาณ', sm: 'smooth' };
+  const PLABEL_STOCH = { k: '%K', d: '%D', sm: 'smooth', ob: 'บน', os: 'ล่าง' };
+  let indCfg = {};
+  try { indCfg = JSON.parse(localStorage.getItem('oit_ind2') || 'null') || {}; } catch (e) { indCfg = {}; }
+  // ย้ายค่าจากรุ่นก่อน (V1.6.00)
+  try {
+    const old = JSON.parse(localStorage.getItem('oit_ind') || '{}') || {};
+    const map = { ema20: 'ema1', ema50: 'ema2', ema200: 'ema3', bb: 'bb', rsi: 'rsi', macd: 'macd' };
+    let moved = false;
+    Object.keys(map).forEach(k => { if (old[k] && !indCfg[map[k]]) { indCfg[map[k]] = { on: true }; moved = true; } });
+    if (moved) localStorage.setItem('oit_ind2', JSON.stringify(indCfg));
+    localStorage.removeItem('oit_ind');
+  } catch (e) {}
+  const cfgOf = d => { const c = indCfg[d.id] || {}; return { on: !!c.on, p: Object.assign({}, d.p, c.p || {}) }; };
+  const saveInd = () => { try { localStorage.setItem('oit_ind2', JSON.stringify(indCfg)); } catch (e) {} };
+  const indSeries = {};
+  let oscFrac = 0; // สัดส่วนความสูงล่างที่ออสซิลเลเตอร์ใช้ (ไม่วาดแท่ง OI ทับ)
+  const lineOpt = (col, extra) => Object.assign({ color: col, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, extra || {});
+
+  // ---- สูตร ----
+  function emaArr(v, n) { const k = 2 / (n + 1), out = []; let e = null, cnt = 0; v.forEach(x => { if (x === null) { out.push(null); return; } cnt++; e = e === null ? x : x * k + e * (1 - k); out.push(cnt >= n ? e : null); }); return out; }
+  function smaArr(v, n) { const out = []; let sum = 0; v.forEach((x, i) => { sum += x; if (i >= n) sum -= v[i - n]; out.push(i >= n - 1 ? sum / n : null); }); return out; }
+  function rmaArr(v, n) { const out = []; let r = null; v.forEach((x, i) => { if (i < n - 1) { out.push(null); return; } if (r === null) { r = v.slice(0, n).reduce((a, b) => a + b, 0) / n; } else r = (r * (n - 1) + x) / n; out.push(r); }); return out; }
+  function trArr(B) { return B.map((b, i) => i ? Math.max(b.high - b.low, Math.abs(b.high - B[i - 1].close), Math.abs(b.low - B[i - 1].close)) : b.high - b.low); }
+
+  function rebuildSeries() {
+    Object.keys(indSeries).forEach(id => { indSeries[id].forEach(sr => { try { chart.removeSeries(sr); } catch (e) {} }); delete indSeries[id]; });
+    const add = o => chart.addLineSeries(o);
+    const on = IND.filter(d => cfgOf(d).on);
+    on.filter(d => !d.osc).forEach(d => {
+      if (d.type === 'ema' || d.type === 'sma') indSeries[d.id] = [add(lineOpt(d.col, { lineWidth: d.w || 1 }))];
+      else if (d.type === 'bb') indSeries.bb = [add(lineOpt(d.col, { lineStyle: 2 })), add(lineOpt(d.col)), add(lineOpt(d.col, { lineStyle: 2 }))];
+      else if (d.type === 'st') indSeries.st = [add(lineOpt('#26a69a', { lineWidth: 2 })), add(lineOpt('#ef5350', { lineWidth: 2 }))];
+    });
+    const oscs = on.filter(d => d.osc);
+    const H = oscs.length <= 1 ? 0.18 : oscs.length === 2 ? 0.16 : 0.13, gapB = 0.05;
+    oscs.forEach((d, i) => {
+      const bottom = gapB + (oscs.length - 1 - i) * (H + 0.01), top = 1 - bottom - H, p = cfgOf(d).p, sid = d.id;
+      const o = (col, x) => lineOpt(col, Object.assign({ priceScaleId: sid }, x || {}));
+      if (d.type === 'rsi') {
+        indSeries.rsi = [add(o(d.col, { lastValueVisible: true, priceFormat: { type: 'price', precision: 1, minMove: 0.1 } }))];
+        [p.ob, p.os].forEach(v => indSeries.rsi[0].createPriceLine({ price: v, color: 'rgba(255,183,77,.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false }));
+      } else if (d.type === 'macd') {
+        indSeries.macd = [chart.addHistogramSeries({ priceScaleId: sid, priceLineVisible: false, lastValueVisible: false, priceFormat: { type: 'price', precision: 2, minMove: 0.01 } }),
+          add(o('#4fc3f7', { lastValueVisible: true })), add(o('#ff8a65'))];
+      } else if (d.type === 'stoch') {
+        indSeries.stoch = [add(o('#4dd0e1', { lastValueVisible: true, priceFormat: { type: 'price', precision: 1, minMove: 0.1 } })), add(o('#ff8a65'))];
+        [p.ob, p.os].forEach(v => indSeries.stoch[0].createPriceLine({ price: v, color: 'rgba(77,208,225,.45)', lineWidth: 1, lineStyle: 2, axisLabelVisible: false }));
+      } else if (d.type === 'atr') {
+        indSeries.atr = [add(o(d.col, { lastValueVisible: true }))];
+      }
+      chart.priceScale(sid).applyOptions({ scaleMargins: { top, bottom }, borderVisible: false });
+    });
+    const bot = oscs.length ? gapB + oscs.length * (H + 0.01) + 0.02 : 0.08;
+    chart.priceScale('right').applyOptions({ scaleMargins: { top: .08, bottom: bot } });
+    oscFrac = oscs.length ? bot - 0.02 : 0;
+    $('indBtn').classList.toggle('has', on.length > 0);
+    indRefresh();
+  }
+  function indRefresh() {
+    try {
+      if (!rawBars.length || !Object.keys(indSeries).length) { dirty = true; return; }
+      const B = rawBars.map(toBar), T = B.map(b => b.time), C = B.map(b => b.close);
+      const line = arr => arr.map((v, i) => v === null || v === undefined || !isFinite(v) ? { time: T[i] } : { time: T[i], value: v });
+      IND.forEach(d => {
+        const S = indSeries[d.id]; if (!S) return;
+        const p = cfgOf(d).p;
+        if (d.type === 'ema') S[0].setData(line(emaArr(C, p.n)));
+        else if (d.type === 'sma') S[0].setData(line(smaArr(C, p.n)));
+        else if (d.type === 'bb') {
+          const n = p.n, up = [], mid = [], lo = [];
+          C.forEach((_, i) => {
+            if (i < n - 1) { up.push(null); mid.push(null); lo.push(null); return; }
+            const w = C.slice(i - n + 1, i + 1), m = w.reduce((a, b) => a + b, 0) / n;
+            const sd = Math.sqrt(w.reduce((a, b) => a + (b - m) * (b - m), 0) / n);
+            up.push(m + p.k * sd); mid.push(m); lo.push(m - p.k * sd);
+          });
+          S[0].setData(line(up)); S[1].setData(line(mid)); S[2].setData(line(lo));
+        } else if (d.type === 'st') {
+          const atr = rmaArr(trArr(B), p.n), up = [], dn = [];
+          let fu = null, fl = null, trend = 1;
+          B.forEach((b, i) => {
+            if (atr[i] === null) { up.push(null); dn.push(null); return; }
+            const hl2 = (b.high + b.low) / 2, bu = hl2 + p.k * atr[i], bl = hl2 - p.k * atr[i], pc = i ? B[i - 1].close : b.close;
+            fu = (fu === null || bu < fu || pc > fu) ? bu : fu;
+            fl = (fl === null || bl > fl || pc < fl) ? bl : fl;
+            if (trend === 1 && b.close < fl) trend = -1; else if (trend === -1 && b.close > fu) trend = 1;
+            up.push(trend === 1 ? fl : null); dn.push(trend === -1 ? fu : null);
+          });
+          S[0].setData(line(up)); S[1].setData(line(dn));
+        } else if (d.type === 'rsi') {
+          const n = p.n, out = [null]; let ag = 0, al = 0;
+          for (let i = 1; i < C.length; i++) {
+            const dd = C[i] - C[i - 1], g = Math.max(dd, 0), l = Math.max(-dd, 0);
+            if (i <= n) { ag += g / n; al += l / n; out.push(i === n ? (al === 0 ? 100 : 100 - 100 / (1 + ag / al)) : null); }
+            else { ag = (ag * (n - 1) + g) / n; al = (al * (n - 1) + l) / n; out.push(al === 0 ? 100 : 100 - 100 / (1 + ag / al)); }
+          }
+          S[0].setData(line(out));
+        } else if (d.type === 'macd') {
+          const ef = emaArr(C, p.f), es = emaArr(C, p.s);
+          const mac = C.map((_, i) => ef[i] !== null && es[i] !== null ? ef[i] - es[i] : null);
+          const sig = emaArr(mac, p.g);
+          S[0].setData(mac.map((v, i) => v === null || sig[i] === null ? { time: T[i] } : { time: T[i], value: v - sig[i], color: v - sig[i] >= 0 ? 'rgba(38,166,154,.55)' : 'rgba(239,83,80,.55)' }));
+          S[1].setData(line(mac)); S[2].setData(line(sig));
+        } else if (d.type === 'stoch') {
+          const raw = B.map((b, i) => {
+            if (i < p.k - 1) return null;
+            let hh = -Infinity, ll = Infinity;
+            for (let j = i - p.k + 1; j <= i; j++) { hh = Math.max(hh, B[j].high); ll = Math.min(ll, B[j].low); }
+            return hh === ll ? 50 : (b.close - ll) / (hh - ll) * 100;
+          });
+          const first = raw.findIndex(v => v !== null);
+          const pad = (arr, off) => Array(off).fill(null).concat(arr);
+          const kk = first < 0 ? raw : pad(smaArr(raw.slice(first), p.sm), first);
+          const f2 = kk.findIndex(v => v !== null);
+          const dd = f2 < 0 ? kk : pad(smaArr(kk.slice(f2), p.d), f2);
+          S[0].setData(line(kk)); S[1].setData(line(dd));
+        } else if (d.type === 'atr') S[0].setData(line(rmaArr(trArr(B), p.n)));
+      });
+      dirty = true;
+    } catch (e) { console.warn('indicator', e); }
+  }
+  // ราคาเปลี่ยนจาก websocket: คำนวณใหม่ไม่เกินวินาทีละครั้ง
+  let indT = 0;
+  function indTick() { if (!Object.keys(indSeries).length) return; const n = Date.now(); if (n - indT < 1000) return; indT = n; indRefresh(); }
+  function paintIndMenu() {
+    $('indMenu').innerHTML = '<div class="t">อินดิเคเตอร์ · แตะชื่อเพื่อเปิด/ปิด แก้ตัวเลขเพื่อปรับค่า</div>' + IND.map(d => {
+      const c = cfgOf(d), lab = d.type === 'stoch' ? PLABEL_STOCH : PLABEL;
+      const ins = Object.keys(d.p).map(k => `<label>${lab[k] || k}<input type="number" inputmode="decimal" step="any" data-id="${d.id}" data-k="${k}" value="${c.p[k]}"></label>`).join('');
+      return `<div class="row"><button data-ind="${d.id}" class="${c.on ? 'on' : ''}"><i style="background:${d.col}"></i>${d.name}</button><span class="ps">${ins}</span></div>`;
+    }).join('') + '<button class="reset" data-reset="1">คืนค่าเริ่มต้นทั้งหมด</button>';
+  }
+  $('indBtn').addEventListener('click', e => { e.stopPropagation(); const m = $('indMenu'); m.hidden = !m.hidden; $('drawBar').hidden = true; if (!m.hidden) paintIndMenu(); });
+  $('indMenu').addEventListener('click', e => {
+    e.stopPropagation();
+    if (e.target.closest('[data-reset]')) { indCfg = {}; saveInd(); paintIndMenu(); rebuildSeries(); return; }
+    const b = e.target.closest('button[data-ind]'); if (!b) return;
+    const c = indCfg[b.dataset.ind] = indCfg[b.dataset.ind] || {};
+    c.on = !c.on; saveInd(); paintIndMenu(); rebuildSeries();
+  });
+  $('indMenu').addEventListener('change', e => {
+    const inp = e.target.closest('input[data-id]'); if (!inp) return;
+    const d = IND.find(x => x.id === inp.dataset.id), k = inp.dataset.k;
+    let v = parseFloat(inp.value);
+    const isInt = !['k', 'ob', 'os'].includes(k) || d.type === 'stoch' && k === 'k';
+    if (!isFinite(v) || v <= 0) v = d.p[k];
+    if (isInt) v = Math.max(1, Math.min(500, Math.round(v)));
+    inp.value = v;
+    const c = indCfg[d.id] = indCfg[d.id] || {};
+    c.p = Object.assign({}, c.p || {}, { [k]: v }); saveInd();
+    if (c.on) rebuildSeries();
+  });
+  document.addEventListener('click', e => {
+    if (!$('indMenu').hidden && !e.target.closest('#indMenu') && !e.target.closest('#indBtn')) $('indMenu').hidden = true;
+  });
+
+  rebuildSeries();
+
+  // ---------- เครื่องมือวาดกราฟ (ปุ่ม ✏️) ----------
+  // เก็บจุดเป็น เวลา + ราคา (สเกล GC) จึงอยู่ตำแหน่งเดิมเมื่อเปลี่ยนไทม์เฟรม/เลื่อนกราฟ
+  const DRAW_TOOLS = [
+    { k: 'hline', name: '─ แนวนอน' }, { k: 'trend', name: '╱ เทรนด์' }, { k: 'ray', name: '→ เส้นยาว' },
+    { k: 'rect', name: '▭ โซน' }, { k: 'fib', name: 'Fibo' }, { k: 'erase', name: '⌫ ยางลบ' },
+  ];
+  const FIB = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+  let drawings = [];
+  try { drawings = JSON.parse(localStorage.getItem('oit_draw') || '[]') || []; } catch (e) { drawings = []; }
+  const saveDraw = () => { try { localStorage.setItem('oit_draw', JSON.stringify(drawings)); } catch (e) {} };
+  let drawTool = null, drawTmp = null;
+  function barTimes() { return rawBars.map(k => Math.floor(k[0] / 1000) + TZ_SHIFT); }
+  // x → เวลา (รองรับพื้นที่ว่างด้านขวาของแท่งล่าสุด)
+  function xToTime(x) {
+    const T = barTimes(), sec = tfSec[tf], l = chart.timeScale().coordinateToLogical(x);
+    if (l === null || !T.length) return null;
+    const i = Math.floor(l), f = l - i;
+    if (i < 0) return T[0] + l * sec;
+    if (i >= T.length - 1) return T[T.length - 1] + (l - (T.length - 1)) * sec;
+    return T[i] + f * Math.min(sec, T[i + 1] - T[i]);
+  }
+  function timeToX(t) {
+    const T = barTimes(), sec = tfSec[tf], ts = chart.timeScale();
+    if (!T.length) return null;
+    let l;
+    if (t <= T[0]) l = (t - T[0]) / sec;
+    else if (t >= T[T.length - 1]) l = T.length - 1 + (t - T[T.length - 1]) / sec;
+    else { let lo = 0, hi = T.length - 1; while (hi - lo > 1) { const m = (lo + hi) >> 1; if (T[m] <= t) lo = m; else hi = m; } l = lo + Math.min(1, (t - T[lo]) / sec); }
+    const i = Math.max(0, Math.min(T.length - 1, Math.round(l))), xi = ts.logicalToCoordinate(i);
+    return xi === null ? null : xi + (l - i) * barSp();
+  }
+  const ptAt = p => { const pr = series.coordinateToPrice(p.y), t = xToTime(p.x); return (pr === null || t === null) ? null : { t, p: pr }; };
+  const toXY = q => ({ x: timeToX(q.t), y: series.priceToCoordinate(q.p) });
+  function drawOne(d, plotW, plotH) {
+    const A = toXY(d.a); if (A.y === null) return;
+    const col = d.k === 'hline' ? C('--gold') : d.k === 'rect' ? '#64b5f6' : d.k === 'fib' ? '#ffb74d' : '#e0e0e0';
+    ctx.strokeStyle = col; ctx.fillStyle = col; ctx.lineWidth = 1.5; ctx.globalAlpha = .95; ctx.setLineDash([]);
+    if (d.k === 'hline') {
+      const y = Math.round(A.y) + .5;
+      ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(plotW, y); ctx.stroke();
+      ctx.font = `bold 10px ${C('--mono')}`; const s = d.a.p.toFixed(2), tw = ctx.measureText(s).width + 8;
+      ctx.fillRect(plotW - tw - 2, y - 8, tw, 15); ctx.fillStyle = '#1a1405'; ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillText(s, plotW - tw + 2, y);
+      return;
+    }
+    const B = toXY(d.b); if (A.x === null || B.x === null || B.y === null) return;
+    if (d.k === 'trend' || d.k === 'ray') {
+      let bx = B.x, by = B.y;
+      if (d.k === 'ray' && Math.abs(B.x - A.x) > 1) { const m = (B.y - A.y) / (B.x - A.x), ex = B.x >= A.x ? plotW : 0; by = A.y + m * (ex - A.x); bx = ex; }
+      ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(bx, by); ctx.stroke();
+      [A, B].forEach(P => { ctx.beginPath(); ctx.arc(P.x, P.y, 2.5, 0, Math.PI * 2); ctx.fill(); });
+    } else if (d.k === 'rect') {
+      const x = Math.min(A.x, B.x), y = Math.min(A.y, B.y), w = Math.abs(B.x - A.x), h = Math.abs(B.y - A.y);
+      ctx.globalAlpha = .15; ctx.fillRect(x, y, w, h); ctx.globalAlpha = .9; ctx.strokeRect(x, y, w, h);
+      ctx.font = `10px ${C('--mono')}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.fillText(`${Math.max(d.a.p, d.b.p).toFixed(2)}`, x + 3, y - 1); ctx.textBaseline = 'top'; ctx.fillText(`${Math.min(d.a.p, d.b.p).toFixed(2)}`, x + 3, y + h + 1);
+    } else if (d.k === 'fib') {
+      const x0 = Math.min(A.x, B.x);
+      ctx.font = `10px ${C('--mono')}`; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom';
+      ctx.setLineDash([4, 3]); ctx.globalAlpha = .5; ctx.beginPath(); ctx.moveTo(A.x, A.y); ctx.lineTo(B.x, B.y); ctx.stroke(); ctx.setLineDash([]);
+      FIB.forEach(f => {
+        const pr = d.b.p - (d.b.p - d.a.p) * f, y = series.priceToCoordinate(pr); if (y === null) return;
+        ctx.globalAlpha = f === 0.5 || f === 0.618 ? .95 : .7;
+        ctx.beginPath(); ctx.moveTo(x0, Math.round(y) + .5); ctx.lineTo(plotW, Math.round(y) + .5); ctx.stroke();
+        ctx.fillText(`${f} (${pr.toFixed(2)})`, x0 + 3, y - 1);
+      });
+    }
+    ctx.globalAlpha = 1;
+  }
+  function drawDrawings(w, h) {
+    if (!drawings.length && !drawTmp) return;
+    const plotW = chart.timeScale().width(), plotH = h - chart.timeScale().height();
+    ctx.save(); ctx.beginPath(); ctx.rect(0, 0, plotW, plotH); ctx.clip();
+    drawings.forEach(d => drawOne(d, plotW, plotH));
+    if (drawTmp) drawOne(drawTmp, plotW, plotH);
+    ctx.restore(); ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+  }
+  // ระยะจากจุดถึงเส้นตรง (ใช้กับยางลบ)
+  function distSeg(px, py, ax, ay, bx, by) { const dx = bx - ax, dy = by - ay, L = dx * dx + dy * dy; let t = L ? ((px - ax) * dx + (py - ay) * dy) / L : 0; t = Math.max(0, Math.min(1, t)); return Math.hypot(px - ax - t * dx, py - ay - t * dy); }
+  function hitDrawing(p) {
+    const plotW = chart.timeScale().width();
+    let best = -1, bd = 16;
+    drawings.forEach((d, i) => {
+      const A = toXY(d.a); if (A.y === null) return;
+      let dist = Infinity;
+      if (d.k === 'hline') dist = Math.abs(p.y - A.y);
+      else {
+        const B = toXY(d.b); if (A.x === null || B.x === null || B.y === null) return;
+        if (d.k === 'trend') dist = distSeg(p.x, p.y, A.x, A.y, B.x, B.y);
+        else if (d.k === 'ray') { const ex = B.x >= A.x ? plotW : 0, m = Math.abs(B.x - A.x) > 1 ? (B.y - A.y) / (B.x - A.x) : 0; dist = distSeg(p.x, p.y, A.x, A.y, ex, A.y + m * (ex - A.x)); }
+        else if (d.k === 'rect') { const x0 = Math.min(A.x, B.x), x1 = Math.max(A.x, B.x), y0 = Math.min(A.y, B.y), y1 = Math.max(A.y, B.y); dist = (p.x >= x0 && p.x <= x1 && p.y >= y0 && p.y <= y1) ? 0 : Infinity; }
+        else if (d.k === 'fib') { if (p.x >= Math.min(A.x, B.x) - 8) FIB.forEach(f => { const y = series.priceToCoordinate(d.b.p - (d.b.p - d.a.p) * f); if (y !== null) dist = Math.min(dist, Math.abs(p.y - y)); }); }
+      }
+      if (dist < bd) { bd = dist; best = i; }
+    });
+    return best;
+  }
+  function paintDrawBar() {
+    $('drawBar').innerHTML = DRAW_TOOLS.map(t => `<button data-tool="${t.k}" class="${drawTool === t.k ? 'on' : ''}">${t.name}</button>`).join('') +
+      `<button data-act="undo">↶ ลบล่าสุด</button><button data-act="clear">🗑 ลบทั้งหมด</button>`;
+  }
+  function setTool(k) {
+    drawTool = k; drawTmp = null;
+    lockChart(!!k); paintDrawBar(); $('drawBtn').classList.toggle('has', !!k || drawings.length > 0);
+    if (k) showToast(k === 'erase' ? 'แตะที่เส้นที่ต้องการลบ' : k === 'hline' ? 'แตะที่ราคาที่ต้องการวางเส้น' : 'แตะค้างที่จุดแรก แล้วลากไปจุดที่สอง', 2500);
+  }
+  $('drawBtn').addEventListener('click', e => {
+    e.stopPropagation(); const b = $('drawBar'); b.hidden = !b.hidden; $('indMenu').hidden = true;
+    if (b.hidden) setTool(null); else paintDrawBar();
+  });
+  $('drawBar').addEventListener('click', e => {
+    e.stopPropagation();
+    const t = e.target.closest('button'); if (!t) return;
+    if (t.dataset.tool) { setTool(drawTool === t.dataset.tool ? null : t.dataset.tool); return; }
+    if (t.dataset.act === 'undo') drawings.pop();
+    if (t.dataset.act === 'clear' && drawings.length) drawings = [];
+    saveDraw(); dirty = true; $('drawBtn').classList.toggle('has', !!drawTool || drawings.length > 0);
+  });
+  $('drawBtn').classList.toggle('has', drawings.length > 0);
+  // วาดด้วย pointer (ใช้ได้ทั้งนิ้วและเมาส์)
+  let drawPid = null;
+  chartEl.addEventListener('pointerdown', e => {
+    if (!drawTool) return;
+    const p = ptOf(e), q = ptAt(p); if (!q) return;
+    e.preventDefault(); e.stopPropagation();
+    if (drawTool === 'erase') { const i = hitDrawing(p); if (i >= 0) { drawings.splice(i, 1); saveDraw(); dirty = true; } return; }
+    if (drawTool === 'hline') { drawings.push({ k: 'hline', a: q }); saveDraw(); dirty = true; setTool(null); return; }
+    drawPid = e.pointerId; drawTmp = { k: drawTool, a: q, b: q }; dirty = true;
+  }, { capture: true });
+  chartEl.addEventListener('pointermove', e => {
+    if (!drawTool || e.pointerId !== drawPid || !drawTmp) return;
+    const q = ptAt(ptOf(e)); if (q) { drawTmp.b = q; dirty = true; }
+    e.preventDefault(); e.stopPropagation();
+  }, { capture: true });
+  const drawUp = e => {
+    if (!drawTool || e.pointerId !== drawPid || !drawTmp) return;
+    drawPid = null;
+    const A = toXY(drawTmp.a), B = toXY(drawTmp.b);
+    if (A.x !== null && B.x !== null && Math.hypot(B.x - A.x, B.y - A.y) > 8) { drawings.push(drawTmp); saveDraw(); }
+    drawTmp = null; dirty = true; setTool(null);
+  };
+  chartEl.addEventListener('pointerup', drawUp, { capture: true });
+  chartEl.addEventListener('pointercancel', drawUp, { capture: true });
+  document.addEventListener('click', e => {
+    if (!$('drawBar').hidden && !drawTool && !e.target.closest('#drawBar') && !e.target.closest('#drawBtn') && !e.target.closest('#chart')) $('drawBar').hidden = true;
+  });
 
   // ราคา XAUUSD จริงจากแหล่งที่ดึงกราฟ (ก่อนบวก offset)
   function paintRaw() {
@@ -1117,7 +1463,7 @@
     $('clock').textContent = d.toLocaleTimeString('th-TH', { hour12: false, timeZone: 'Asia/Bangkok' }) + ' น.';
   }, 1000);
 
-  $('tfs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) loadTF(b.dataset.tf); });
+  $('tfs').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.tf) loadTF(b.dataset.tf); });
   $('reload').addEventListener('click', loadSheet);
 
   // ---------- เข้าสู่ระบบด้วยรหัสผ่าน (ตรวจกับแท็บ users ในชีตผ่าน Apps Script) ----------
@@ -1188,7 +1534,8 @@
   window.OI = {
     HUB, chart, series, chartEl, hooks: overlayHooks,
     get oi() { return oi; }, get lastClose() { return lastClose; }, get rawClose() { return rawClose; },
-    get authCode() { return authCode; }, get digits() { return 2; },
+    get authCode() { return authCode; },
+    get drawTool() { return typeof drawTool === 'undefined' ? null : drawTool; },
     gcOff, showToast, hideToast, lockChart, showPrice,
     markDirty() { dirty = true; },
     setBrokerBasis(b) { brokerBasis = b; setChartAdj(b); },

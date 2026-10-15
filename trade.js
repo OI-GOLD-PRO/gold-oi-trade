@@ -19,7 +19,7 @@
   let brokerBasis = null;      // EMA of (perp − broker mid)
   const pend = new Map();      // cmd id → label, waiting for result
   const T = { side: 'BUY', mode: 'MARKET', lots: 0.01, entry: null, sl: null, tp: null, slOn: false, tpOn: false, risk: 0, snap: true, mod: null };
-  try { Object.assign(T, JSON.parse(localStorage.getItem('oit_tk') || '{}'), { entry: null, sl: null, tp: null, slOn: false, tpOn: false, mod: null }); } catch (e) {}
+  try { Object.assign(T, JSON.parse(localStorage.getItem('oit_tk') || '{}'), { mode: 'MARKET', entry: null, sl: null, tp: null, slOn: false, tpOn: false, mod: null }); } catch (e) {}
   const savePrefs = () => { try { localStorage.setItem('oit_tk', JSON.stringify({ side: T.side, mode: T.mode, lots: T.lots, risk: T.risk, snap: T.snap })); } catch (e) {} };
 
   // ---------------- helpers ----------------
@@ -141,19 +141,42 @@
     if (!isFinite(n) || n <= 0) { O.showToast('ราคาไม่ถูกต้อง'); return; }
     T[k] = roundPx(n); T[k + 'On'] = true; refit(); render();
   }
-  function setSide(side) {
-    if (T.mod || side === T.side) return;
-    const e = entryPrice();
-    T.side = side;
-    // mirror SL/TP to the other side of the entry
-    const e2 = entryPrice();
-    for (const k of ['sl', 'tp']) if (T[k] !== null && e !== null && e2 !== null) T[k] = roundPx(e2 - (T[k] - e));
-    savePrefs(); render();
+  // move SL/TP with the entry, keeping their distance (mirrored when the side flips)
+  function relocate(prevE, prevSide) {
+    const e = entryPrice(); if (prevE === null || e === null) return;
+    for (const k of ['sl', 'tp']) {
+      if (T[k] === null) continue;
+      let d = T[k] - prevE; if (prevSide !== T.side) d = -d;
+      T[k] = roundPx(e + d);
+    }
   }
-  function setMode(m) {
+  function pendingStart(side) {
+    const s = sym(); const p = s ? (side === 'BUY' ? s.ask : s.bid) : O.lastClose;
+    return p === null ? null : roundPx(p + (side === 'BUY' ? -3 : 3));
+  }
+  // SELL / BUY at market: one tap → confirm → send
+  function pressMarket(side) {
     if (T.mod) return;
-    T.mode = m;
-    if (m === 'PENDING' && T.entry === null) { const s = sym(); const p = s ? (T.side === 'BUY' ? s.ask : s.bid) : O.lastClose; if (p !== null) T.entry = roundPx(p + (T.side === 'BUY' ? -3 : 3)); }
+    const prevE = entryPrice(), prevSide = T.side, wasPending = T.mode === 'PENDING';
+    T.side = side; T.mode = 'MARKET';
+    if (prevSide !== side || wasPending) relocate(prevE, prevSide);
+    savePrefs(); refit(); render();
+    submit();
+  }
+  // ตั้งราคา SELL / BUY: first tap shows the ENTRY line to drag, second tap sends
+  function pressPending(side) {
+    if (T.mod) return;
+    if (T.mode === 'PENDING' && T.side === side) return submit();
+    const prevE = entryPrice(), prevSide = T.side;
+    T.side = side; T.mode = 'PENDING'; T.entry = pendingStart(side);
+    relocate(prevE, prevSide);
+    savePrefs(); refit(); render();
+    O.showToast(`ลากเส้น ENTRY ไปราคาที่ต้องการ แล้วกดปุ่ม ${side} อีกครั้งเพื่อส่ง`, 4000);
+  }
+  function cancelPending() {
+    if (T.mode !== 'PENDING') return;
+    const prevE = entryPrice();
+    T.mode = 'MARKET'; relocate(prevE, T.side); T.entry = null;
     savePrefs(); refit(); render();
   }
   function stepLot(dir) {
@@ -208,29 +231,35 @@
 
   // ---------------- UI ----------------
   $('ticket').innerHTML = `
-    <div class="tk-mod" id="tkMod" hidden><span id="tkModTxt"></span><button id="tkModX">ยกเลิกแก้ไข</button></div>
-    <div class="tk-row" id="tkSides">
-      <button class="tk-side buy" data-side="BUY"><small>BUY</small><b id="tkAsk">–</b></button>
-      <div class="tk-spr" id="tkSpr">–</div>
-      <button class="tk-side sell" data-side="SELL"><small>SELL</small><b id="tkBid">–</b></button>
-    </div>
-    <div class="tk-row" id="tkOpts">
-      <div class="tk-seg"><button data-mode="MARKET">ตลาด</button><button data-mode="PENDING">ตั้งราคา</button></div>
-      <div class="tk-lot" id="tkLotBox"><button data-lot="-1">−</button><input id="tkLot" inputmode="decimal" aria-label="lot"><button data-lot="1">+</button></div>
-      <button class="tk-risk" id="tkRisk">เสี่ยง –</button>
-    </div>
+    <div class="tk-mod" id="tkMod" hidden><span id="tkModTxt"></span></div>
     <div class="tk-row">
       <button class="tk-lvl sl" id="tkSL"><small>SL</small><b>ปิด</b><em></em></button>
       <button class="tk-lvl tp" id="tkTP"><small>TP</small><b>ปิด</b><em></em></button>
       <div class="tk-rr" id="tkRR"><small>R:R</small>–</div>
       <button class="tk-snap" id="tkSnap" title="ดูดเข้า OI wall">🧲</button>
     </div>
-    <button class="tk-go" id="tkGo">–</button>`;
-  $('tkSides').addEventListener('click', e => { const b = e.target.closest('[data-side]'); if (b) setSide(b.dataset.side); });
-  $('tkOpts').addEventListener('click', e => {
-    const m = e.target.closest('[data-mode]'); if (m) setMode(m.dataset.mode);
-    const l = e.target.closest('[data-lot]'); if (l) stepLot(+l.dataset.lot);
-  });
+    <div class="tk-row" id="tkOpts">
+      <div class="tk-lot" id="tkLotBox"><button data-lot="-1">−</button><input id="tkLot" inputmode="decimal" aria-label="lot"><button data-lot="1">+</button></div>
+      <button class="tk-risk" id="tkRisk">เสี่ยง –</button>
+    </div>
+    <div class="tk-row tk-pend" id="tkPend">
+      <button class="tk-p sell" data-pend="SELL">ตั้งราคา SELL</button>
+      <button class="tk-x" id="tkPendX" hidden>✕</button>
+      <button class="tk-p buy" data-pend="BUY">ตั้งราคา BUY</button>
+    </div>
+    <div class="tk-row tk-mkt" id="tkMkt">
+      <button class="tk-m sell" data-mkt="SELL"><small>SELL</small><b id="tkBid">–</b></button>
+      <div class="tk-spr" id="tkSpr">–</div>
+      <button class="tk-m buy" data-mkt="BUY"><small>BUY</small><b id="tkAsk">–</b></button>
+    </div>
+    <div class="tk-row" id="tkModRow" hidden>
+      <button class="tk-modx" id="tkModX">ยกเลิกแก้ไข</button>
+      <button class="tk-go" id="tkGo">บันทึก</button>
+    </div>`;
+  $('tkMkt').addEventListener('click', e => { const b = e.target.closest('[data-mkt]'); if (b) pressMarket(b.dataset.mkt); });
+  $('tkPend').addEventListener('click', e => { const b = e.target.closest('[data-pend]'); if (b) pressPending(b.dataset.pend); });
+  $('tkPendX').addEventListener('click', cancelPending);
+  $('tkOpts').addEventListener('click', e => { const l = e.target.closest('[data-lot]'); if (l) stepLot(+l.dataset.lot); });
   $('tkLot').addEventListener('change', e => { const n = Number(e.target.value); if (isFinite(n) && n > 0) { T.risk = 0; T.lots = normLots(n); savePrefs(); } render(); });
   $('tkRisk').addEventListener('click', setRisk);
   for (const k of ['sl', 'tp']) $('tk' + k.toUpperCase()).addEventListener('click', () => T[k + 'On'] ? editLevel(k) : setLevel(k, true));
@@ -252,14 +281,20 @@
     $('tkAsk').textContent = s ? fx(s.ask, d) : '–';
     $('tkBid').textContent = s ? fx(s.bid, d) : '–';
     $('tkSpr').textContent = s ? (s.ask - s.bid).toFixed(d) : '–';
-    document.querySelectorAll('.tk-side').forEach(b => b.classList.toggle('on', b.dataset.side === T.side));
-    document.querySelectorAll('[data-mode]').forEach(b => b.classList.toggle('on', b.dataset.mode === T.mode));
+    const pendOn = !T.mod && T.mode === 'PENDING';
+    document.querySelectorAll('[data-pend]').forEach(b => {
+      const act = pendOn && b.dataset.pend === T.side;
+      b.classList.toggle('on', act);
+      b.textContent = act ? `ส่ง ${T.side} ${pendingKind()} @ ${fx(T.entry, d)}` : `ตั้งราคา ${b.dataset.pend}`;
+      b.disabled = !online;
+    });
+    $('tkPendX').hidden = !pendOn;
+    document.querySelectorAll('[data-mkt]').forEach(b => { b.disabled = !online; b.classList.toggle('dim', pendOn); });
 
     // modify banner
     $('tkMod').hidden = !T.mod;
     $('tkOpts').style.display = T.mod ? 'none' : '';
-    $('tkSides').style.pointerEvents = T.mod ? 'none' : '';
-    $('tkSides').style.opacity = T.mod ? '.55' : '';
+    $('tkPend').hidden = !!T.mod; $('tkMkt').hidden = !!T.mod; $('tkModRow').hidden = !T.mod;
     if (T.mod) $('tkModTxt').textContent = `✎ แก้ไข #${T.mod.ticket} · ${T.mod.type} ${T.mod.lots} lot @ ${fx(T.mod.open, d)}`;
 
     // lots
@@ -284,16 +319,12 @@
     const risk = T.slOn ? -money(e, T.sl) : null, rew = T.tpOn ? money(e, T.tp) : null;
     $('tkRR').innerHTML = `<small>R:R</small>${risk > 0 && rew > 0 ? '1 : ' + (rew / risk).toFixed(2) : '–'}`;
 
-    // go button
+    // modify save button / offline note
     const go = $('tkGo');
     go.classList.toggle('sell', T.side === 'SELL');
-    if (!online) { go.disabled = true; go.textContent = S ? 'EA ออฟไลน์ — เปิด MT5 บนคอม' : 'กำลังเชื่อมต่อ EA…'; }
-    else if (T.mod) { go.disabled = false; go.textContent = `บันทึก SL/TP #${T.mod.ticket}`; }
-    else {
-      go.disabled = false;
-      const kind = T.mode === 'MARKET' ? 'ราคาตลาด' : `${pendingKind()} @ ${fx(T.entry, d)}`;
-      go.textContent = `${T.side} ${(lots ?? 0).toFixed(stepDec())} lot · ${kind}`;
-    }
+    go.disabled = !online;
+    if (T.mod) go.textContent = online ? `บันทึก SL/TP #${T.mod.ticket}` : 'EA ออฟไลน์';
+    if (!online) { $('tkSpr').textContent = S ? 'ออฟไลน์' : '…'; }
     O.showPrice();
     O.markDirty();
     if (!$('sheet').hidden) paintSheet();
@@ -448,6 +479,7 @@
   const wrap = $('wrap');
   function hitTest(clientX, clientY) {
     const r = O.chartEl.getBoundingClientRect(), x = clientX - r.left, y = clientY - r.top;
+    if (O.drawTool) return null;
     if (x < 0 || x > O.chart.timeScale().width()) return null;
     let best = null;
     for (const k of ['tp', 'sl', 'entry']) {

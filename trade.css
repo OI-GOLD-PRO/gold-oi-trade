@@ -16,12 +16,7 @@
 .tk-row > * { min-width: 0; }
 #ticket button { font: 600 13px var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; }
 #ticket button:active { transform: scale(.97); }
-.tk-side { flex: 1; display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
-.tk-side small { font-size: 10.5px; letter-spacing: .06em; opacity: .8; }
-.tk-side b { font: 600 15px var(--mono); }
-.tk-side.buy.on { background: var(--buy) !important; border-color: var(--buy) !important; color: #03140f !important; }
-.tk-side.sell.on { background: var(--sell) !important; border-color: var(--sell) !important; color: #1d0505 !important; }
-.tk-spr { flex: none; align-self: center; font: 10px var(--mono); color: var(--muted); text-align: center; width: 38px; }
+.tk-spr { flex: none; align-self: center; font: 10px var(--mono); color: var(--muted); text-align: center; width: 42px; }
 .tk-seg { display: flex; flex: none; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
 #ticket .tk-seg button { border: 0; border-radius: 0; padding: 6px 9px; background: transparent; color: var(--muted); font-size: 12px; }
 #ticket .tk-seg button.on { background: var(--gold); color: #1a1405; }
@@ -68,3 +63,25 @@
 /* trade app: keep only the MM/clock part of the legend to give the chart more room */
 .legend > span:not(.rt) { display: none; }
 .legend { padding: 4px 14px; }
+
+/* market buttons: bottom of screen, one tap → confirm → send */
+.tk-mkt { gap: 6px; }
+#ticket .tk-m { flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px; padding: 9px 6px; border: 0; }
+.tk-m small { font: 600 12px var(--sans); letter-spacing: .05em; }
+.tk-m b { font: 600 15px var(--mono); }
+#ticket .tk-m.buy { background: var(--buy); color: #03140f; }
+#ticket .tk-m.sell { background: var(--sell); color: #1d0505; }
+#ticket .tk-m.dim { opacity: .55; }
+#ticket .tk-m:disabled { background: var(--line); color: var(--muted); }
+/* pending buttons: above their market button */
+#ticket .tk-p { flex: 1; padding: 5px 6px; font-size: 12px; background: transparent; }
+#ticket .tk-p.buy { border-color: var(--buy); color: var(--buy); }
+#ticket .tk-p.sell { border-color: var(--sell); color: var(--sell); }
+#ticket .tk-p.buy.on { background: var(--buy); color: #03140f; }
+#ticket .tk-p.sell.on { background: var(--sell); color: #1d0505; }
+#ticket .tk-p:disabled { opacity: .4; }
+#ticket .tk-x { flex: none; width: 34px; padding: 0; color: var(--muted); }
+#ticket .tk-modx { flex: none; }
+#ticket .tk-go { flex: 1; width: auto; padding: 9px; }
+#ticket { gap: 6px; padding: 7px 12px 8px; }
+#ticket .tk-lvl { padding: 5px 8px; }

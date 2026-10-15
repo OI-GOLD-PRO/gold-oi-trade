@@ -71,7 +71,7 @@ with sync_playwright() as p:
     page.goto("http://127.0.0.1:8765/index.html")
     page.screenshot(path=f"{OUT}/0-login.png")
     page.fill("#code", "test-code"); page.click("#loginBtn")
-    page.wait_for_function("document.querySelector('#tkGo').textContent.includes('lot')", timeout=15000)
+    page.wait_for_function("document.querySelector('#tkAsk').textContent !== '–' && !document.querySelector('[data-mkt=BUY]').disabled", timeout=15000)
     page.wait_for_timeout(2500)
     page.click("#toast") if page.is_visible("#toast") else None
     page.screenshot(path=f"{OUT}/1-main.png")
@@ -101,17 +101,23 @@ with sync_playwright() as p:
     print(f"TP drag: {tp} -> {tp2}")
     page.screenshot(path=f"{OUT}/3-dragged.png")
 
-    page.click("#tkGo")
+    page.click("[data-mkt=BUY]")
     page.wait_for_timeout(1800)
-    print("sent:", cmds[-1] if cmds else None)
+    print("sent BUY market:", cmds[-1] if cmds else None)
+    page.click("[data-mkt=SELL]")
+    page.wait_for_timeout(1200)
+    print("sent SELL market (lines mirrored):", cmds[-1])
     page.screenshot(path=f"{OUT}/4-sent.png")
 
     # pending order with entry line
-    page.click("[data-mode=PENDING]")
+    page.click("[data-pend=BUY]")
     page.wait_for_timeout(300)
+    page.click("#toast") if page.is_visible("#toast") else None
     page.screenshot(path=f"{OUT}/5-pending.png")
-    page.click("#tkGo"); page.wait_for_timeout(800)
+    page.click("[data-pend=BUY]"); page.wait_for_timeout(800)
     print("pending:", cmds[-1])
+    page.click("#tkPendX"); page.wait_for_timeout(200)
+    print("indicator/draw buttons present:", page.evaluate("() => !!document.getElementById('indBtn') && !!document.getElementById('drawBtn')"))
 
     page.click("#posBtn"); page.wait_for_timeout(300)
     page.screenshot(path=f"{OUT}/6-sheet.png")
