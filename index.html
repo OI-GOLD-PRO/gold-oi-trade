@@ -1166,6 +1166,7 @@
       }
       if (res.legacy) { enterApp(code, null); return; }
       if (res.ok) { enterApp(code, res.expire, res.name); return; }
+      if (res.error === 'not found') { showLogin('hub ยังเป็นรุ่นเก่า — รัน npx wrangler deploy ในโฟลเดอร์ hub ก่อน'); return; }
       showLogin(res.reason === 'expired' ? `รหัสผ่านนี้หมดอายุแล้ว${res.expire ? ' (' + fmtExpire(res.expire) + ')' : ''}` : 'รหัสผ่านไม่ถูกต้อง');
     } catch (e) {
       $('login').hidden = false;
