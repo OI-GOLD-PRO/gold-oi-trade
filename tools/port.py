@@ -55,6 +55,7 @@ rep('''})();
 </body>''', '''})();
 </script>
 <script src="trade.js"></script>
+<script src="dash.js"></script>
 </body>''')
 
 # --- chart shift: adj = perp − broker (chart), gAdj = perp − GC (for OI strikes) ---

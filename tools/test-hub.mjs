@@ -1,6 +1,9 @@
 // Offline test for the hub: fakes the Durable Object runtime and plays EA + app.
 // Run: node tools/test-hub.mjs
 import worker, { Hub, validateCmd, resetUsersCache } from "../hub/src/index.js";
+import { DatabaseSync } from "node:sqlite";
+const db = new DatabaseSync(":memory:");
+const sqlMock = { exec(q, ...b) { const st = db.prepare(q); const rows = /^\s*select/i.test(q) ? st.all(...b) : (st.run(...b), []); return { toArray: () => rows }; } };
 
 class MemStorage {
   constructor() { this.m = new Map(); }
@@ -9,6 +12,7 @@ class MemStorage {
 }
 const storage = new MemStorage();
 let hub;
+storage.sql = sqlMock;
 const ctx = { storage, blockConcurrencyWhile: async (f) => f() };
 const env = {
   APP_KEY: "app-secret-123",
@@ -48,7 +52,7 @@ ok(r.status === 409, "command refused while EA offline");
 
 console.log("EA sync idle");
 let t = await (await call("/ea/sync", { key: env.EA_KEY, body: { state } })).text();
-ok(t.startsWith("OK\nNEXT|"), "EA gets OK + NEXT");
+ok(t.startsWith("OK\n") && t.includes("\nNEXT|"), "EA gets OK + NEXT");
 
 console.log("app reads state");
 let s = await (await call("/app/state", { key: env.APP_KEY })).json();
@@ -146,6 +150,38 @@ ok(sheetCalls === 1, "sheet read once then cached");
 sheetDown = true; resetUsersCache();
 ok((await call("/app/login", { key: env.APP_KEY })).status === 200, "owner key works even if sheet is down");
 globalThis.fetch = realFetch;
+
+console.log("deal history + dashboard stats");
+const st2 = { ...state, gmt_offset: 3 * 3600 };
+let tx = await (await call("/ea/sync", { key: env.EA_KEY, body: { state: st2 } })).text();
+ok(tx.includes("HIST|0|0"), "empty history → cursor 0|0");
+const T0 = 1760000000 + 3 * 3600; // server time
+const D = (t, tm, ty, en, v, p, pf, pos, extra = {}) => ({ t, tm, ty, en, v, p, pf, sw: 0, cm: extra.cm || 0, fe: 0, pos, s: "XAUUSDc", mg: extra.mg || 0 });
+const deals = [
+  D(1, T0, 2, 0, 0, 0, 1000, 0),                       // deposit
+  D(2, T0 + 3600, 0, 0, 0.1, 4100, 0, 10),             // BUY in
+  D(3, T0 + 7200, 1, 1, 0.1, 4105, 50, 10),            // BUY out +50
+  D(4, T0 + 86400, 1, 0, 0.1, 4120, 0, 11, { cm: -1 }), // SELL in, commission
+  D(5, T0 + 86400 + 600, 0, 1, 0.1, 4122, -20, 11, { cm: -1 }), // SELL out −20 (−22 net)
+  D(6, T0 + 2 * 86400, 0, 0, 0.2, 4130, 0, 12),        // BUY in 0.2
+  D(7, T0 + 2 * 86400 + 60, 1, 1, 0.1, 4133, 30, 12),   // partial close +30
+];
+tx = await (await call("/ea/sync", { key: env.EA_KEY, body: { state: st2, deals } })).text();
+ok(tx.includes(`HIST|${T0 + 2 * 86400 + 60}|7`), "cursor moves to last stored deal");
+await call("/ea/sync", { key: env.EA_KEY, body: { state: st2, deals: deals.slice(2, 4) } }); // resend = no duplicates
+let hj = await (await call("/app/history", { key: env.APP_KEY })).json();
+ok(hj.ok && hj.count.deals === 7, "7 deals stored (resend did not duplicate)");
+ok(hj.count.trades === 3, "3 closed trades (incl. partial close)");
+ok(hj.stats.net === 58 && hj.stats.deposits === 1000, `net ${hj.stats.net} = 50 − 22 + 30, deposit 1000`);
+ok(hj.stats.win_rate === 66.67 && hj.stats.profit_factor === 3.64, `win ${hj.stats.win_rate}% PF ${hj.stats.profit_factor}`);
+ok(hj.stats.max_dd === 22, `max DD ${hj.stats.max_dd}`);
+ok(hj.balance[hj.balance.length - 1][1] === 1058, "balance curve ends at 1058");
+ok(hj.trades[0].pos === 12 && hj.trades[0].side === "BUY" && hj.trades[2].side === "BUY" && hj.trades[1].side === "SELL", "trade list newest first with sides");
+ok(hj.trades[0].ot === 1760000000 + 2 * 86400, "times converted to UTC");
+const days = Object.keys(hj.daily);
+ok(days.length === 3 && hj.daily[days[1]][0] === -22 && hj.daily[days[1]][1] === 1, "daily P/L map");
+ok(hj.equity.length >= 1, "equity sampled");
+ok(hj.sessions.reduce((a, x) => a + x.n, 0) === 3, "sessions cover all trades");
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);

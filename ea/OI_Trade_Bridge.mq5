@@ -8,11 +8,11 @@
 //|         "Allow WebRequest for listed URL" → add the HubURL        |
 //+------------------------------------------------------------------+
 #property copyright "OI Gold Pro"
-#property version   "1.00"
+#property version   "1.10"
 
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "v0.1.00"
+#define EA_VERSION "v0.3.00"
 
 input string HubURL          = "https://oi-trade-hub.YOURNAME.workers.dev"; // Hub URL (no trailing /)
 input string EAKey           = "";        // EA key (same as EA_KEY on the hub)
@@ -34,6 +34,10 @@ bool    g_warnedUrl  = false;
 datetime g_plAt      = 0;
 string  g_plJson     = "{}";
 string  g_status     = "starting";
+bool    g_histKnown  = false;        // hub told us how far its deal history goes
+long    g_histTime   = 0;            // last deal time the hub has
+ulong   g_histTicket = 0;            // last deal ticket the hub has
+#define HIST_BATCH 500
 
 //+------------------------------------------------------------------+
 int OnInit()
@@ -171,6 +175,7 @@ string BuildState()
 
    return "{\"ea\":" + JStr(EA_VERSION) +
           ",\"server_time\":" + IntegerToString((long)TimeTradeServer()) +
+          ",\"gmt_offset\":" + IntegerToString((long)(TimeTradeServer() - TimeGMT())) +
           ",\"account\":" + acc + ",\"symbol\":" + sym +
           ",\"positions\":[" + pos + "],\"orders\":[" + ord + "]" +
           ",\"pl\":" + g_plJson + "}";
@@ -233,13 +238,50 @@ string BuildPL()
 }
 
 //+------------------------------------------------------------------+
+//| Deal history upload (all symbols, all magics) — incremental       |
+//+------------------------------------------------------------------+
+string BuildDeals(int &count)
+{
+   count = 0;
+   if(!g_histKnown) return "";
+   if(!HistorySelect((datetime)g_histTime, TimeCurrent() + 86400)) return "";
+   int n = HistoryDealsTotal();
+   string out = "";
+   for(int i = 0; i < n && count < HIST_BATCH; i++)
+   {
+      ulong tk = HistoryDealGetTicket(i);
+      if(tk == 0) continue;
+      long tm = HistoryDealGetInteger(tk, DEAL_TIME);
+      if(tm < g_histTime || (tm == g_histTime && tk <= g_histTicket)) continue;
+      if(out != "") out += ",";
+      out += "{\"t\":" + IntegerToString((long)tk) +
+             ",\"tm\":" + IntegerToString(tm) +
+             ",\"ty\":" + IntegerToString(HistoryDealGetInteger(tk, DEAL_TYPE)) +
+             ",\"en\":" + IntegerToString(HistoryDealGetInteger(tk, DEAL_ENTRY)) +
+             ",\"v\":" + JNum(HistoryDealGetDouble(tk, DEAL_VOLUME), 2) +
+             ",\"p\":" + JNum(HistoryDealGetDouble(tk, DEAL_PRICE), 5) +
+             ",\"pf\":" + JNum(HistoryDealGetDouble(tk, DEAL_PROFIT), 2) +
+             ",\"sw\":" + JNum(HistoryDealGetDouble(tk, DEAL_SWAP), 2) +
+             ",\"cm\":" + JNum(HistoryDealGetDouble(tk, DEAL_COMMISSION), 2) +
+             ",\"fe\":" + JNum(HistoryDealGetDouble(tk, DEAL_FEE), 2) +
+             ",\"pos\":" + IntegerToString(HistoryDealGetInteger(tk, DEAL_POSITION_ID)) +
+             ",\"s\":" + JStr(HistoryDealGetString(tk, DEAL_SYMBOL)) +
+             ",\"mg\":" + IntegerToString(HistoryDealGetInteger(tk, DEAL_MAGIC)) + "}";
+      count++;
+   }
+   return out;
+}
+
+//+------------------------------------------------------------------+
 //| Hub sync                                                         |
 //+------------------------------------------------------------------+
 void Sync()
 {
    string res = "";
    for(int i = 0; i < ArraySize(g_results); i++) res += (i ? "," : "") + g_results[i];
-   string body = "{\"state\":" + BuildState() + ",\"results\":[" + res + "]}";
+   int nDeals = 0;
+   string deals = BuildDeals(nDeals);
+   string body = "{\"state\":" + BuildState() + ",\"results\":[" + res + "],\"deals\":[" + deals + "]}";
    int sent = ArraySize(g_results);
 
    char data[], reply[];
@@ -281,9 +323,15 @@ void Sync()
          int ms = (int)StringToInteger(StringSubstr(ln, 5));
          g_nextMs = (int)MathMax(500, MathMin(30000, ms));
       }
+      else if(StringFind(ln, "HIST|") == 0)
+      {
+         string h[];
+         if(StringSplit(ln, '|', h) >= 3) { g_histTime = StringToInteger(h[1]); g_histTicket = (ulong)StringToInteger(h[2]); g_histKnown = true; }
+      }
       else if(StringFind(ln, "CMD|") == 0)
          Execute(ln);
    }
+   if(nDeals >= HIST_BATCH) g_nextMs = (int)MathMin(g_nextMs, 500);   // still back-filling history
 }
 
 //+------------------------------------------------------------------+

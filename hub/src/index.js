@@ -17,8 +17,9 @@
 // OI_CODE secret = a login code of OI Gold Pro, used only to READ its OI data.
 
 import { TEST_PAGE } from "./page.js";
+import { HIST_SCHEMA, storeDeals, histCursor, computeHistory } from "./history.js";
 
-export const VERSION = "v0.3.01";
+export const VERSION = "v0.4.00";
 const OI_API = "https://script.google.com/macros/s/AKfycbwQrp29KWhUCVO0ojjS73SiLtDKe1QKx69KOOF90QQOlV3csHXqxfOGUYKYw2D6nZp0tw/exec";
 const OI_CACHE_MS = 60_000;
 let oiCache = null; // {at, body}
@@ -31,6 +32,7 @@ const FAST_MS = 1_000;         // EA sync interval while app is active
 const IDLE_MS = 5_000;         // EA sync interval while nobody is watching
 const APP_ACTIVE_MS = 30_000;  // app counts as active this long after its last request
 const MAX_RESULTS = 50;
+const EQUITY_SAMPLE_MS = 300_000; // store balance/equity every 5 min while the EA is online
 
 const CORS = {
   "Access-Control-Allow-Origin": "*",
@@ -207,6 +209,9 @@ export class Hub {
     this.queue = [];
     this.results = [];
     this.seq = 0;
+    this.sql = ctx.storage.sql || null;
+    this.histVer = 0; this.histCache = null; this.lastEqAt = 0;
+    if (this.sql) for (const q of HIST_SCHEMA) this.sql.exec(q);
     ctx.blockConcurrencyWhile(async () => {
       this.queue = (await ctx.storage.get("queue")) || [];
       this.results = (await ctx.storage.get("results")) || [];
@@ -221,6 +226,7 @@ export class Hub {
       if (url.pathname === "/ea/sync" && req.method === "POST") return await this.eaSync(req, now);
       if (url.pathname === "/app/state" && req.method === "GET") return this.appState(now);
       if (url.pathname === "/app/cmd" && req.method === "POST") return await this.appCmd(req, now);
+      if (url.pathname === "/app/history" && req.method === "GET") return this.appHistory(now);
     } catch (e) {
       return json({ ok: false, error: String(e && e.message || e) }, 500);
     }
@@ -265,6 +271,17 @@ export class Hub {
     }
 
     const out = ["OK"];
+    // deal history + equity samples, per MT5 login
+    const login = this.state && this.state.account && Number(this.state.account.login);
+    if (this.sql && login) {
+      if (Array.isArray(body.deals) && body.deals.length) { if (storeDeals(this.sql, login, body.deals)) this.histVer++; }
+      if (now - this.lastEqAt >= EQUITY_SAMPLE_MS) {
+        const a = this.state.account;
+        this.sql.exec(`INSERT OR REPLACE INTO equity VALUES (?,?,?,?)`, login, Math.floor(now / 1000), Number(a.balance) || 0, Number(a.equity) || 0);
+        this.lastEqAt = now;
+      }
+      out.push("HIST|" + histCursor(this.sql, login).join("|"));
+    }
     const appActive = now - this.lastAppAt < APP_ACTIVE_MS;
     out.push("NEXT|" + (appActive || this.queue.length ? FAST_MS : IDLE_MS));
     for (const c of this.queue) {
@@ -289,6 +306,21 @@ export class Hub {
       pending: this.queue.map((c) => c.id),
       results: this.results.slice(0, 20),
     });
+  }
+
+  appHistory(now) {
+    this.lastAppAt = now;
+    const login = this.state && this.state.account && Number(this.state.account.login);
+    if (!this.sql) return json({ ok: false, error: "history storage not available" }, 503);
+    if (!login) return json({ ok: false, error: "EA not connected yet" }, 409);
+    const key = `${login}|${this.histVer}|${Math.floor(now / EQUITY_SAMPLE_MS)}`;
+    if (this.histCache && this.histCache.key === key) return json(this.histCache.body);
+    const deals = this.sql.exec(`SELECT * FROM deals WHERE login = ?`, login).toArray();
+    const eq = this.sql.exec(`SELECT time, balance, equity FROM equity WHERE login = ? ORDER BY time`, login).toArray();
+    const off = Number(this.state.gmt_offset) || 0;
+    const body = { ok: true, login, currency: this.state.account.currency, gmt_offset: off, updated: now, ...computeHistory(deals, eq, off) };
+    this.histCache = { key, body };
+    return json(body);
   }
 
   async appCmd(req, now) {
