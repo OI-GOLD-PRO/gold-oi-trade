@@ -1,6 +1,6 @@
 // Offline test for the hub: fakes the Durable Object runtime and plays EA + app.
 // Run: node tools/test-hub.mjs
-import worker, { Hub, validateCmd } from "../hub/src/index.js";
+import worker, { Hub, validateCmd, resetUsersCache } from "../hub/src/index.js";
 
 class MemStorage {
   constructor() { this.m = new Map(); }
@@ -125,6 +125,26 @@ ok(oj.levels && oj.levels[0].strike === 4175, "OI data proxied");
 ok(oj.auth === undefined, "owner auth details stripped");
 await call("/app/oi", { key: "USER1" });
 ok(calls === 1, "second call served from cache");
+globalThis.fetch = realFetch;
+
+console.log("users from Google Sheet");
+env.USERS_URL = "https://script.test/exec"; env.USERS_SECRET = "s3cret";
+let sheetDown = false, sheetCalls = 0;
+globalThis.fetch = async (u) => {
+  sheetCalls++;
+  if (sheetDown) throw new Error("down");
+  if (!String(u).includes("key=s3cret")) return new Response(JSON.stringify({ ok: false, error: "auth" }));
+  return new Response(JSON.stringify({ ok: true, users: [{ code: "SHEET1", name: "จากชีต", expire: "9999-12-31" }, { code: "SHEETOLD", name: "หมดอายุ", expire: "2021-05-01" }] }));
+};
+resetUsersCache();
+lj = await (await call("/app/login", { key: "SHEET1" })).json();
+ok(lj.ok && lj.name === "จากชีต", "code from sheet logs in");
+r = await call("/app/login", { key: "SHEETOLD" }); lj = await r.json();
+ok(r.status === 401 && lj.reason === "expired", "expired sheet code rejected");
+ok((await call("/app/login", { key: "USER1" })).status === 200, "TRADE_USERS secret still works");
+ok(sheetCalls === 1, "sheet read once then cached");
+sheetDown = true; resetUsersCache();
+ok((await call("/app/login", { key: env.APP_KEY })).status === 200, "owner key works even if sheet is down");
 globalThis.fetch = realFetch;
 
 console.log(`\n${pass} passed, ${fail} failed`);

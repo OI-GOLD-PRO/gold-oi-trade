@@ -12,14 +12,18 @@
 //
 // Login codes for the app: APP_KEY (owner) or any code in the TRADE_USERS secret:
 //   [{"code":"ABC123","name":"ชื่อ","expire":"2026-12-31"}]   (expire "9999-12-31" = unlimited)
+//   …and any row of the "OI Trade Users" Google Sheet, read through its Apps Script
+//   (secrets USERS_URL = web app URL, USERS_SECRET = the SECRET set in that script), cached 60s.
 // OI_CODE secret = a login code of OI Gold Pro, used only to READ its OI data.
 
 import { TEST_PAGE } from "./page.js";
 
-export const VERSION = "v0.2.00";
+export const VERSION = "v0.3.00";
 const OI_API = "https://script.google.com/macros/s/AKfycbwQrp29KWhUCVO0ojjS73SiLtDKe1QKx69KOOF90QQOlV3csHXqxfOGUYKYw2D6nZp0tw/exec";
 const OI_CACHE_MS = 60_000;
 let oiCache = null; // {at, body}
+let usersCache = null; // {at, list}
+const USERS_CACHE_MS = 60_000;
 
 const ONLINE_MS = 10_000;      // EA considered offline if no sync for this long
 const CMD_TTL_MS = 10_000;     // undelivered commands expire after this
@@ -51,13 +55,30 @@ function bangkokToday() {
   return new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
 }
 
+// users from the Google Sheet (via its Apps Script), cached; stale list kept if the sheet is unreachable
+async function sheetUsers(env) {
+  if (!env.USERS_URL || !env.USERS_SECRET) return [];
+  const now = Date.now();
+  if (usersCache && now - usersCache.at < USERS_CACHE_MS) return usersCache.list;
+  try {
+    const r = await fetch(`${env.USERS_URL}?key=${encodeURIComponent(env.USERS_SECRET)}&t=${now}`, { redirect: "follow" });
+    const d = await r.json();
+    if (d && d.ok && Array.isArray(d.users)) { usersCache = { at: now, list: d.users }; return d.users; }
+  } catch {}
+  return usersCache ? usersCache.list : [];
+}
+
+export function resetUsersCache() { usersCache = null; }
+
 // Returns {name, expire, expired} or null
-export function findUser(code, env) {
+export async function findUser(code, env) {
   if (!code) return null;
   if (sameKey(code, env.APP_KEY)) return { name: "Owner", expire: "9999-12-31", expired: false };
   let list = [];
   try { list = JSON.parse(env.TRADE_USERS || "[]"); } catch { list = []; }
-  for (const u of Array.isArray(list) ? list : []) {
+  if (!Array.isArray(list)) list = [];
+  list = list.concat(await sheetUsers(env));
+  for (const u of list) {
     if (!u || typeof u.code !== "string" || !u.code) continue;
     if (sameKey(code, u.code)) {
       const expire = String(u.expire || "9999-12-31");
@@ -97,7 +118,7 @@ export default {
     if (url.pathname.startsWith("/ea/")) {
       if (!sameKey(key, env.EA_KEY)) return new Response("ERR|auth", { status: 401 });
     } else if (url.pathname.startsWith("/app/")) {
-      const user = findUser(key, env);
+      const user = await findUser(key, env);
       if (!user) return json({ ok: false, error: "auth" }, 401);
       if (user.expired) return json({ ok: false, error: "auth", reason: "expired", expire: user.expire }, 401);
       if (url.pathname === "/app/login") return json({ ok: true, name: user.name, expire: user.expire });

@@ -110,3 +110,14 @@ npx wrangler secret put TRADE_USERS
 python3 tools/port.py <ไฟล์ index.html ของ OI Gold Pro> <เวอร์ชันแอปเทรด>
 ```
 สคริปต์ก๊อปกราฟ/อินดิเคเตอร์/เครื่องมือวาดจาก OI Gold Pro แล้วใส่ส่วนแอปเทรดกลับให้ (ไม่แตะไฟล์ OI Gold Pro)
+
+---
+
+## รหัสเข้าแอปใน Google Sheet ("OI Trade Users")
+ชีตแยกต่างหาก (ไม่ใช่ชีต OI Gold Pro) ชีตเป็นส่วนตัว hub อ่านผ่าน Apps Script ที่ต้องใช้รหัสลับ
+- แท็บ `trade_users`: **code | name | expire** (yyyy-mm-dd, เว้นว่าง = ไม่จำกัด) เพิ่มแถว = เพิ่มคน, เปลี่ยน expire เป็นวันในอดีต = ปิดสิทธิ์ (มีผลภายใน 1 นาที)
+- สคริปต์: `sheet/users-apps-script.gs`
+- hub secrets: `USERS_URL` (ลิงก์ web app), `USERS_SECRET` (SECRET ในสคริปต์)
+- APP_KEY ของเจ้าของเข้าได้เสมอ แม้ชีตล่ม
+
+hub deploy อัตโนมัติจาก GitHub Actions ทุกครั้งที่แก้โฟลเดอร์ `hub/`
