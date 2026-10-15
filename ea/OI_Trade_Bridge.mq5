@@ -8,7 +8,7 @@
 //|         "Allow WebRequest for listed URL" → add the HubURL        |
 //+------------------------------------------------------------------+
 #property copyright "OI Gold Pro"
-#property version   "0.100"
+#property version   "1.00"
 
 #include <Trade\Trade.mqh>
 
