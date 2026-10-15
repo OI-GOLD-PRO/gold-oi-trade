@@ -263,7 +263,17 @@
   $('tkOpts').addEventListener('click', e => { const l = e.target.closest('[data-lot]'); if (l) stepLot(+l.dataset.lot); });
   $('tkLot').addEventListener('change', e => { const n = Number(e.target.value); if (isFinite(n) && n > 0) { T.risk = 0; T.lots = normLots(n); savePrefs(); } render(); });
   $('tkRisk').addEventListener('click', setRisk);
-  for (const k of ['sl', 'tp']) $('tk' + k.toUpperCase()).addEventListener('click', () => T[k + 'On'] ? editLevel(k) : setLevel(k, true));
+  // SL / TP chip: tap = on / off, long-press = type an exact price
+  for (const k of ['sl', 'tp']) {
+    const chip = $('tk' + k.toUpperCase());
+    let lp = null, longDone = false;
+    const startLP = () => { longDone = false; clearTimeout(lp); lp = setTimeout(() => { longDone = true; vib(15); editLevel(k); }, 550); };
+    const stopLP = () => clearTimeout(lp);
+    chip.addEventListener('touchstart', startLP, { passive: true });
+    chip.addEventListener('touchend', stopLP); chip.addEventListener('touchmove', stopLP, { passive: true }); chip.addEventListener('touchcancel', stopLP);
+    chip.addEventListener('contextmenu', e => { e.preventDefault(); if (!longDone) { longDone = true; editLevel(k); } });
+    chip.addEventListener('click', () => { if (longDone) { longDone = false; return; } setLevel(k, !T[k + 'On']); });
+  }
   $('tkSnap').addEventListener('click', () => { T.snap = !T.snap; savePrefs(); render(); O.showToast(T.snap ? '🧲 เปิดดูด SL/TP เข้า OI wall' : 'ปิดดูดเข้า OI wall', 2500); });
   $('tkGo').addEventListener('click', submit);
   $('tkModX').addEventListener('click', exitModify);
@@ -274,7 +284,7 @@
     const nPos = S ? (S.positions || []).length + (S.orders || []).length : 0;
     $('acct').innerHTML = `<span class="ea ${online ? 'on' : ''}"><i></i>${online ? 'EA' : (S ? 'EA ออฟไลน์' : 'รอ EA…')}</span>` +
       (a ? `<span>Eq <b>${fx(a.equity, a.equity >= 10000 ? 0 : 2)}</b> ${esc(a.currency)}</span><span>ลอย <b class="${cls(a.profit)}">${sg(a.profit)}</b></span><span>วันนี้ <b class="${cls(S.pl && S.pl.today)}">${sg(S.pl && S.pl.today)}</b></span>` : '') +
-      `<button id="dashBtn" aria-label="แดชบอร์ด">📊</button><button id="posBtn">ออเดอร์ <b>${nPos}</b></button>`;
+      `<button id="dashBtn" aria-label="แดชบอร์ด">📊</button><button id="posBtn" aria-label="ออเดอร์">📋 <b>${nPos}</b></button>`;
     $('posBtn').onclick = openSheet;
     $('dashBtn').onclick = () => window.OIT_openDash && window.OIT_openDash();
     if (s) { const b = document.querySelector('header .sym b'); if (b && b.textContent !== s.name) b.textContent = s.name; }
@@ -315,6 +325,7 @@
       el.classList.toggle('on', on);
       el.classList.toggle('bad', on && wrongSide(k, T[k]));
       el.querySelector('b').textContent = on ? fx(T[k], d) : 'แตะเพื่อตั้ง';
+      el.title = on ? 'แตะ = ปิด · กดค้าง = พิมพ์ราคา' : 'แตะ = เปิด';
       const m = on ? money(e, T[k]) : null;
       el.querySelector('em').textContent = on ? `${sg(m)} · ${Math.abs(T[k] - e).toFixed(2)}$` : '';
     }

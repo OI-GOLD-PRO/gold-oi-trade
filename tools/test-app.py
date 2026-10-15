@@ -83,6 +83,9 @@ with sync_playwright() as p:
 
     page.click("#tkSL"); page.click("#tkTP")
     page.wait_for_timeout(400)
+    page.click("#tkSL"); page.wait_for_timeout(150)
+    print("SL tap again turns it off:", page.evaluate("() => !document.getElementById('tkSL').classList.contains('on')"))
+    page.click("#tkSL"); page.wait_for_timeout(150)
     page.screenshot(path=f"{OUT}/2-sltp.png")
 
     # drag the TP line up by touch (CDP)
