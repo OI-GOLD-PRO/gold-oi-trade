@@ -109,9 +109,9 @@
     }
   }
 
-  async function send(cmd, label) {
+  async function send(cmd, label, ask = true) {
     if (!online) { O.showToast('EA ออฟไลน์ ส่งคำสั่งไม่ได้'); return false; }
-    if (!confirm('ยืนยัน: ' + label)) return false;
+    if (ask && !confirm('ยืนยัน: ' + label)) return false;
     try {
       const d = await api('/app/cmd', cmd);
       if (!d.ok) { O.showToast('⚠️ ส่งไม่สำเร็จ: ' + esc(d.error || 'error'), 8000); return false; }
@@ -213,7 +213,7 @@
     const slM = T.slOn ? money(e, T.sl) : null, tpM = T.tpOn ? money(e, T.tp) : null;
     const label = `${T.side} ${kind === 'MARKET' ? 'ราคาตลาด' : kind + ' @ ' + fx(T.entry, dg())} ${lots} lot` +
       (T.slOn ? `\nSL ${fx(T.sl, dg())} (${sg(slM)})` : '\nไม่ตั้ง SL') + (T.tpOn ? `\nTP ${fx(T.tp, dg())} (${sg(tpM)})` : '');
-    send(cmd, label);
+    send(cmd, label.replace(/\n/g, ' · '), kind !== 'MARKET'); // market orders go without a confirm dialog
   }
 
   function enterModify(ticket, isOrder) {
@@ -418,7 +418,8 @@
       }
     }
 
-    // ticket: entry + SL/TP zones
+    // ticket: entry + SL/TP zones — only while something is being set up
+    if (!ticketActive()) return;
     const e = entryPrice(), ye = Y(e);
     if (e === null || ye === null) return;
     const zone = (p, col) => { const y = Y(p); if (y === null) return; ctx.globalAlpha = .13; ctx.fillStyle = col; ctx.fillRect(0, Math.min(ye, y), plotW, Math.abs(y - ye)); };
