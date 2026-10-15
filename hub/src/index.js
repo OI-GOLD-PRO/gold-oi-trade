@@ -18,7 +18,7 @@
 
 import { TEST_PAGE } from "./page.js";
 
-export const VERSION = "v0.3.00";
+export const VERSION = "v0.3.01";
 const OI_API = "https://script.google.com/macros/s/AKfycbwQrp29KWhUCVO0ojjS73SiLtDKe1QKx69KOOF90QQOlV3csHXqxfOGUYKYw2D6nZp0tw/exec";
 const OI_CACHE_MS = 60_000;
 let oiCache = null; // {at, body}
@@ -112,7 +112,12 @@ export default {
 
     if (url.pathname === "/" && req.method === "GET")
       return new Response(TEST_PAGE, { headers: { "Content-Type": "text/html; charset=utf-8" } });
-    if (url.pathname === "/health") return json({ ok: true, version: VERSION });
+    if (url.pathname === "/health") {
+      // status only — never codes or counts
+      let sheet = "not set";
+      if (env.USERS_URL && env.USERS_SECRET) { resetUsersCache(); await sheetUsers(env); sheet = usersCache ? "ok" : "error"; }
+      return json({ ok: true, version: VERSION, users_sheet: sheet, oi_code: env.OI_CODE ? "set" : "not set" });
+    }
 
     const key = req.headers.get("X-Key") || "";
     if (url.pathname.startsWith("/ea/")) {
