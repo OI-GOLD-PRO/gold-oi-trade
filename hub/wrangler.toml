@@ -1,0 +1,15 @@
+name = "oi-trade-hub"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+[[durable_objects.bindings]]
+name = "HUB"
+class_name = "Hub"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Hub"]
+
+# Secrets (set once, never commit):
+#   npx wrangler secret put APP_KEY
+#   npx wrangler secret put EA_KEY
