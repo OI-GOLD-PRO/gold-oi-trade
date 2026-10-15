@@ -6,11 +6,20 @@
 //   POST /ea/sync          EA pushes state + results, receives commands   (header X-Key: EA_KEY)
 //   GET  /app/state        app reads latest state + recent results       (header X-Key: APP_KEY)
 //   POST /app/cmd          app queues a command                          (header X-Key: APP_KEY)
+//   GET  /app/login        check a login code → {ok, name, expire}       (header X-Key: code)
+//   GET  /app/oi           OI data from the OI Gold Pro sheet (read-only proxy, cached 60s)
 //   GET  /health           public, no data
+//
+// Login codes for the app: APP_KEY (owner) or any code in the TRADE_USERS secret:
+//   [{"code":"ABC123","name":"ชื่อ","expire":"2026-12-31"}]   (expire "9999-12-31" = unlimited)
+// OI_CODE secret = a login code of OI Gold Pro, used only to READ its OI data.
 
 import { TEST_PAGE } from "./page.js";
 
-export const VERSION = "v0.1.00";
+export const VERSION = "v0.2.00";
+const OI_API = "https://script.google.com/macros/s/AKfycbwQrp29KWhUCVO0ojjS73SiLtDKe1QKx69KOOF90QQOlV3csHXqxfOGUYKYw2D6nZp0tw/exec";
+const OI_CACHE_MS = 60_000;
+let oiCache = null; // {at, body}
 
 const ONLINE_MS = 10_000;      // EA considered offline if no sync for this long
 const CMD_TTL_MS = 10_000;     // undelivered commands expire after this
@@ -38,6 +47,43 @@ function sameKey(a, b) {
   return d === 0;
 }
 
+function bangkokToday() {
+  return new Date(Date.now() + 7 * 3600e3).toISOString().slice(0, 10);
+}
+
+// Returns {name, expire, expired} or null
+export function findUser(code, env) {
+  if (!code) return null;
+  if (sameKey(code, env.APP_KEY)) return { name: "Owner", expire: "9999-12-31", expired: false };
+  let list = [];
+  try { list = JSON.parse(env.TRADE_USERS || "[]"); } catch { list = []; }
+  for (const u of Array.isArray(list) ? list : []) {
+    if (!u || typeof u.code !== "string" || !u.code) continue;
+    if (sameKey(code, u.code)) {
+      const expire = String(u.expire || "9999-12-31");
+      return { name: String(u.name || ""), expire, expired: expire < bangkokToday() };
+    }
+  }
+  return null;
+}
+
+async function oiProxy(env) {
+  const now = Date.now();
+  if (oiCache && now - oiCache.at < OI_CACHE_MS) return json(oiCache.body);
+  if (!env.OI_CODE) return json({ ok: false, error: "OI_CODE not set on hub" }, 503);
+  try {
+    const r = await fetch(`${OI_API}?api=data&code=${encodeURIComponent(env.OI_CODE)}&t=${now}`, { redirect: "follow" });
+    const d = await r.json();
+    if (d.error) return json({ ok: false, error: "OI source: " + d.error }, 502);
+    delete d.auth; // never pass the owner's OI Gold Pro login details through
+    oiCache = { at: now, body: d };
+    return json(d);
+  } catch (e) {
+    if (oiCache) return json(oiCache.body); // serve stale rather than nothing
+    return json({ ok: false, error: "OI source unreachable" }, 502);
+  }
+}
+
 export default {
   async fetch(req, env) {
     const url = new URL(req.url);
@@ -51,7 +97,11 @@ export default {
     if (url.pathname.startsWith("/ea/")) {
       if (!sameKey(key, env.EA_KEY)) return new Response("ERR|auth", { status: 401 });
     } else if (url.pathname.startsWith("/app/")) {
-      if (!sameKey(key, env.APP_KEY)) return json({ ok: false, error: "auth" }, 401);
+      const user = findUser(key, env);
+      if (!user) return json({ ok: false, error: "auth" }, 401);
+      if (user.expired) return json({ ok: false, error: "auth", reason: "expired", expire: user.expire }, 401);
+      if (url.pathname === "/app/login") return json({ ok: true, name: user.name, expire: user.expire });
+      if (url.pathname === "/app/oi") return oiProxy(env);
     } else {
       return json({ ok: false, error: "not found" }, 404);
     }

@@ -1,0 +1,1200 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>OI Gold Pro Trade</title>
+<link rel="icon" type="image/png" href="icon/favicon-32.png">
+<link rel="apple-touch-icon" href="icon/apple-touch-icon.png">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-title" content="OI Trade">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="theme-color" content="#0b1020">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
+<style>
+  /* Layout: แถบหัวราคา > ชิปข้อมูล OI > ปุ่มไทม์เฟรม > กราฟเต็มจอ (มี overlay วาดแท่ง OI ทับ) */
+  :root {
+    --bg: #0b1020;        /* พื้นหลังกราฟ น้ำเงินกรมเข้ม */
+    --panel: #121a30;
+    --line: #1f2a46;
+    --fg: #e6e9f2;
+    --muted: #8a93ab;
+    --gold: #e0b44c;      /* สีแบรนด์ทอง ใช้กับราคา/ปุ่มที่เลือก */
+    --put: #e5576b;       /* Put = แนวรับ (โทนแดง) */
+    --call: #2fbf8f;      /* Call = แนวต้าน (โทนเขียว) */
+    --live: #2fbf8f;
+    --mp: #ff3fb4;        /* Max Pain สีบานเย็น */      /* จุดสถานะเชื่อมต่อสด */
+    --chg: #9aa3b8;       /* OI change สีเทา */
+    --volc: #8ccaff;      /* Volume Call ฟ้าอ่อน */
+    --volp: #ffb98a;      /* Volume Put ส้มอ่อน */
+    --up: #26a69a;
+    --down: #ef5350;
+    --sans: 'IBM Plex Sans Thai', system-ui, -apple-system, sans-serif;
+    --mono: 'JetBrains Mono', ui-monospace, Menlo, monospace;
+    color-scheme: dark;
+  }
+  * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
+  html, body { height: 100%; height: 100dvh; margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); -webkit-tap-highlight-color: transparent; }
+  body { display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); overflow: hidden; }
+  header { display: flex; align-items: center; gap: 12px; padding: 10px 14px 6px; }
+  .sym { display: flex; flex-direction: column; min-width: 0; }
+  .sym b { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
+  .sym span { font-size: 11px; color: var(--muted); }
+  .px { text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+  .px #price { font-size: 22px; font-weight: 600; color: var(--gold); }
+  .px #chg { font-size: 11px; color: var(--muted); }
+  /* ไซเรนข่าวแดง: กระพริบเมื่อข่าวจะออกภายใน 30 นาที */
+  .siren { margin: 0 auto; display: flex; flex-direction: column; align-items: center; background: none; border: 0; padding: 0; color: inherit; font: inherit; line-height: 1; }
+  .siren .bulb { font-size: 22px; filter: grayscale(.85) brightness(.75); }
+  .siren .new { margin-top: 2px; font: 700 9px var(--mono); color: #3ddc84; letter-spacing: .03em; }
+  .siren.on .bulb { filter: none; animation: sirenBlink .6s steps(2, start) infinite; }
+  @keyframes sirenBlink { 0% { opacity: 1; filter: drop-shadow(0 0 6px #ff3b3b); } 100% { opacity: .25; } }
+  .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--muted); flex: none; }
+  .dot.live { background: var(--live); box-shadow: 0 0 6px var(--live); }
+  button.icon { background: var(--panel); border: 1px solid var(--line); color: var(--fg); border-radius: 10px; width: 34px; height: 34px; font-size: 16px; flex: none; }
+  header { gap: 8px !important; }
+  /* หน้าเข้าสู่ระบบ: ทับทั้งจอจนกว่าจะใส่รหัสผ่านถูก */
+  #login { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
+  #login .card { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 24px 20px; text-align: center; }
+  #login h1 { margin: 0 0 4px; font: 600 22px var(--mono); color: var(--gold); letter-spacing: .03em; }
+  #login p { margin: 0 0 18px; font-size: 13px; color: var(--muted); }
+  #login input { width: 100%; padding: 12px 14px; border-radius: 10px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: 600 16px var(--mono); text-align: center; letter-spacing: .12em; outline: none; }
+  #login input:focus { border-color: var(--gold); }
+  #login button { width: 100%; margin-top: 12px; padding: 12px; border: 0; border-radius: 10px; background: var(--gold); color: #1a1405; font: 600 15px var(--sans); }
+  #login button:disabled { opacity: .6; }
+  #login .err { min-height: 18px; margin-top: 10px; font-size: 13px; color: var(--put); }
+  #login .ver { margin-top: 14px; font: 11px var(--mono); color: var(--muted); }
+  button.icon:active { transform: scale(.95); }
+  .chips { display: flex; gap: 6px; padding: 0 14px 8px; overflow-x: auto; scrollbar-width: none; }
+  .chips::-webkit-scrollbar { display: none; }
+  .chip { flex: none; font-size: 11px; padding: 4px 8px; border-radius: 999px; background: var(--panel); border: 1px solid var(--line); color: var(--muted); white-space: nowrap; }
+  .chip b { color: var(--fg); font-family: var(--mono); font-weight: 600; }
+  .chip.warn { border-color: #7a5a1c; color: var(--gold); }
+  .tfs { display: flex; gap: 3px; padding: 0 14px 6px; }
+  .tfs button { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 3px 0; font: 600 10.5px var(--mono); }
+  .tfs button.on { background: var(--gold); border-color: var(--gold); color: #1a1405; }
+  #wrap { position: relative; flex: 1; min-height: 0; border-top: 1px solid var(--line); }
+  #chart, #ov { position: absolute; inset: 0; }
+  #ov { pointer-events: none; z-index: 2; }
+  #tip { position: absolute; left: 10px; top: 8px; z-index: 3; font-size: 12px; background: rgba(18,26,48,.92); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-family: var(--mono); pointer-events: none; }
+  #tip .p { color: var(--put); } #tip .c { color: var(--call); }
+  #msg { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; text-align: center; padding: 24px; color: var(--muted); font-size: 13px; z-index: 4; pointer-events: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 14px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); }
+  .legend i { display: inline-block; width: 10px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
+  .legend .rt { margin-left: auto; font-family: var(--mono); }
+  #mmpl { margin-right: 8px; } #mmpl .neg { color: var(--put); } #mmpl .pos { color: var(--call); }
+  button.icon.on { border-color: var(--gold); color: var(--gold); }
+  #toast { position: absolute; left: 10px; right: 10px; top: 10px; z-index: 5; background: #2a2208; border: 1px solid var(--gold); color: var(--fg); border-radius: 10px; padding: 9px 12px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
+  #toast b { color: var(--gold); font-family: var(--mono); }
+</style>
+<link rel="stylesheet" href="trade.css">
+</head>
+<body>
+  <div id="login">
+    <form class="card" id="loginForm" autocomplete="on">
+      <h1>OI Trade</h1>
+      <p>ใส่รหัสเข้าแอปเทรด</p>
+      <input id="code" name="password" type="password" inputmode="text" autocomplete="current-password" placeholder="รหัสผ่าน" autocapitalize="off" autocorrect="off" spellcheck="false">
+      <button type="submit" id="loginBtn">เข้าสู่ระบบ</button>
+      <div class="err" id="loginErr"></div>
+      <div class="ver" id="loginVer"></div>
+    </form>
+  </div>
+  <header>
+    <span class="dot" id="dot"></span>
+    <div class="sym"><b>XAUUSD</b><span id="src">OI</span></div>
+    <button class="siren" id="siren" aria-label="ข่าวแดงที่กำลังจะออก"><span class="bulb">🚨</span><span class="new">new!!</span></button>
+    <div class="px"><div id="price">–</div><div id="chg">กำลังโหลด</div></div>
+    <button class="icon" id="bell" aria-label="เปิดหรือปิดแจ้งเตือนโซน OI">🔕</button>
+    <button class="icon" id="reload" aria-label="โหลดข้อมูล OI จากชีตใหม่">⟳</button>
+    <button class="icon" id="logout" aria-label="ออกจากระบบ">⏻</button>
+  </header>
+  <div class="chips" id="chips"><span class="chip">กำลัง Sync Data…</span></div>
+  <div class="tfs" id="tfs">
+    <button data-tf="1m">M1</button>
+    <button data-tf="5m">M5</button>
+    <button data-tf="15m">M15</button>
+    <button data-tf="30m">M30</button>
+    <button data-tf="1h">H1</button>
+    <button data-tf="4h">H4</button>
+    <button data-tf="1d">D1</button>
+  </div>
+  <div id="wrap">
+    <div id="chart"></div>
+    <canvas id="ov"></canvas>
+    <div id="tip" hidden></div>
+    <div id="toast" hidden></div>
+    <div id="msg">กำลังโหลดกราฟ…</div>
+  </div>
+  <div class="legend">
+    <span><i style="background:var(--put)"></i>Put แนวรับ</span>
+    <span><i style="background:var(--call)"></i>Call แนวต้าน</span>
+    <span><i style="background:linear-gradient(90deg,var(--call) 50%,var(--put) 50%);opacity:.5"></i>OI เปลี่ยน</span>
+    <span><i style="background:linear-gradient(90deg,var(--volc) 50%,var(--volp) 50%);opacity:.8"></i>Vol วันนี้</span>
+    <span><i style="background:repeating-linear-gradient(90deg,var(--mp) 0 4px,transparent 4px 6px)"></i>Max Pain</span>
+    <span class="rt"><span id="mmpl"></span> <span id="clock"></span></span>
+  </div>
+  <div id="acct"></div>
+  <div id="ticket"></div>
+  <div id="sheet" hidden></div>
+
+<script>
+(function () {
+  const SYMBOL = 'XAUUSDT';
+  // เวอร์ชันแอป: แก้เล็กเพิ่มเลขท้าย (2 หลัก), เพิ่มฟีเจอร์ใหญ่เพิ่มเลขกลาง
+  const APP_VER = '0.2.00';
+  const ZONE_HALF = 2.5; // ครึ่งความกว้างโซนกำแพง OI ($) รวมเป็นโซน $5
+  const TZ_SHIFT = 7 * 3600; // แสดงเวลาไทยบนแกนเวลา
+
+  const $ = id => document.getElementById(id);
+  const css = getComputedStyle(document.documentElement);
+  const C = k => css.getPropertyValue(k).trim();
+
+  let tf = '5m';
+  try { tf = localStorage.getItem('oit_tf') || '5m'; } catch (e) { /* ใช้ค่าเริ่มต้น */ }
+  let ws = null, wsTimer = null, lastClose = null, dayOpen = null;
+  // ปรับราคากราฟ perpetual ให้เท่าราคา GC (ทองฟิวเจอร์): ราคาที่แสดง = ราคา perp − adj
+  // adj = (perp − spot) − carry  โดย carry = GC − spot จากชีต (วัดตอนอัพเดท) และรีเฟรชทุก 1 ชม.
+  // ถ้าไม่มี carry ในชีต ใช้ adj = −offset (ราคา perp + offset)
+  let adj = 0, gAdj = 0, brokerBasis = null, basisEma = null, rawBars = [], rawClose = null, offRaw = null, carry = null, adjSet = false, adjAt = null;
+  const REFRESH_MS = 60 * 1000; // Sync ชีตและคำนวณ offset ใหม่ทุก 1 นาที
+
+  // ---------- กราฟ ----------
+  const chartEl = $('chart');
+  const chart = LightweightCharts.createChart(chartEl, {
+    layout: { background: { color: C('--bg') }, textColor: C('--muted'), fontFamily: C('--mono'), fontSize: 11 },
+    grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+    rightPriceScale: { borderColor: C('--line'), scaleMargins: { top: .08, bottom: .08 } },
+    timeScale: { borderColor: C('--line'), timeVisible: true, secondsVisible: false, rightOffset: 8 },
+    crosshair: { mode: LightweightCharts.CrosshairMode.Normal },
+    autoSize: true,
+  });
+  const series = chart.addCandlestickSeries({
+    upColor: C('--up'), downColor: C('--down'), borderVisible: false,
+    wickUpColor: C('--up'), wickDownColor: C('--down'),
+    priceFormat: { type: 'price', precision: 2, minMove: 0.01 },
+  });
+
+  // ---------- ข้อมูล OI ----------
+  let oi = null; // {rows:[{strike,p,c,price}], offset, maxOI}
+
+  function buildOI(d) {
+    const off = Number(d.cfg && d.cfg.offset);
+    const map = new Map();
+    (d.levels || []).forEach(l => {
+      const r = map.get(l.strike) || { strike: l.strike, p: 0, c: 0, dp: null, dc: null };
+      const chg = (l.chg === null || l.chg === undefined || !isFinite(l.chg)) ? null : Number(l.chg);
+      if (l.type === 'P') { r.p += l.oi; if (chg !== null) r.dp = chg; }
+      else { r.c += l.oi; if (chg !== null) r.dc = chg; }
+      map.set(l.strike, r);
+    });
+    const rows = [...map.values()].sort((a, b) => a.strike - b.strike);
+    const ok = isFinite(off);
+    const cr = Number(d.cfg && d.cfg.carry);
+    carry = (d.cfg && d.cfg.carry !== undefined && d.cfg.carry !== '' && isFinite(cr)) ? cr : null;
+    rows.forEach(r => { r.price = ok ? r.strike : null; });
+    const maxOI = Math.max(1, ...rows.map(r => Math.max(r.p, r.c)));
+    const maxChg = Math.max(1, ...rows.map(r => Math.max(Math.abs(r.dp || 0), Math.abs(r.dc || 0))));
+    const hasChg = rows.some(r => r.dp !== null || r.dc !== null);
+    // volume ระหว่างวัน: แท็บ webapp key "volume" = {"strike":[call,put]}
+    let vol = {};
+    try { vol = d.cfg && d.cfg.volume ? JSON.parse(d.cfg.volume) : {}; } catch (e) { vol = {}; }
+    rows.forEach(r => { const v = vol[String(r.strike)]; r.vc = v ? Number(v[0]) : null; r.vp = v ? Number(v[1]) : null; });
+    const maxVol = Math.max(1, ...rows.map(r => Math.max(r.vc || 0, r.vp || 0)));
+    const hasVol = rows.some(r => r.vc !== null || r.vp !== null);
+    const topP = [...rows].sort((a, b) => b.p - a.p).slice(0, 3).map(r => r.strike);
+    const topC = [...rows].sort((a, b) => b.c - a.c).slice(0, 3).map(r => r.strike);
+    const topV = [...rows].filter(r => (r.vc || 0) + (r.vp || 0) > 0)
+      .sort((a, b) => ((b.vc || 0) + (b.vp || 0)) - ((a.vc || 0) + (a.vp || 0))).slice(0, 5).map(r => r.strike);
+    const top5P = [...rows].filter(r => r.p > 0).sort((a, b) => b.p - a.p).slice(0, 5).map(r => r.strike);
+    const top5C = [...rows].filter(r => r.c > 0).sort((a, b) => b.c - a.c).slice(0, 5).map(r => r.strike);
+    offRaw = ok ? off : null;
+    // Max Pain: ราคาหมดอายุที่ผู้ถือ Call+Put ได้มูลค่ารวมน้อยที่สุด
+    let maxPain = null, best = Infinity;
+    rows.forEach(s => {
+      const pay = rows.reduce((a, r) => a + r.c * Math.max(0, s.strike - r.strike) + r.p * Math.max(0, r.strike - s.strike), 0);
+      if (pay < best) { best = pay; maxPain = s.strike; }
+    });
+    oi = { top5P, top5C, rows, offset: ok ? off : null, maxOI, maxChg, hasChg, maxVol, hasVol, topP, topC, topV, maxPain, mpPrice: null };
+    rebaseOI();
+
+    const cfg = d.cfg || {};
+    const chips = [];
+    chips.push(`<span class="chip">สัญญา <b>${esc(cfg.contract || '–')}</b></span>`);
+    chips.push(ok ? `<span class="chip" id="offchip"></span>` : `<span class="chip warn">ยังไม่มี offset ในแท็บ webapp</span>`);
+    chips.push(`<span class="chip" id="rawchip"></span>`);
+    chips.push(`<span class="chip" id="newschip" hidden></span>`);
+    if (authExpire) chips.push(`<span class="chip">${expLabel(authExpire)} <b>${esc(fmtExpire(authExpire))}</b></span>`);
+    $('chips').innerHTML = chips.join('');
+    paintRaw(); paintNextNews();
+    if (ok && (carry === null || !adjSet)) applyAdj(-off); else paintOff();
+    if (ok) refreshAdj(true);
+    dirty = true;
+    if (typeof resetArming === 'function') resetArming(lastClose);
+  }
+
+  function esc(s) { return String(s).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch])); }
+
+  // ข้อมูล OI ดึงจาก Apps Script (?api=data) ซึ่งอ่านชีตให้
+  // ข้อมูล OI และการเข้าสู่ระบบผ่าน hub ของแอปเทรด (hub อ่านข้อมูล OI ให้แบบอ่านอย่างเดียว)
+  const HUB = 'https://oi-trade-hub.oigoldpro.workers.dev';
+
+  // Sync ข้อมูลจากชีต: หมดเวลา 15 วินาทีต่อครั้ง ลองใหม่สูงสุด 3 ครั้ง
+  // ถ้ามีข้อมูลชุดเดิมอยู่แล้ว จะไม่ล้างชิปทิ้งระหว่างโหลด (เส้น OI ยังแสดงต่อ)
+  let syncing = false;
+  async function loadSheet() {
+    if (syncing || !authCode) return;
+    syncing = true;
+    if (!oi) $('chips').innerHTML = '<span class="chip">กำลัง Sync Data…</span>';
+    let err = null;
+    for (let i = 0; i < 3; i++) {
+      const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 15000);
+      try {
+        const r = await fetch(HUB + '/app/oi?t=' + Date.now(), { cache: 'no-store', signal: ac.signal, headers: { 'X-Key': authCode } });
+        if (r.status === 401) { const j = await r.json().catch(() => ({})); syncing = false; showLogin(j.reason === 'expired' ? 'รหัสผ่านนี้หมดอายุแล้ว' : 'รหัสผ่านใช้ไม่ได้แล้ว กรุณาเข้าสู่ระบบใหม่'); return; }
+        if (!r.ok) throw new Error('HTTP ' + r.status);
+        const d = await r.json();
+        if (d.error === 'auth') { syncing = false; showLogin(d.reason === 'expired' ? 'รหัสผ่านนี้หมดอายุแล้ว' : 'รหัสผ่านใช้ไม่ได้แล้ว กรุณาเข้าสู่ระบบใหม่'); return; }
+        if (d.auth && d.auth.expire) authExpire = d.auth.expire;
+        buildOI(d);
+        err = null; break;
+      } catch (e) {
+        err = e.name === 'AbortError' ? 'หมดเวลา' : (e.message || e);
+        if (!oi) $('chips').innerHTML = `<span class="chip">กำลัง Sync Data… (ลองใหม่ครั้งที่ ${i + 2})</span>`;
+        await new Promise(r => setTimeout(r, 1500));
+      } finally { clearTimeout(timer); }
+    }
+    syncing = false;
+    if (err && !oi) $('chips').innerHTML = `<span class="chip warn">Sync Data ไม่สำเร็จ: ${esc(err)} กด ⟳ ลองใหม่</span>`;
+  }
+
+  // ---------- overlay แท่ง OI ----------
+  const ov = $('ov'), ctx = ov.getContext('2d');
+  let dirty = true, lastKey = '';
+  const overlayHooks = [];
+
+  function drawOverlay() {
+    const w = chartEl.clientWidth, h = chartEl.clientHeight, dpr = window.devicePixelRatio || 1;
+    if (ov.width !== Math.round(w * dpr) || ov.height !== Math.round(h * dpr)) {
+      ov.width = Math.round(w * dpr); ov.height = Math.round(h * dpr);
+      ov.style.width = w + 'px'; ov.style.height = h + 'px';
+    }
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    ctx.clearRect(0, 0, w, h);
+    drawSessions(w, h);
+    drawNews(w, h);
+    drawOIBars(w, h);
+    drawSpotAxis(w, h);
+    drawMeasure(w, h);
+    overlayHooks.forEach(f => { try { f(ctx, w, h); } catch (e) { console.error(e); } });
+  }
+
+  // ---------- แกนราคา spot (ปัดแกนราคาขวาไปทางซ้ายเพื่อเปิด ปัดกลับเพื่อปิด) ----------
+  // ราคา spot = ราคา XAUUSD ของแหล่งกราฟก่อนบวก offset = ราคาบนกราฟ + adj
+  let spotAxisOn = false, spotW = 80;
+  try { spotAxisOn = localStorage.getItem('oit_spotaxis') === '1'; } catch (e) {}
+  function niceStep(range, n) {
+    const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
+    for (const m of [1, 2, 2.5, 5, 10]) if (raw <= m * p) return m * p;
+    return 10 * p;
+  }
+  function drawSpotAxis(w, h) {
+    if (!spotAxisOn || !rawBars.length) return;
+    const plotW = chart.timeScale().width(), plotH = h - chart.timeScale().height();
+    const top = series.coordinateToPrice(0), bot = series.coordinateToPrice(plotH);
+    if (top === null || bot === null) return;
+    ctx.font = `11px ${C('--mono')}`;
+    const aw = Math.ceil(ctx.measureText('0000.00').width) + 12, x0 = plotW - aw;
+    spotW = aw;
+    ctx.globalAlpha = 0.94; ctx.fillStyle = C('--panel'); ctx.fillRect(x0, 0, aw, plotH);
+    ctx.globalAlpha = 1; ctx.strokeStyle = C('--gold'); ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x0 + .5, 0); ctx.lineTo(x0 + .5, plotH); ctx.stroke();
+    const sTop = top + gcOff(), sBot = bot + gcOff(), step = niceStep(sTop - sBot, Math.max(3, plotH / 45));
+    ctx.textAlign = 'left'; ctx.textBaseline = 'middle'; ctx.fillStyle = C('--fg');
+    for (let v = Math.ceil(sBot / step) * step; v <= sTop; v += step) {
+      const y = series.priceToCoordinate(v - gcOff());
+      if (y === null || y < 22 || y > plotH - 8) continue;
+      ctx.globalAlpha = .55; ctx.beginPath(); ctx.moveTo(x0, Math.round(y) + .5); ctx.lineTo(x0 + 4, Math.round(y) + .5); ctx.stroke();
+      ctx.globalAlpha = .85; ctx.fillText(v.toFixed(2), x0 + 6, y);
+    }
+    ctx.globalAlpha = 1;
+    // ราคาล่าสุด
+    if (rawClose !== null && lastClose !== null) {
+      const y = series.priceToCoordinate(lastClose);
+      if (y !== null && y > 0 && y < plotH) {
+        ctx.fillStyle = C('--gold'); ctx.fillRect(x0 + 1, y - 8, aw - 1, 16);
+        ctx.fillStyle = '#000'; ctx.fillText((lastClose + gcOff()).toFixed(2), x0 + 6, y + .5);
+      }
+    }
+    ctx.fillStyle = C('--gold'); ctx.font = `bold 10px ${C('--mono')}`; ctx.textAlign = 'center';
+    ctx.fillText('GC', x0 + aw / 2, 9);
+    ctx.textAlign = 'left';
+  }
+  function setSpotAxis(on) {
+    if (spotAxisOn === on) return;
+    spotAxisOn = on; dirty = true;
+    try { localStorage.setItem('oit_spotaxis', on ? '1' : '0'); } catch (e) {}
+  }
+
+  // ---------- วัดระยะ: นิ้วแรกแตะค้าง แล้วนิ้วที่สองแตะค้าง/ลากเพื่อวัด ----------
+  let meas = null; // {ax, ay, ap, al, bx, by, armed}
+  function drawMeasure(w, h) {
+    if (!meas) return;
+    const ts = chart.timeScale(), plotH = h - ts.height();
+    const ay = series.priceToCoordinate(meas.ap), ax = ts.logicalToCoordinate(Math.round(meas.al));
+    const axx = ax === null ? meas.ax : ax + (meas.al - Math.round(meas.al)) * barSp();
+    const ayy = ay === null ? meas.ay : ay;
+    ctx.strokeStyle = '#fff'; ctx.fillStyle = '#fff'; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.arc(axx, ayy, 5, 0, Math.PI * 2); ctx.globalAlpha = .9; ctx.stroke();
+    ctx.setLineDash([3, 3]); ctx.globalAlpha = .4;
+    ctx.beginPath(); ctx.moveTo(0, Math.round(ayy) + .5); ctx.lineTo(ts.width(), Math.round(ayy) + .5); ctx.stroke();
+    ctx.setLineDash([]);
+    if (meas.bx === null) { ctx.globalAlpha = 1; return; }
+    const bp = series.coordinateToPrice(meas.by), bl = ts.coordinateToLogical(meas.bx);
+    if (bp === null || bl === null) { ctx.globalAlpha = 1; return; }
+    const d = bp - meas.ap, up = d >= 0, col = up ? C('--up') : C('--down');
+    // กล่องพื้นที่ระหว่างสองจุด
+    ctx.globalAlpha = .16; ctx.fillStyle = col;
+    ctx.fillRect(Math.min(axx, meas.bx), Math.min(ayy, meas.by), Math.abs(meas.bx - axx), Math.abs(meas.by - ayy));
+    ctx.globalAlpha = .95; ctx.strokeStyle = col; ctx.lineWidth = 1.5;
+    ctx.beginPath(); ctx.moveTo(axx, ayy); ctx.lineTo(meas.bx, meas.by); ctx.stroke();
+    ctx.beginPath(); ctx.arc(meas.bx, meas.by, 5, 0, Math.PI * 2); ctx.stroke();
+    // ข้อความ: ระยะราคา, %, จำนวนแท่ง และเวลา
+    const bars = Math.round(bl - meas.al);
+    const mins = Math.abs(bars) * (tfSec[tf] || 60) / 60;
+    const dur = mins >= 1440 ? (mins / 1440).toFixed(1).replace(/\.0$/, '') + ' วัน' : mins >= 60 ? Math.floor(mins / 60) + ' ชม.' + (mins % 60 ? ' ' + Math.round(mins % 60) + ' น.' : '') : Math.round(mins) + ' นาที';
+    const pts = Math.round(Math.abs(d) * 100); // ทอง 2 ทศนิยม: $1 = 100 จุด
+    const lines = [`${up ? '+' : '−'}${Math.abs(d).toFixed(2)} $  (${up ? '+' : '−'}${Math.abs(d / meas.ap * 100).toFixed(2)}%)`, `${up ? '+' : '−'}${pts.toLocaleString('en-US')} จุด`, `${Math.abs(bars)} แท่ง · ${dur}`, `${meas.ap.toFixed(2)} → ${bp.toFixed(2)}`];
+    ctx.font = `bold 12px ${C('--mono')}`;
+    const tw = Math.max(...lines.map(s => ctx.measureText(s).width)) + 16, th = 70;
+    let tx = meas.bx - tw / 2, ty = up ? meas.by - th - 34 : meas.by + 34;
+    tx = Math.max(4, Math.min(ts.width() - tw - 4, tx)); ty = Math.max(4, Math.min(plotH - th - 4, ty));
+    ctx.globalAlpha = .95; ctx.fillStyle = col;
+    ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(tx, ty, tw, th, 6); else ctx.rect(tx, ty, tw, th); ctx.fill();
+    ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    ctx.fillText(lines[0], tx + tw / 2, ty + 11);
+    ctx.font = `11px ${C('--mono')}`;
+    ctx.font = `bold 11px ${C('--mono')}`; ctx.fillText(lines[1], tx + tw / 2, ty + 27);
+    ctx.font = `11px ${C('--mono')}`;
+    ctx.fillText(lines[2], tx + tw / 2, ty + 43); ctx.fillText(lines[3], tx + tw / 2, ty + 59);
+    ctx.textAlign = 'left'; ctx.globalAlpha = 1;
+  }
+  function barSp() {
+    const ts = chart.timeScale(), a = ts.logicalToCoordinate(1), b = ts.logicalToCoordinate(2);
+    return (a !== null && b !== null) ? b - a : 6;
+  }
+
+  function drawOIBars(w, h) {
+    if (!oi || oi.offset === null || !oi.rows.length) return;
+
+    const plotW = chart.timeScale().width();
+    const plotH = h - chart.timeScale().height();
+    const barMax = Math.min(plotW * 0.32, 150);
+    const pts = oi.rows.map(r => ({ r, y: series.priceToCoordinate(r.price) })).filter(o => o.y !== null && o.y > 2 && o.y < plotH - 2);
+    if (!pts.length) return;
+    let gap = Infinity;
+    for (let i = 1; i < pts.length; i++) gap = Math.min(gap, Math.abs(pts[i].y - pts[i - 1].y));
+    const thick = Math.max(2, Math.min(6, gap / 2 - 1));
+    const putC = C('--put'), callC = C('--call'), chgC = C('--chg');
+    const chgMax = Math.min(plotW * 0.18, 80);
+    const volMax = Math.min(plotW * 0.14, 60);
+    const volC = C('--gold');
+    ctx.font = `10px ${C('--mono')}`;
+    const padL = Math.ceil(ctx.measureText('0000').width) + 8; // ที่ว่างซ้ายสำหรับเลข strike (ราคาฟิวเจอร์)
+
+    ctx.font = `10px ${C('--mono')}`;
+    ctx.textBaseline = 'middle';
+    pts.forEach(({ r, y }) => {
+      const big = oi.topP.includes(r.strike) && r.p > 0 || oi.topC.includes(r.strike) && r.c > 0;
+      const strength = Math.max(r.p, r.c) / oi.maxOI;
+      // เส้นระดับจาง ๆ ทุก strike
+      const yy = Math.round(y) + .5, mid = plotW / 2;
+      const hline = (x0, x1) => { ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(x1, yy); ctx.stroke(); };
+      // เส้นประเฉพาะ OI มากสุด 5 อันดับของแต่ละฝั่ง
+      const in5C = oi.top5C.includes(r.strike), in5P = oi.top5P.includes(r.strike);
+      if (in5C || in5P) {
+        ctx.globalAlpha = 0.75;
+        ctx.strokeStyle = (in5C && (!in5P || r.c >= r.p)) ? callC : putC;
+        ctx.lineWidth = 1;
+        ctx.setLineDash([4, 3]); hline(0, plotW); ctx.setLineDash([]);
+      }
+      // กำแพง OI ใหญ่ 3 อันดับ (Call เขียว / Put แดง): เส้นทึบจากขอบขวาถึงกลางกราฟ
+      const isTopC = oi.topC.includes(r.strike) && r.c > 0, isTopP = oi.topP.includes(r.strike) && r.p > 0;
+      if (isTopC || isTopP) {
+        const wallC = (isTopC && (!isTopP || r.c >= r.p)) ? callC : putC;
+        // โซนราคา ±ZONE_HALF รอบเส้นกำแพง (สีเดียวกันแต่อ่อน) จากกลางกราฟถึงขอบขวา
+        const yTop = series.priceToCoordinate(r.price + ZONE_HALF), yBot = series.priceToCoordinate(r.price - ZONE_HALF);
+        if (yTop !== null && yBot !== null) {
+          ctx.globalAlpha = 0.16; ctx.fillStyle = wallC;
+          ctx.fillRect(mid, Math.min(yTop, yBot), plotW - mid, Math.abs(yBot - yTop));
+        }
+        ctx.globalAlpha = 0.95; ctx.lineWidth = 2;
+        ctx.strokeStyle = wallC;
+        hline(mid, plotW);
+      }
+      // Volume วันนี้ 5 อันดับ: เส้นทึบสีเหลืองจากขอบซ้ายถึงกลางกราฟ
+      if (oi.topV && oi.topV.includes(r.strike)) {
+        ctx.globalAlpha = 0.95; ctx.lineWidth = 2; ctx.strokeStyle = volC;
+        hline(0, mid);
+      }
+      if (hit && hit.strike === r.strike && Date.now() < hit.until) {
+        ctx.globalAlpha = 0.9; ctx.strokeStyle = C('--gold'); ctx.lineWidth = 2.5;
+        ctx.beginPath(); ctx.moveTo(0, Math.round(y) + .5); ctx.lineTo(plotW, Math.round(y) + .5); ctx.stroke();
+      }
+      // แท่ง Call (บนเส้น) และ Put (ใต้เส้น) ยื่นจากขอบขวา
+      ctx.globalAlpha = 0.9;
+      if (r.c > 0) { const L = Math.max(2, barMax * r.c / oi.maxOI); ctx.fillStyle = callC; ctx.fillRect(plotW - L, y - thick, L, thick); }
+      if (r.p > 0) { const L = Math.max(2, barMax * r.p / oi.maxOI); ctx.fillStyle = putC; ctx.fillRect(plotW - L, y, L, thick); }
+
+      // OI change: แท่งเทาจากขอบซ้าย (Call บนเส้น / Put ใต้เส้น) ทึบ = เพิ่ม, กรอบโปร่ง = ลด
+      let chgEnd = padL;
+      if (oi.hasChg) {
+        const chgBar = (v, top, col) => {
+          if (v === null || v === 0) return;
+          const L = Math.max(2, chgMax * Math.abs(v) / oi.maxChg);
+          const yy = top ? y - thick : y;
+          if (v > 0) { ctx.fillStyle = col; ctx.fillRect(padL, yy, L, thick); }
+          else { ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(padL + 0.5, yy + 0.5, L - 1, Math.max(1, thick - 1)); }
+          chgEnd = Math.max(chgEnd, padL + L);
+        };
+        ctx.globalAlpha = 0.9;
+        ctx.globalAlpha = 0.45; chgBar(r.dc, true, callC);
+        chgBar(r.dp, false, putC);
+      }
+
+      // Volume ระหว่างวัน: แท่งสีทอง คอลัมน์ถัดจาก OI change (Call บนเส้น / Put ใต้เส้น)
+      let leftEnd = chgEnd;
+      if (oi.hasVol) {
+        const volX = padL + (oi.hasChg ? chgMax + 6 : 0);
+        ctx.globalAlpha = 0.6;
+        if (r.vc) { const L = Math.max(2, volMax * r.vc / oi.maxVol); ctx.fillStyle = C('--volc'); ctx.fillRect(volX, y - thick, L, thick); }
+        if (r.vp) { const L = Math.max(2, volMax * r.vp / oi.maxVol); ctx.fillStyle = C('--volp'); ctx.fillRect(volX, y, L, thick); }
+        leftEnd = volX + volMax;
+      }
+
+      // ป้ายตัวเลข
+      ctx.globalAlpha = 1;
+      // เลข strike (ราคาฟิวเจอร์) ชิดซ้าย
+      if (gap >= 13 || big || strength >= 0.35) {
+        ctx.fillStyle = big ? C('--fg') : C('--muted');
+        ctx.textAlign = 'left';
+        ctx.fillText(String(r.strike), 4, y);
+      }
+      // OI ฝั่งขวา: แสดงเมื่อ Call หรือ Put ตั้งแต่ 30
+      if (Math.max(r.c, r.p) >= 30) {
+        ctx.fillStyle = big ? C('--fg') : C('--muted');
+        const lab = `${r.c ? 'C' + r.c : ''}${r.c && r.p ? ' ' : ''}${r.p ? 'P' + r.p : ''}`;
+        const L = barMax * Math.max(r.p, r.c) / oi.maxOI;
+        ctx.textAlign = 'right';
+        ctx.fillText(lab, plotW - L - 4, y);
+      }
+      // OI change + Volume: ใต้เลข strike ฝั่งซ้าย (ต้องมีที่ว่างระหว่างเส้นพอ)
+      if (gap >= 24) {
+        const sgn = v => (v > 0 ? '+' : '') + v;
+        const dl = [r.dc ? 'C' + sgn(r.dc) : '', r.dp ? 'P' + sgn(r.dp) : ''].filter(Boolean).join(' ');
+        const vl = (r.vc || r.vp) ? `V ${r.vc || 0}/${r.vp || 0}` : '';
+        const txt = [dl ? 'Δ ' + dl : '', vl].filter(Boolean).join('  ');
+        if (txt) {
+          ctx.font = `9px ${C('--mono')}`;
+          ctx.textAlign = 'left'; ctx.fillStyle = C('--muted');
+          ctx.fillText(txt, 4, y + thick + 7);
+          ctx.font = `10px ${C('--mono')}`;
+        }
+      }
+    });
+    // เส้น Max Pain: เส้นประสีบานเย็นเต็มความกว้าง พร้อมป้ายกำกับ
+    if (oi.maxPain !== null) {
+      const ym = series.priceToCoordinate(oi.mpPrice);
+      if (ym !== null && ym > 2 && ym < plotH - 2) {
+        const yy = Math.round(ym) + .5, mpC = C('--mp');
+        ctx.globalAlpha = 0.95; ctx.strokeStyle = mpC; ctx.lineWidth = 1.5; ctx.setLineDash([6, 4]);
+        ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(plotW, yy); ctx.stroke(); ctx.setLineDash([]);
+        // ป้ายราคาที่แกนขวา (กรอบสีบานเย็น) และคำว่า Max Pain ใต้กรอบ ไม่บังกราฟ
+        const lab = oi.mpPrice.toFixed(2);
+        ctx.font = `bold 10px ${C('--mono')}`;
+        const axW = w - plotW, bh = 14, bx = plotW + 1, by = Math.round(ym - bh / 2);
+        ctx.globalAlpha = 1; ctx.fillStyle = mpC; ctx.fillRect(bx, by, axW - 1, bh);
+        ctx.fillStyle = '#fff'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+        ctx.fillText(lab, bx + (axW - 1) / 2, by + bh / 2 + .5);
+        ctx.font = `bold 8px ${C('--mono')}`;
+        ctx.fillStyle = C('--bg'); ctx.globalAlpha = 0.85; ctx.fillRect(bx, by + bh, axW - 1, 10);
+        ctx.globalAlpha = 1; ctx.fillStyle = mpC; ctx.fillText('Max Pain', bx + (axW - 1) / 2, by + bh + 5.5);
+        ctx.font = `10px ${C('--mono')}`;
+      }
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  // ---------- ข่าวแดง (High impact) จาก Forex Factory ----------
+  // GitHub Actions ดึงปฏิทินทุกชั่วโมงเก็บเป็น news.json ในรีโป แอปอ่านไฟล์นั้น
+  // ที่อยู่ไฟล์ news.json: อ่านชื่อบัญชี/รีโปจากลิงก์ของหน้าเว็บเอง (เปลี่ยนชื่อรีโปภายหลังก็ยังใช้ได้)
+  const NEWS_URL = 'https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-pro/main/news.json';
+  // หมายเหตุ: raw.githubusercontent แคชไฟล์ราว 5 นาที
+  let news = [];
+  async function loadNews() {
+    try {
+      let r = await fetch(NEWS_URL + '?t=' + Math.floor(Date.now() / 300000), { cache: 'no-store' }).catch(() => null);
+      if (!r || !r.ok) r = await fetch('news.json?t=' + Math.floor(Date.now() / 300000), { cache: 'no-store' });
+      if (!r.ok) return;
+      const j = await r.json();
+      news = (j.events || []).filter(e => e.c === 'USD').map(e => ({ ...e, i: e.i || 'H', ms: Date.parse(e.date) })).filter(e => isFinite(e.ms)).sort((a, b) => a.ms - b.ms);
+      dirty = true; paintNextNews(); paintSiren(); refreshBoard();
+    } catch (e) {}
+  }
+  // ช่วงหลังข่าวออก (ภายใน 2 ชม.) ที่ยังไม่มีผล: ดึงใหม่ทุก 2 นาที, ปกติทุก 10 นาที
+  function newsPollMs() {
+    const now = Date.now();
+    return news.some(e => e.ms <= now && now - e.ms < 2 * 3600e3 && !e.actual && (e.forecast || e.previous)) ? 120000 : 600000;
+  }
+  function scheduleNews() { setTimeout(() => { if (document.visibilityState === 'visible') loadNews(); scheduleNews(); }, newsPollMs()); }
+  // แปลงเวลาข่าวเป็นตำแหน่ง x บนกราฟ (รองรับข่าวในอนาคตที่ยังไม่มีแท่ง)
+  function newsX(ms) {
+    const sec = tfSec[tf], ts = chart.timeScale();
+    if (!sec || !rawBars.length || lastBarTime === null) return null;
+    const t = Math.floor(ms / 1000) + TZ_SHIFT, tb = Math.floor(t / sec) * sec;
+    // logicalToCoordinate รับเฉพาะเลขจำนวนเต็ม จึงหาระยะห่างแท่งเองแล้วคูณ
+    const N = rawBars.length, xl = ts.logicalToCoordinate(N - 1), xp = ts.logicalToCoordinate(N - 2);
+    if (xl === null) return null;
+    const sp = (xp !== null && xl - xp > 0) ? xl - xp : (ts.options().barSpacing || 6);
+    if (tb <= lastBarTime) { const x = ts.timeToCoordinate(tb); if (x !== null) return x + (t - tb) / sec * sp; }
+    return xl + (t - lastBarTime) / sec * sp;
+  }
+  const NEWS_H = 14;
+  const newsCol = e => e.i === 'H' ? '#ef4444' : '#f59e0b'; // แดง = High, ส้ม = Medium
+  const thDay = ms => new Date(ms).toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+  // วันที่ไทย: ถ้าเป็นวันนี้แสดง "วันนี้ !!"
+  const newsWhen = ms => {
+    const hm = new Date(ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' });
+    if (thDay(ms) === thDay(Date.now())) return `<b style="color:#3ddc84">วันนี้ !!</b> ${hm}`;
+    return new Date(ms).toLocaleDateString('th-TH', { weekday: 'short', day: 'numeric', timeZone: 'Asia/Bangkok' }) + ' ' + hm;
+  };
+  // เส้นแบ่งวันเทรด: CME ปิดรายวัน 17:00 ET แล้วเริ่มวันใหม่ 18:00 ET
+  const etDayFmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'America/New_York', year: 'numeric', month: '2-digit', day: '2-digit' });
+  const dayCache = new Map();
+  function tradeDay(ms) {
+    const hk = Math.floor(ms / 3600000);
+    if (!dayCache.has(hk)) dayCache.set(hk, etDayFmt.format(new Date(hk * 3600000 + 6 * 3600000)));
+    return dayCache.get(hk);
+  }
+  function drawSessions(w, h) {
+    if (!rawBars.length || tf === '1d') return;
+    const ts = chart.timeScale(), plotW = ts.width(), plotH = h - ts.height();
+    const lr = ts.getVisibleLogicalRange(); if (!lr) return;
+    const i0 = Math.max(1, Math.floor(lr.from) - 1), i1 = Math.min(rawBars.length - 1, Math.ceil(lr.to) + 1);
+    const x0 = ts.logicalToCoordinate(i0), x1 = ts.logicalToCoordinate(i0 + 1);
+    const sp = (x0 !== null && x1 !== null) ? x1 - x0 : 6;
+    ctx.strokeStyle = C('--muted'); ctx.globalAlpha = 0.45; ctx.lineWidth = 1; ctx.setLineDash([3, 4]);
+    let prev = tradeDay(+rawBars[i0 - 1][0]);
+    for (let i = i0; i <= i1; i++) {
+      const d = tradeDay(+rawBars[i][0]);
+      if (d !== prev) {
+        const xb = ts.logicalToCoordinate(i);
+        if (xb !== null) {
+          const x = Math.round(xb - sp / 2) + .5;
+          if (x > 0 && x < plotW) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, plotH); ctx.stroke(); }
+        }
+      }
+      prev = d;
+    }
+    ctx.setLineDash([]); ctx.globalAlpha = 1;
+  }
+  // ไซเรน: กระพริบเมื่อมีข่าวแดงจะออกภายใน 30 นาที แตะเพื่อดูรายการข่าวถัดไป
+  function paintSiren() {
+    const now = Date.now();
+    const soon = news.some(e => e.ms > now && e.ms - now <= 30 * 60000);
+    $('siren').classList.toggle('on', soon);
+  }
+  setInterval(paintSiren, 15000);
+  // ผลข่าว: ตัวเลขจริง + ลูกศรเทียบค่าคาด สีเขียว = ดีต่อ USD, แดง = แย่ต่อ USD (ตาม FXStreet)
+  const numOf = s => { const m = String(s || '').replace(/,/g, '').match(/-?\d+(\.\d+)?/); return m ? parseFloat(m[0]) : null; };
+  function newsResult(e) {
+    if (e.actual) {
+      const a = numOf(e.actual), f = numOf(e.forecast);
+      const arrow = (a !== null && f !== null && a !== f) ? (a > f ? ' ▲' : ' ▼') : '';
+      const col = e.better === true ? '#3ddc84' : e.better === false ? '#ff6b6b' : '#fff';
+      const tag = e.better === true ? ' ดีต่อ USD' : e.better === false ? ' แย่ต่อ USD' : '';
+      return ` · ผล <b style="color:${col}">${esc(e.actual)}${arrow}</b>${tag ? `<span style="color:${col};font-size:11px">${tag}</span>` : ''}`;
+    }
+    if (e.ms <= Date.now() && Date.now() - e.ms < 3 * 3600e3 && (e.forecast || e.previous)) return ' · <span style="opacity:.7">รอผล…</span>';
+    return '';
+  }
+  // กระดานข่าว USD สัปดาห์นี้: ตัดข่าวของวันก่อนหน้าออก (นับวันตามเวลาไทย) ข่าววันนี้ที่ออกแล้วแสดงผล
+  let boardOpen = false;
+  function boardHTML() {
+    const d = new Date(Date.now() + 7 * 3600e3), dow = (d.getUTCDay() + 6) % 7;
+    const wkStart = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() - dow) - 7 * 3600e3, wkEnd = wkStart + 7 * 86400e3;
+    const today = thDay(Date.now());
+    const list = news.filter(e => e.ms < wkEnd && thDay(e.ms) >= today);
+    const now = Date.now();
+    const rows = list.map(e => `<div style="padding:2px 0;${e.ms < now - 5 * 60000 && !e.actual ? 'opacity:.6' : ''}"><span style="color:${newsCol(e)}">●</span> ${esc(e.title)} · ${newsWhen(e.ms)} น.${e.forecast ? ' <span style="opacity:.7">(คาด ' + esc(e.forecast) + ')</span>' : ''}${newsResult(e)}</div>`).join('');
+    return list.length ? `🚨 ข่าว USD สัปดาห์นี้ <span style="font-size:11px;opacity:.7"><span style="color:#ef4444">●</span> แดง <span style="color:#f59e0b">●</span> ส้ม</span><div id="newsboard" style="max-height:52vh;overflow:auto;margin-top:4px">${rows}</div>` : 'สัปดาห์นี้ไม่มีข่าว USD สีแดง/ส้มที่เหลืออยู่';
+  }
+  function refreshBoard() {
+    if (!boardOpen || $('toast').hidden) { boardOpen = false; return; }
+    const sc = $('newsboard') ? $('newsboard').scrollTop : 0;
+    $('toast').innerHTML = boardHTML() + '<div style="margin-top:6px;font-size:11px;opacity:.6">แตะเพื่อปิด</div>';
+    if ($('newsboard')) $('newsboard').scrollTop = sc;
+  }
+  $('siren').addEventListener('click', () => {
+    if (!$('toast').hidden) { hideToast(); boardOpen = false; return; } // แตะไซเรนซ้ำ = ปิดกล่องข่าว
+    showToast(boardHTML(), 60000); boardOpen = true;
+  });
+  // ชิปบอกข่าวแดง USD ถัดไป (ข่าวในอนาคตอาจอยู่นอกจอกราฟ)
+  function paintNextNews() {
+    const el = $('newschip'); if (!el) return;
+    const now = Date.now() - 5 * 60000;
+    const nx = news.find(e => e.ms >= now && e.i === 'H') || news.find(e => e.ms >= now);
+    if (!nx) { el.hidden = true; return; }
+    const same = news.filter(e => e.ms === nx.ms && e.c === nx.c).length;
+    const t = new Date(nx.ms).toLocaleString('th-TH', { weekday: 'short', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' });
+    el.innerHTML = `<span style="color:${newsCol(nx)}">●</span> ${esc(nx.c)} ${esc(nx.title)}${same > 1 ? ' +' + (same - 1) : ''} <b>${thDay(nx.ms) === thDay(Date.now()) ? 'วันนี้ !! ' + new Date(nx.ms).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' }) : t}</b>`;
+    el.hidden = false;
+  }
+  setInterval(() => { paintNextNews(); refreshBoard(); }, 60000);
+  function newsHits(px) {
+    return news.map(e => ({ e, x: newsX(e.ms) })).filter(o => o.x !== null && Math.abs(o.x - px) <= 12);
+  }
+  function drawNews(w, h) {
+    if (!news.length) return;
+    const plotW = chart.timeScale().width(), plotH = h - chart.timeScale().height();
+    const y = plotH - NEWS_H - 2;
+    ctx.font = `bold 8px ${C('--mono')}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    let lastX = -99;
+    news.forEach(e => {
+      const x = newsX(e.ms);
+      if (x === null || x < 0 || x > plotW) return;
+      const hi = e.i === 'H', col = newsCol(e);
+      // เส้นแนวตั้งจาง ๆ ตรงเวลาข่าว
+      ctx.globalAlpha = hi ? 0.35 : 0.22; ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.setLineDash([2, 3]);
+      ctx.beginPath(); ctx.moveTo(Math.round(x) + .5, 0); ctx.lineTo(Math.round(x) + .5, y); ctx.stroke(); ctx.setLineDash([]);
+      if (Math.abs(x - lastX) < 22 && !hi) return; // ข่าวเวลาเดียวกันวาดป้ายเดียว (ให้ข่าวแดงทับส้ม)
+      lastX = x;
+      const bw = 22;
+      ctx.globalAlpha = 0.95; ctx.fillStyle = col;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x - bw / 2, y, bw, NEWS_H - 2, 3); else ctx.rect(x - bw / 2, y, bw, NEWS_H - 2);
+      ctx.fill();
+      ctx.fillStyle = '#fff'; ctx.fillText(e.c, x, y + (NEWS_H - 2) / 2 + .5);
+    });
+    ctx.globalAlpha = 1; ctx.textBaseline = 'middle';
+  }
+
+  function loop() {
+    const ref = oi && oi.rows.length && oi.offset !== null ? oi.rows[0].price : 0;
+    const lr = chart.timeScale().getVisibleLogicalRange();
+    const key = [chartEl.clientWidth, chartEl.clientHeight, chart.timeScale().width(), series.priceToCoordinate(ref), series.priceToCoordinate(ref + 50), lr ? lr.from.toFixed(2) + ',' + lr.to.toFixed(2) : ''].join('|');
+    if (dirty || key !== lastKey) { drawOverlay(); lastKey = key; dirty = false; }
+    requestAnimationFrame(loop);
+  }
+  requestAnimationFrame(loop);
+
+  // แตะกราฟเพื่อดู OI ของระดับที่ใกล้ที่สุด
+  chart.subscribeCrosshairMove(param => {
+    const tip = $('tip');
+    // แตะแถบข่าวด้านล่าง: แสดงรายการข่าวแดงตรงนั้น
+    if (param.point && param.point.y > chartEl.clientHeight - chart.timeScale().height() - NEWS_H - 8) {
+      const hs = newsHits(param.point.x);
+      if (hs.length) {
+        const fmtT = ms => new Date(ms).toLocaleString('th-TH', { weekday: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit', hour12: false, timeZone: 'Asia/Bangkok' });
+        tip.innerHTML = hs.slice(0, 5).map(({ e }) => `<b>${esc(e.c)}</b> ${esc(e.title)}<br><span style="opacity:.75">${fmtT(e.ms)} น.${e.forecast ? ' · คาด ' + esc(e.forecast) : ''}${e.previous ? ' · ก่อนหน้า ' + esc(e.previous) : ''}${e.actual ? ' · <b>ผล ' + esc(e.actual) + '</b>' : ''}</span>`).join('<br>');
+        tip.hidden = false; return;
+      }
+    }
+    if (!param.point || !oi || oi.offset === null) { tip.hidden = true; return; }
+    const price = series.coordinateToPrice(param.point.y);
+    if (price === null) { tip.hidden = true; return; }
+    let best = null;
+    oi.rows.forEach(r => { const d = Math.abs(r.price - price); if (!best || d < best.d) best = { r, d }; });
+    if (!best || best.d > 3) { tip.hidden = true; return; }
+    const r = best.r;
+    const sg = v => v === null ? '–' : (v > 0 ? '+' : '') + v;
+    tip.innerHTML = `strike <b>${r.strike}</b> → โบรก ${r.price.toFixed(2)}<br><span class="c">Call ${r.c}</span> (${sg(r.dc)}) · <span class="p">Put ${r.p}</span> (${sg(r.dp)})${(r.vc !== null || r.vp !== null) ? `<br>Vol วันนี้ C${r.vc || 0} / P${r.vp || 0}` : ''}`;
+    tip.hidden = false;
+  });
+
+  // ---------- แจ้งเตือนเมื่อราคาเข้าใกล้โซน OI ----------
+  const ALERT_MIN_OI = 50;   // เฉพาะ strike ที่ Put หรือ Call มี OI ตั้งแต่ 50
+  const ALERT_TOL = 1.5;     // ห่างจากเส้นไม่เกิน $1.5 ถือว่าเข้าโซน
+  const REARM = 8;          // ต้องออกห่างเส้น $8 (ถือว่าทะลุโซนจริง) ก่อนจึงเตือนโซนเดิมซ้ำ
+  let alertsOn = false;
+  try { alertsOn = localStorage.getItem('oit_alert') === '1'; } catch (e) {}
+  let actx = null, wakeLock = null, hit = null;
+  const armed = new Map();
+
+  const alertZones = () => (oi && oi.offset !== null) ? oi.rows.filter(r => Math.max(r.p, r.c) >= ALERT_MIN_OI) : [];
+
+  function resetArming(price) {
+    armed.clear();
+    alertZones().forEach(r => armed.set(r.strike, price === null || Math.abs(price - r.price) > ALERT_TOL));
+  }
+
+  // เสียงเตือนดัง: คลื่นสี่เหลี่ยม 2 ความถี่ ผ่านตัวบีบเสียงให้ดังสุด เป็นจังหวะ 2 ชุด ๆ ละ 3 ครั้ง (ราว 2 วินาที)
+  function beep() {
+    if (!actx) return;
+    const t = actx.currentTime;
+    const comp = actx.createDynamicsCompressor();
+    comp.threshold.value = -30; comp.knee.value = 0; comp.ratio.value = 12; comp.attack.value = 0.002; comp.release.value = 0.1;
+    const master = actx.createGain(); master.gain.value = 1.0;
+    comp.connect(master); master.connect(actx.destination);
+    [0, 0.18, 0.36, 0.9, 1.08, 1.26].forEach(d => {
+      [1046, 1568].forEach((f, i) => {
+        const o = actx.createOscillator(), g = actx.createGain();
+        o.type = 'square'; o.frequency.value = f; o.connect(g); g.connect(comp);
+        g.gain.setValueAtTime(0.0001, t + d);
+        g.gain.exponentialRampToValueAtTime(i ? 0.6 : 1.0, t + d + 0.01);
+        g.gain.setValueAtTime(i ? 0.6 : 1.0, t + d + 0.13);
+        g.gain.exponentialRampToValueAtTime(0.0001, t + d + 0.15);
+        o.start(t + d); o.stop(t + d + 0.16);
+      });
+    });
+  }
+
+  // กล่องข้อความ: แตะที่กล่องหรือที่กราฟเพื่อปิด, ปิดเองหลัง ms (ค่าเริ่ม 8 วินาที)
+  function showToast(html, ms) {
+    boardOpen = false;
+    const el = $('toast'); el.innerHTML = html + '<div style="margin-top:6px;font-size:11px;opacity:.6">แตะเพื่อปิด</div>'; el.hidden = false;
+    clearTimeout(showToast.t); showToast.t = setTimeout(hideToast, ms || 8000);
+  }
+  function hideToast() { clearTimeout(showToast.t); $('toast').hidden = true; }
+  $('toast').addEventListener('click', hideToast);
+  chartEl.addEventListener('pointerdown', () => { if (!$('toast').hidden) hideToast(); });
+
+  // ---------- ท่าทางสัมผัส: ปัดแกนราคา (เปิด/ปิดแกน spot) และวัดระยะสองนิ้ว ----------
+  const LONG_MS = 450, MOVE_TOL = 10;
+  let g1 = null, lpTimer = null, measClear = null;
+  const ptOf = t => { const r = chartEl.getBoundingClientRect(); return { x: t.clientX - r.left, y: t.clientY - r.top }; };
+  const lockChart = on => chart.applyOptions({ handleScroll: !on, handleScale: !on });
+  function startMeasure(p) {
+    const ap = series.coordinateToPrice(p.y), al = chart.timeScale().coordinateToLogical(p.x);
+    if (ap === null || al === null) return;
+    meas = { ap, al, ax: p.x, ay: p.y, bx: null, by: null, bId: null };
+    lockChart(true); dirty = true;
+    try { navigator.vibrate && navigator.vibrate(15); } catch (e) {}
+  }
+  function endMeasure(keepMs) {
+    lockChart(false);
+    clearTimeout(measClear);
+    if (meas && meas.bx !== null && keepMs) { measClear = setTimeout(() => { meas = null; dirty = true; }, keepMs); }
+    else { meas = null; }
+    dirty = true;
+  }
+  chartEl.addEventListener('touchstart', e => {
+    for (const t of e.changedTouches) {
+      const p = ptOf(t);
+      if (!g1) {
+        clearTimeout(measClear); if (meas) { meas = null; dirty = true; }
+        const pw = chart.timeScale().width(), axisX = pw - (spotAxisOn ? spotW : 0);
+        g1 = { id: t.identifier, x0: p.x, y0: p.y, x: p.x, y: p.y, axis: p.x >= axisX, inSpot: spotAxisOn && p.x >= axisX && p.x < pw, moved: false, t0: Date.now() };
+        clearTimeout(lpTimer);
+        if (!g1.axis) lpTimer = setTimeout(() => { if (g1 && !g1.moved) startMeasure(g1); }, LONG_MS);
+      } else if (meas && meas.bId === null && t.identifier !== g1.id) {
+        meas.bId = t.identifier; meas.bx = p.x; meas.by = p.y; dirty = true;
+      }
+    }
+  }, { passive: true, capture: true });
+  chartEl.addEventListener('touchmove', e => {
+    for (const t of e.changedTouches) {
+      const p = ptOf(t);
+      if (g1 && t.identifier === g1.id) {
+        g1.x = p.x; g1.y = p.y;
+        if (Math.hypot(p.x - g1.x0, p.y - g1.y0) > MOVE_TOL) { g1.moved = true; if (!meas) clearTimeout(lpTimer); }
+        if (meas) { // นิ้วแรกขยับ = ย้ายจุดเริ่มตามนิ้ว
+          const ap = series.coordinateToPrice(p.y), al = chart.timeScale().coordinateToLogical(p.x);
+          if (ap !== null && al !== null) { meas.ap = ap; meas.al = al; meas.ax = p.x; meas.ay = p.y; dirty = true; }
+        }
+      } else if (meas && t.identifier === meas.bId) {
+        meas.bx = p.x; meas.by = p.y; dirty = true;
+      }
+    }
+    if (meas) e.preventDefault();
+  }, { passive: false, capture: true });
+  const touchEnd = e => {
+    for (const t of e.changedTouches) {
+      if (g1 && t.identifier === g1.id) {
+        clearTimeout(lpTimer);
+        // ปัดแนวนอนบนแกนราคาขวา: ซ้าย = เปิดแกน spot, ขวา = ปิด
+        const dx = g1.x - g1.x0, dy = g1.y - g1.y0;
+        if (g1.axis && !meas && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) setSpotAxis(dx < 0);
+        else if (g1.inSpot && !g1.moved && Date.now() - g1.t0 < 400) setSpotAxis(false); // แตะแถบ SPOT 1 ครั้ง = ปิด
+        g1 = null;
+        if (meas) endMeasure(6000);
+      } else if (meas && t.identifier === meas.bId) {
+        meas.bId = null; // ยกนิ้วที่สอง: ค้างผลไว้ แตะนิ้วที่สองใหม่เพื่อวัดจุดอื่นได้
+      }
+    }
+  };
+  chartEl.addEventListener('touchend', touchEnd, { capture: true });
+  chartEl.addEventListener('touchcancel', touchEnd, { capture: true });
+
+  function fire(r, price) {
+    hit = { strike: r.strike, until: Date.now() + 60000 }; dirty = true;
+    beep();
+    try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {}
+    const side = r.c >= r.p ? 'แนวต้าน' : 'แนวรับ';
+    showToast(`🔔 ราคา <b>${price.toFixed(2)}</b> เข้าโซน ${side} strike <b>${r.strike}</b> (${r.price.toFixed(2)}) · Call ${r.c} · Put ${r.p}`);
+  }
+
+  function checkAlerts(price) {
+    if (!alertsOn || price === null) return;
+    alertZones().forEach(r => {
+      const d = Math.abs(price - r.price);
+      if (d <= ALERT_TOL) {
+        if (armed.get(r.strike) !== false) { armed.set(r.strike, false); fire(r, price); }
+      } else if (d >= REARM) {
+        armed.set(r.strike, true);
+      }
+    });
+  }
+
+  async function keepAwake() {
+    try { if (alertsOn && 'wakeLock' in navigator && document.visibilityState === 'visible') wakeLock = await navigator.wakeLock.request('screen'); } catch (e) {}
+  }
+
+  function paintBell() {
+    const b = $('bell'); b.textContent = alertsOn ? '🔔' : '🔕'; b.classList.toggle('on', alertsOn);
+  }
+
+  $('bell').addEventListener('click', () => {
+    alertsOn = !alertsOn;
+    try { localStorage.setItem('oit_alert', alertsOn ? '1' : '0'); } catch (e) {}
+    if (alertsOn) {
+      try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch (e) {}
+      resetArming(lastClose);
+      beep();
+      keepAwake();
+      showToast(`🔔 เปิดแจ้งเตือนแล้ว: ${alertZones().length} โซน (OI ≥ ${ALERT_MIN_OI}) ห่างเส้นไม่เกิน $${ALERT_TOL} · เปิดแอปค้างไว้เพื่อให้เตือนได้`);
+    } else {
+      try { wakeLock && wakeLock.release(); } catch (e) {}
+      wakeLock = null;
+      showToast('🔕 ปิดแจ้งเตือนแล้ว');
+    }
+    paintBell();
+  });
+  paintBell();
+  // เปิดแอปมาโดยที่เปิดแจ้งเตือนค้างไว้: บราวเซอร์ให้เล่นเสียงได้หลังแตะจอครั้งแรกเท่านั้น
+  document.addEventListener('pointerdown', () => {
+    if (!alertsOn) return;
+    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); actx.resume(); } catch (e) {}
+    if (!wakeLock) keepAwake();
+  }, { passive: true });
+
+  // ---------- ราคา: ลองหลายแหล่ง (บางเครือข่ายในไทยเข้า Bybit ไม่ได้) ----------
+  const tfSec = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400 };
+  const BYBIT_TF = { '1m': '1', '5m': '5', '15m': '15', '30m': '30', '1h': '60', '4h': '240', '1d': 'D' };
+  const BITGET_TF = { '1m': '1m', '5m': '5m', '15m': '15m', '30m': '30m', '1h': '1H', '4h': '4H', '1d': '1D' };
+  const PROVIDERS = [
+    {
+      id: 'bybit', name: 'Bybit',
+      rest: (t, n) => `https://api.bybit.com/v5/market/kline?category=linear&symbol=${SYMBOL}&interval=${BYBIT_TF[t]}&limit=${n}`,
+      parse: j => { if (j.retCode !== 0) throw new Error(j.retMsg); return j.result.list.map(k => [+k[0], +k[1], +k[2], +k[3], +k[4]]); },
+      ws: () => 'wss://stream.bybit.com/v5/public/linear',
+      sub: t => ({ op: 'subscribe', args: [`kline.${BYBIT_TF[t]}.${SYMBOL}`] }),
+      ping: '{"op":"ping"}', pingMs: 20000,
+      msg: (m, t) => (m.topic === `kline.${BYBIT_TF[t]}.${SYMBOL}` && m.data) ? m.data.map(k => [+k.start, +k.open, +k.high, +k.low, +k.close]) : null,
+    },
+    {
+      id: 'bitget', name: 'Bitget',
+      rest: (t, n) => `https://api.bitget.com/api/v2/mix/market/candles?symbol=${SYMBOL}&productType=usdt-futures&granularity=${BITGET_TF[t]}&limit=${n}`,
+      parse: j => { if (j.code !== '00000') throw new Error(j.msg); return j.data.map(k => [+k[0], +k[1], +k[2], +k[3], +k[4]]); },
+      ws: () => 'wss://ws.bitget.com/v2/ws/public',
+      sub: t => ({ op: 'subscribe', args: [{ instType: 'USDT-FUTURES', channel: 'candle' + BITGET_TF[t], instId: SYMBOL }] }),
+      ping: 'ping', pingMs: 25000,
+      msg: (m, t) => (m.arg && m.arg.channel === 'candle' + BITGET_TF[t] && m.data) ? m.data.map(k => [+k[0], +k[1], +k[2], +k[3], +k[4]]) : null,
+    },
+    {
+      id: 'binance', name: 'Binance',
+      rest: (t, n) => `https://fapi.binance.com/fapi/v1/klines?symbol=${SYMBOL}&interval=${t}&limit=${n}`,
+      parse: j => { if (!Array.isArray(j)) throw new Error(j.msg || 'bad data'); return j.map(k => [+k[0], +k[1], +k[2], +k[3], +k[4]]); },
+      ws: t => `wss://fstream.binance.com/ws/${SYMBOL.toLowerCase()}@kline_${t}`,
+      sub: null, ping: null, pingMs: 0,
+      msg: (m, t) => (m.k && m.k.i === t) ? [[+m.k.t, +m.k.o, +m.k.h, +m.k.l, +m.k.c]] : null,
+    },
+  ];
+  let prov = null, pingTimer = null, lastBarTime = null;
+  try { const id = localStorage.getItem('oit_src'); const i = PROVIDERS.findIndex(p => p.id === id); if (i > 0) PROVIDERS.unshift(PROVIDERS.splice(i, 1)[0]); } catch (e) {}
+
+  const toBar = k => ({ time: Math.floor(k[0] / 1000) + TZ_SHIFT, open: k[1] - adj, high: k[2] - adj, low: k[3] - adj, close: k[4] - adj });
+
+  // ราคาทอง spot จาก gold-api.com ใช้วัดส่วนต่าง perp − spot แล้วเลื่อนกราฟลงให้ตรงกับราคา forex
+  function paintOff() {
+    const el = $('offchip'); if (!el) return;
+    const t = adjAt ? adjAt.toLocaleTimeString('th-TH', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }) : '';
+    const g = gcOff();
+    el.innerHTML = `GC−โบรก <b>${g >= 0 ? '+' : ''}${g.toFixed(2)}</b>`;
+  }
+  // gAdj = perp − GC (ใช้แปลง strike ของ OI), adj = perp − ราคาโบรก (ใช้เลื่อนกราฟ)
+  function applyAdj(next) {
+    gAdj = Math.round(next * 100) / 100; adjSet = true; adjAt = new Date();
+    rebaseOI(); paintOff(); showPrice();
+  }
+  // ส่วนต่าง GC − ราคาโบรก: strike ของ OI บนกราฟ = strike − gcOff
+  function gcOff() { return adj - gAdj; }
+  function rebaseOI() {
+    if (!oi) return;
+    const g = gcOff();
+    oi.rows.forEach(r => { r.price = oi.offset !== null ? Math.round((r.strike - g) * 100) / 100 : null; });
+    oi.mpPrice = oi.maxPain === null ? null : oi.maxPain - g;
+    dirty = true;
+    if (typeof resetArming === 'function' && lastClose !== null) resetArming(lastClose);
+  }
+  // เลื่อนกราฟให้เท่าราคาโบรก (จาก EA) หรือราคา spot ถ้า EA ยังไม่ออนไลน์
+  function setChartAdj(next) {
+    next = Math.round(next * 100) / 100;
+    if (next === adj) return;
+    adj = next;
+    if (rawBars.length) { try { series.setData(rawBars.map(toBar)); } catch (e) {} }
+    if (rawClose !== null) lastClose = rawClose - adj;
+    rebaseOI(); showPrice(); paintOff();
+  }
+  // คำนวณ offset ใหม่: GC ประมาณ = spot ล่าสุด + carry → offset = GC − perp
+  function refreshAdj(force) {
+    if (carry === null || basisEma === null) return;
+    if (!force && adjAt && Date.now() - adjAt.getTime() < REFRESH_MS - 5000) return;
+    applyAdj(basisEma - carry);
+  }
+  async function updateBasis() {
+    if (rawClose === null) return;
+    try {
+      const r = await fetch('https://api.gold-api.com/price/XAU', { cache: 'no-store' });
+      const spot = Number((await r.json()).price);
+      const basis = rawClose - spot;
+      if (!isFinite(basis) || Math.abs(basis) > 25) return;
+      const first = basisEma === null;
+      basisEma = first ? basis : basisEma * 0.7 + basis * 0.3;
+      if (brokerBasis === null) setChartAdj(basisEma);
+      if (first) refreshAdj(true);
+    } catch (e) {}
+  }
+  setInterval(updateBasis, 30000);
+  // ทุก 1 ชั่วโมง: อ่านชีตใหม่ (OI/carry ล่าสุด) แล้วคำนวณ offset ใหม่
+  setInterval(() => { if (document.visibilityState === 'visible') loadSheet().then(() => refreshAdj(false)); }, REFRESH_MS);
+
+  // ตลาดทอง CME ปิด: ศุกร์ 17:00 ET ถึงอาทิตย์ 18:00 ET และพักทุกวัน 17:00–18:00 ET
+  // perp เทรดตลอด 24 ชม. จึงตัดแท่งช่วงนี้ทิ้ง ให้กราฟตรงกับกราฟฟิวเจอร์
+  const etFmt = new Intl.DateTimeFormat('en-US', { timeZone: 'America/New_York', weekday: 'short', hour: 'numeric', hourCycle: 'h23' });
+  const closedCache = new Map();
+  function cmeClosed(ms) {
+    const hk = Math.floor(ms / 3600000);
+    if (closedCache.has(hk)) return closedCache.get(hk);
+    const parts = etFmt.formatToParts(new Date(hk * 3600000));
+    const wd = parts.find(x => x.type === 'weekday').value, h = +parts.find(x => x.type === 'hour').value;
+    const c = wd === 'Sat' || (wd === 'Fri' && h >= 17) || (wd === 'Sun' && h < 18) || h === 17;
+    closedCache.set(hk, c);
+    return c;
+  }
+
+  async function fetchBars(p, t, n) {
+    const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 7000);
+    try {
+      const r = await fetch(p.rest(t, n), { cache: 'no-store', signal: ac.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      const rows = p.parse(await r.json()).sort((a, b) => a[0] - b[0]);
+      if (!rows.length) throw new Error('no data');
+      return rows;
+    } finally { clearTimeout(timer); }
+  }
+
+  async function loadDayOpen() {
+    if (!prov) return;
+    try { const rows = await fetchBars(prov, '1d', 2); dayOpen = rows[rows.length - 1][1]; } catch (e) { dayOpen = null; }
+  }
+
+  function setSource(p) {
+    const changed = prov !== p;
+    prov = p;
+    try { localStorage.setItem('oit_src', p.id); } catch (e) {}
+    $('src').textContent = `OI · Powered by “${p.name}” · V${APP_VER}`;
+    if (changed) loadDayOpen().then(showPrice);
+  }
+
+  async function loadTF(next) {
+    tf = next;
+    try { localStorage.setItem('oit_tf', tf); } catch (e) {}
+    document.querySelectorAll('#tfs button').forEach(b => b.classList.toggle('on', b.dataset.tf === tf));
+    $('msg').hidden = false; $('msg').textContent = 'กำลังโหลดกราฟ…';
+    const order = prov ? [prov, ...PROVIDERS.filter(p => p !== prov)] : PROVIDERS;
+    const errs = [];
+    for (const p of order) {
+      try {
+        const rows = (await fetchBars(p, tf, 800)).filter(k => !cmeClosed(k[0]));
+        if (!rows.length) throw new Error('no data');
+        rawBars = rows;
+        const bars = rows.map(toBar);
+        series.setData(bars);
+        rawClose = rows[rows.length - 1][4];
+        lastClose = rawClose - adj;
+        lastBarTime = bars[bars.length - 1].time;
+        updateBasis();
+        setSource(p);
+        showPrice();
+        chart.timeScale().scrollToRealTime();
+        $('msg').hidden = true;
+        dirty = true;
+        openWS();
+        return;
+      } catch (e) { errs.push(`${p.name}: ${e.name === 'AbortError' ? 'timeout' : e.message}`); }
+    }
+    $('msg').textContent = 'ดึงราคาไม่ได้จากทุกแหล่ง (' + errs.join(' / ') + ') ลองกดเปลี่ยนไทม์เฟรมอีกครั้ง';
+  }
+
+  function openWS() {
+    clearTimeout(wsTimer); clearInterval(pingTimer);
+    if (ws) { ws.onclose = null; ws.close(); }
+    if (!prov) return;
+    const p = prov, t = tf;
+    ws = new WebSocket(p.ws(t));
+    ws.onopen = () => {
+      if (p.sub) ws.send(JSON.stringify(p.sub(t)));
+      if (p.ping) pingTimer = setInterval(() => { try { ws.send(p.ping); } catch (e) {} }, p.pingMs);
+      $('dot').classList.add('live');
+    };
+    ws.onmessage = ev => {
+      let m; try { m = JSON.parse(ev.data); } catch (e) { return; }
+      const rows = p.msg(m, t);
+      if (!rows) return;
+      // อัปเดตเฉพาะแท่งล่าสุดหรือใหม่กว่า (snapshot ของบางแหล่งส่งแท่งเก่ามาด้วย)
+      rows.sort((a, b) => a[0] - b[0]).forEach(k => {
+        if (cmeClosed(k[0])) return; // ช่วงตลาดทอง CME ปิด ไม่วาดแท่ง
+        const b = toBar(k);
+        if (lastBarTime !== null && b.time < lastBarTime) return;
+        try {
+          series.update(b); lastBarTime = b.time; rawClose = k[4]; lastClose = rawClose - adj;
+          const lastRaw = rawBars[rawBars.length - 1];
+          if (lastRaw && lastRaw[0] === k[0]) rawBars[rawBars.length - 1] = k; else rawBars.push(k);
+        } catch (e) {}
+      });
+      showPrice();
+      checkAlerts(lastClose);
+    };
+    ws.onclose = () => { clearInterval(pingTimer); $('dot').classList.remove('live'); wsTimer = setTimeout(openWS, 3000); };
+    ws.onerror = () => { try { ws.close(); } catch (e) {} };
+  }
+
+  // ราคา XAUUSD จริงจากแหล่งที่ดึงกราฟ (ก่อนบวก offset)
+  function paintRaw() {
+    const el = $('rawchip'); if (!el) return;
+    el.innerHTML = `XAUUSD${prov ? ' ' + esc(prov.name) : ''} <b>${rawClose !== null ? rawClose.toFixed(2) : '–'}</b>`;
+  }
+  // ประมาณการกำไร/ขาดทุนของ MM (สมมติเป็นฝั่งขายออปชัน) ที่ราคาปัจจุบัน เทียบกับถ้าราคาอยู่ที่ Max Pain
+  // ใช้ OI ในชีต (±20 strike) 1 สัญญา = 100 ออนซ์ ค่าลบ = MM ขาดทุนเพิ่ม
+  function paintMM() {
+    const el = $('mmpl'); if (!el) return;
+    if (!oi || oi.maxPain === null || lastClose === null) { el.textContent = ''; return; }
+    const S = lastClose + gcOff(), M = oi.maxPain;
+    let cS = 0, pS = 0, cM = 0, pM = 0;
+    oi.rows.forEach(r => {
+      cS += r.c * Math.max(0, S - r.strike); pS += r.p * Math.max(0, r.strike - S);
+      cM += r.c * Math.max(0, M - r.strike); pM += r.p * Math.max(0, r.strike - M);
+    });
+    const dc = -(cS - cM) * 100, dp = -(pS - pM) * 100, net = dc + dp;
+    const f = v => `<span class="${v < 0 ? 'neg' : 'pos'}">${v < 0 ? '−' : '+'}$${(Math.abs(v) / 1e6).toFixed(2)}M</span>`;
+    el.innerHTML = `MM vs MP · C ${f(dc)} P ${f(dp)} = ${f(net)}`;
+  }
+  function showPrice() {
+    paintRaw(); paintMM();
+    if (lastClose === null) return;
+    const bp = window.OIT_brokerPrice ? window.OIT_brokerPrice() : null;
+    $('price').textContent = (bp !== null && bp !== undefined ? bp : lastClose).toFixed(2);
+    if (dayOpen) {
+      const d = lastClose - (dayOpen - adj), pct = d / (dayOpen - adj) * 100;
+      $('chg').textContent = `${d >= 0 ? '+' : ''}${d.toFixed(2)} (${pct >= 0 ? '+' : ''}${pct.toFixed(2)}%) วันนี้`;
+      $('chg').style.color = d >= 0 ? C('--up') : C('--down');
+    } else { $('chg').textContent = ''; }
+  }
+
+  // กลับมาเปิดแอปจากหน้าจอโฮม: ต่อ websocket ใหม่และเติมแท่งที่ขาด
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') { if (started) { loadTF(tf); loadNews(); } if (!oi && authCode) loadSheet(); keepAwake(); try { actx && actx.resume(); } catch (e) {} }
+  });
+
+  setInterval(() => {
+    const d = new Date();
+    $('clock').textContent = d.toLocaleTimeString('th-TH', { hour12: false, timeZone: 'Asia/Bangkok' }) + ' น.';
+  }, 1000);
+
+  $('tfs').addEventListener('click', e => { const b = e.target.closest('button'); if (b) loadTF(b.dataset.tf); });
+  $('reload').addEventListener('click', loadSheet);
+
+  // ---------- เข้าสู่ระบบด้วยรหัสผ่าน (ตรวจกับแท็บ users ในชีตผ่าน Apps Script) ----------
+  let authCode = null, authExpire = null, started = false;
+  const expLabel = s => String(s) >= '9999' ? 'อายุใช้งาน' : 'ใช้ได้ถึง';
+  function fmtExpire(s) {
+    if (String(s) >= '9999') return 'ไม่จำกัด';
+    const d = new Date(s + 'T00:00:00+07:00');
+    return isNaN(d) ? s : d.toLocaleDateString('th-TH-u-ca-gregory', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'Asia/Bangkok' });
+  }
+  function showLogin(msg) {
+    try { localStorage.removeItem('oit_code'); } catch (e) {}
+    authCode = null; authExpire = null; oi = null; dirty = true;
+    $('loginErr').textContent = msg || '';
+    $('loginVer').textContent = 'V' + APP_VER;
+    $('login').hidden = false;
+    $('loginBtn').disabled = false; $('loginBtn').textContent = 'เข้าสู่ระบบ';
+  }
+  function enterApp(code, expire, name) {
+    authCode = code; authExpire = expire || null;
+    try { localStorage.setItem('oit_code', code); } catch (e) {}
+    $('login').hidden = true;
+    if (!started) { started = true; loadTF(tf); loadNews(); scheduleNews(); }
+    loadSheet();
+    if (expire) showToast(`สวัสดี <b>${esc(name || '')}</b> วันนี้คือวันที่ดีสำหรับคุณ<br>${expLabel(expire)} <b>${esc(fmtExpire(expire))}</b>`);
+  }
+  // ตรวจรหัสกับเซิร์ฟเวอร์: คืน {ok, expire} / {ok:false, reason} / {legacy:true} ถ้าสคริปต์ยังเป็นรุ่นเก่า
+  async function checkLogin(code) {
+    const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 15000);
+    try {
+      const r = await fetch(`${HUB}/app/login?t=${Date.now()}`, { cache: 'no-store', signal: ac.signal, headers: { 'X-Key': code } });
+      return await r.json();
+    } finally { clearTimeout(timer); }
+  }
+  async function tryLogin(code, silent) {
+    code = String(code || '').trim();
+    if (!code) { $('loginErr').textContent = 'กรุณาใส่รหัสผ่าน'; return; }
+    $('loginBtn').disabled = true; $('loginBtn').textContent = 'กำลังตรวจสอบ…'; $('loginErr').textContent = '';
+    try {
+      // รหัสในชีตตรงตัวพิมพ์เล็ก/ใหญ่: ลองตามที่พิมพ์ก่อน แล้วลองตัวพิมพ์ใหญ่/เล็ก
+      let res = await checkLogin(code);
+      for (const alt of [code.toUpperCase(), code.toLowerCase()]) {
+        if (res.ok || res.legacy || res.reason === 'expired' || alt === code) continue;
+        const r2 = await checkLogin(alt);
+        if (r2.ok || r2.reason === 'expired') { res = r2; code = alt; }
+      }
+      if (res.legacy) { enterApp(code, null); return; }
+      if (res.ok) { enterApp(code, res.expire, res.name); return; }
+      showLogin(res.reason === 'expired' ? `รหัสผ่านนี้หมดอายุแล้ว${res.expire ? ' (' + fmtExpire(res.expire) + ')' : ''}` : 'รหัสผ่านไม่ถูกต้อง');
+    } catch (e) {
+      $('login').hidden = false;
+      $('loginErr').textContent = 'เชื่อมต่อไม่ได้ ลองใหม่อีกครั้ง';
+      $('loginBtn').disabled = false; $('loginBtn').textContent = 'เข้าสู่ระบบ';
+      if (silent) $('code').value = code;
+    }
+  }
+  $('loginForm').addEventListener('submit', e => { e.preventDefault(); tryLogin($('code').value, false); });
+  $('logout').addEventListener('click', () => { $('code').value = ''; showLogin('ออกจากระบบแล้ว'); });
+
+  if (!tfSec[tf]) tf = '5m';
+  // เปิดแอป: ถ้าเคยใส่รหัสผ่านไว้ ตรวจซ้ำอัตโนมัติ ไม่ต้องกรอกใหม่
+  $('loginVer').textContent = 'V' + APP_VER;
+  let saved = null;
+  try { saved = localStorage.getItem('oit_code'); } catch (e) {}
+  if (saved) { $('login').hidden = true; $('chips').innerHTML = '<span class="chip">กำลังตรวจสอบรหัสผ่าน…</span>'; tryLogin(saved, true); }
+
+  window.OI = {
+    HUB, chart, series, chartEl, hooks: overlayHooks,
+    get oi() { return oi; }, get lastClose() { return lastClose; }, get rawClose() { return rawClose; },
+    get authCode() { return authCode; }, get digits() { return 2; },
+    gcOff, showToast, hideToast, lockChart, showPrice,
+    markDirty() { dirty = true; },
+    setBrokerBasis(b) { brokerBasis = b; setChartAdj(b); },
+    clearBrokerBasis() { if (brokerBasis === null) return; brokerBasis = null; if (basisEma !== null) setChartAdj(basisEma); },
+  };
+})();
+</script>
+<script src="trade.js"></script>
+</body>
+</html>

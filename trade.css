@@ -1,0 +1,70 @@
+/* OI Gold Pro Trade — order ticket, account strip, positions sheet */
+:root { --buy: #26a69a; --sell: #ef5350; --tp: #2fbf8f; --sl: #e5576b; }
+
+#acct { display: flex; align-items: center; gap: 10px; padding: 6px 14px; border-top: 1px solid var(--line); font-size: 12px; color: var(--muted); white-space: nowrap; overflow-x: auto; scrollbar-width: none; }
+#acct::-webkit-scrollbar { display: none; }
+#acct b { color: var(--fg); font-family: var(--mono); font-weight: 600; }
+#acct .neg { color: var(--sl); } #acct .pos { color: var(--tp); }
+#acct .ea { display: inline-flex; align-items: center; gap: 5px; }
+#acct .ea i { width: 8px; height: 8px; border-radius: 50%; background: var(--sl); display: inline-block; }
+#acct .ea.on i { background: var(--tp); box-shadow: 0 0 6px var(--tp); }
+#acct button { margin-left: auto; flex: none; background: var(--panel); border: 1px solid var(--line); color: var(--fg); border-radius: 8px; padding: 4px 10px; font: 600 12px var(--sans); }
+#acct button b { color: var(--gold); }
+
+#ticket { padding: 8px 12px 10px; border-top: 1px solid var(--line); background: var(--panel); display: grid; gap: 7px; }
+.tk-row { display: flex; gap: 6px; align-items: stretch; }
+.tk-row > * { min-width: 0; }
+#ticket button { font: 600 13px var(--sans); color: var(--fg); background: var(--bg); border: 1px solid var(--line); border-radius: 9px; padding: 6px 8px; }
+#ticket button:active { transform: scale(.97); }
+.tk-side { flex: 1; display: flex; flex-direction: column; align-items: center; line-height: 1.15; }
+.tk-side small { font-size: 10.5px; letter-spacing: .06em; opacity: .8; }
+.tk-side b { font: 600 15px var(--mono); }
+.tk-side.buy.on { background: var(--buy) !important; border-color: var(--buy) !important; color: #03140f !important; }
+.tk-side.sell.on { background: var(--sell) !important; border-color: var(--sell) !important; color: #1d0505 !important; }
+.tk-spr { flex: none; align-self: center; font: 10px var(--mono); color: var(--muted); text-align: center; width: 38px; }
+.tk-seg { display: flex; flex: none; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; }
+#ticket .tk-seg button { border: 0; border-radius: 0; padding: 6px 9px; background: transparent; color: var(--muted); font-size: 12px; }
+#ticket .tk-seg button.on { background: var(--gold); color: #1a1405; }
+.tk-lot { display: flex; flex: 1; border: 1px solid var(--line); border-radius: 9px; overflow: hidden; background: var(--bg); }
+#ticket .tk-lot button { border: 0; border-radius: 0; width: 30px; padding: 0; font-size: 17px; background: transparent; }
+.tk-lot input { flex: 1; min-width: 0; width: 100%; border: 0; background: transparent; color: var(--fg); text-align: center; font: 600 14px var(--mono); outline: none; }
+.tk-lot.auto input { color: var(--gold); }
+#ticket .tk-risk { flex: none; font-size: 12px; }
+#ticket .tk-risk.on { border-color: var(--gold); color: var(--gold); }
+#ticket .tk-lvl { flex: 1; display: flex; flex-direction: column; align-items: flex-start; gap: 1px; text-align: left; line-height: 1.2; }
+.tk-lvl small { font-size: 10.5px; color: var(--muted); }
+.tk-lvl b { font: 600 13px var(--mono); }
+.tk-lvl em { font: normal 11px var(--mono); }
+#ticket .tk-lvl.sl.on { border-color: var(--sl); } .tk-lvl.sl em { color: var(--sl); }
+#ticket .tk-lvl.tp.on { border-color: var(--tp); } .tk-lvl.tp em { color: var(--tp); }
+.tk-lvl.bad b { text-decoration: line-through; color: var(--sl); }
+.tk-rr { flex: none; width: 64px; display: flex; flex-direction: column; justify-content: center; align-items: center; font: 600 13px var(--mono); color: var(--gold); line-height: 1.2; }
+.tk-rr small { font: 10px var(--sans); color: var(--muted); }
+#ticket .tk-go { width: 100%; padding: 11px; font-size: 15px; border: 0; color: #04140d; background: var(--buy); }
+#ticket .tk-go.sell { background: var(--sell); color: #1d0505; }
+#ticket .tk-go:disabled { background: var(--line); color: var(--muted); }
+#ticket .tk-mod { display: flex; justify-content: space-between; align-items: center; font-size: 12px; color: var(--gold); }
+#ticket .tk-mod button { padding: 3px 9px; font-size: 12px; }
+#ticket .tk-snap { flex: none; font-size: 12px; }
+#ticket .tk-snap.on { border-color: var(--gold); color: var(--gold); }
+
+#sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 30; max-height: 70dvh; overflow: auto; background: var(--panel); border-top: 1px solid var(--gold); border-radius: 16px 16px 0 0; padding: 12px 14px calc(14px + env(safe-area-inset-bottom, 0px)); box-shadow: 0 -10px 30px rgba(0,0,0,.5); }
+#sheet h3 { margin: 4px 0 8px; font-size: 14px; display: flex; align-items: center; gap: 8px; }
+#sheet h3 button { margin-left: auto; }
+#sheet button { background: var(--bg); border: 1px solid var(--line); color: var(--fg); border-radius: 8px; padding: 6px 10px; font: 600 12px var(--sans); }
+#sheet .row { display: flex; align-items: center; gap: 8px; padding: 9px 0; border-top: 1px solid var(--line); font-size: 13px; }
+#sheet .row .mono { font-family: var(--mono); }
+#sheet .row .sp { flex: 1; }
+#sheet .row small { display: block; color: var(--muted); font-size: 11px; font-family: var(--mono); }
+#sheet .b { color: var(--buy); font-weight: 600; } #sheet .s { color: var(--sell); font-weight: 600; }
+#sheet .neg { color: var(--sl); } #sheet .pos { color: var(--tp); }
+#sheet .empty { color: var(--muted); font-size: 13px; padding: 8px 0; }
+#sheet .danger { border-color: var(--sl); color: var(--sl); }
+#sheet .stats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; margin-bottom: 8px; }
+#sheet .stat { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 7px 8px; }
+#sheet .stat small { display: block; font-size: 10.5px; color: var(--muted); }
+#sheet .stat b { font: 600 14px var(--mono); }
+
+/* trade app: keep only the MM/clock part of the legend to give the chart more room */
+.legend > span:not(.rt) { display: none; }
+.legend { padding: 4px 14px; }

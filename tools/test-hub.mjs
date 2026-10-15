@@ -13,6 +13,8 @@ const ctx = { storage, blockConcurrencyWhile: async (f) => f() };
 const env = {
   APP_KEY: "app-secret-123",
   EA_KEY: "ea-secret-456",
+  OI_CODE: "oi-owner",
+  TRADE_USERS: JSON.stringify([{ code: "USER1", name: "Tester", expire: "9999-12-31" }, { code: "OLD", name: "Old", expire: "2020-01-01" }]),
   HUB: { idFromName: () => "main", get: () => ({ fetch: (r) => hub.fetch(r) }) },
 };
 hub = new Hub(ctx, env);
@@ -104,6 +106,26 @@ console.log("offline after silence");
 hub.stateAt -= 11_000;
 s = await (await call("/app/state", { key: env.APP_KEY })).json();
 ok(s.online === false, "marked offline after 10s without sync");
+
+console.log("login codes");
+let lj = await (await call("/app/login", { key: "USER1" })).json();
+ok(lj.ok && lj.name === "Tester", "trade user code logs in");
+r = await call("/app/login", { key: "OLD" }); lj = await r.json();
+ok(r.status === 401 && lj.reason === "expired", "expired code rejected with reason");
+ok((await call("/app/login", { key: "nope" })).status === 401, "unknown code rejected");
+ok((await call("/app/state", { key: "USER1" })).status === 200, "trade user can read state");
+ok((await call("/ea/sync", { key: "USER1", body: {} })).status === 401, "trade user cannot act as EA");
+
+console.log("OI proxy");
+let calls = 0;
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (u) => { calls++; if (!String(u).includes("code=oi-owner")) throw new Error("wrong code"); return new Response(JSON.stringify({ levels: [{ strike: 4175, type: "C", oi: 900 }], cfg: { offset: 28 }, auth: { name: "owner", expire: "9999" } })); };
+let oj = await (await call("/app/oi", { key: "USER1" })).json();
+ok(oj.levels && oj.levels[0].strike === 4175, "OI data proxied");
+ok(oj.auth === undefined, "owner auth details stripped");
+await call("/app/oi", { key: "USER1" });
+ok(calls === 1, "second call served from cache");
+globalThis.fetch = realFetch;
 
 console.log(`\n${pass} passed, ${fail} failed`);
 process.exit(fail ? 1 : 0);
