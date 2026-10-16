@@ -30,10 +30,14 @@ jobs:
 
       - name: Create D1 database if missing
         run: |
-          ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="solar-monitor-db") | .uuid')
+          find_id() {
+            OUT=$(npx wrangler d1 list --json 2>&1) || { echo "::error title=D1 list failed::$(echo "$OUT" | tr '\n' ' ' | tail -c 600)"; exit 1; }
+            echo "$OUT" | jq -r '.[] | select(.name=="solar-monitor-db") | .uuid' 2>/dev/null || { echo "::error title=D1 list not JSON::$(echo "$OUT" | tr '\n' ' ' | tail -c 600)"; exit 1; }
+          }
+          ID=$(find_id) || { echo "$ID"; exit 1; }
           if [ -z "$ID" ]; then
-            npx wrangler d1 create solar-monitor-db
-            ID=$(npx wrangler d1 list --json | jq -r '.[] | select(.name=="solar-monitor-db") | .uuid')
+            OUT=$(npx wrangler d1 create solar-monitor-db 2>&1) || { echo "::error title=D1 create failed::$(echo "$OUT" | tr '\n' ' ' | tail -c 600)"; exit 1; }
+            ID=$(find_id) || { echo "$ID"; exit 1; }
           fi
           echo "D1 id: $ID"
           sed -i "s/__D1_ID__/$ID/" wrangler.toml
