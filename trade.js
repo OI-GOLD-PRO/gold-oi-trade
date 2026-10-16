@@ -201,7 +201,7 @@
       if (T.slOn && wrongSide('sl', T.sl)) return O.showToast('SL อยู่ผิดฝั่งของราคาเข้า');
       if (T.tpOn && wrongSide('tp', T.tp)) return O.showToast('TP อยู่ผิดฝั่งของราคาเข้า');
       const label = `แก้ #${m.ticket} SL ${sl ? fx(sl, dg()) : 'ไม่ตั้ง'} TP ${tp ? fx(tp, dg()) : 'ไม่ตั้ง'}${m.isOrder ? ' ราคา ' + fx(T.entry, dg()) : ''}`;
-      send({ type: 'MODIFY', ticket: m.ticket, price: m.isOrder ? T.entry : 0, sl, tp }, label).then(ok => { if (ok) exitModify(); });
+      send({ type: 'MODIFY', ticket: m.ticket, price: m.isOrder ? T.entry : 0, sl, tp }, label, false).then(ok => { if (ok) exitModify(); });
       return;
     }
     const lots = effLots();
