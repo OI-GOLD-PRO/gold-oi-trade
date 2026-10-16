@@ -186,3 +186,8 @@ header { padding: 6px 12px 4px !important; gap: 6px !important; }
 button.icon { width: 30px !important; height: 30px !important; font-size: 14px !important; }
 .chips { padding-bottom: 5px !important; }
 .tfs { padding-bottom: 4px !important; }
+
+/* ⤢ expand chart: only SELL / BUY stay under the chart (modify mode keeps its own row) */
+.tfs #maxBtn { flex: none; width: 30px; font-size: 13px; }
+body.oit-max .legend, body.oit-max #acct, body.oit-max #ticket > .tk-row:not(#tkMkt):not(#tkModRow), body.oit-max #tkMod { display: none !important; }
+body.oit-max #ticket { border-top: 0; }

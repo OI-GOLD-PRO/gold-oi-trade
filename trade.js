@@ -544,6 +544,23 @@
   wrap.addEventListener('pointerdown', e => { if (drag || (e.pointerType !== 'touch' && hitTest(e.clientX, e.clientY))) e.stopPropagation(); }, { capture: true });
   wrap.addEventListener('mousemove', e => { if (!drag) wrap.style.cursor = hitTest(e.clientX, e.clientY) ? 'ns-resize' : ''; });
 
+  // ---------------- expand chart (⤢): keep the top, hide everything below the chart except SELL / BUY ----------------
+  const maxBtn = document.createElement('button');
+  maxBtn.id = 'maxBtn'; maxBtn.setAttribute('aria-label', 'ขยายกราฟ');
+  $('tfs').appendChild(maxBtn);
+  let maxOn = false;
+  try { maxOn = localStorage.getItem('oit_max') === '1'; } catch (e) {}
+  function setMax(on) {
+    maxOn = on;
+    document.body.classList.toggle('oit-max', on);
+    maxBtn.textContent = on ? '⤡' : '⤢';
+    maxBtn.classList.toggle('on', on);
+    try { localStorage.setItem('oit_max', on ? '1' : '0'); } catch (e) {}
+    O.markDirty();
+  }
+  maxBtn.addEventListener('click', e => { e.stopPropagation(); setMax(!maxOn); });
+  setMax(maxOn);
+
   render();
   poll();
 })();

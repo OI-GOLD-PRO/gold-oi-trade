@@ -123,6 +123,10 @@ with sync_playwright() as p:
     page.click("#tkPendX"); page.wait_for_timeout(200)
     print("indicator/draw buttons present:", page.evaluate("() => !!document.getElementById('indBtn') && !!document.getElementById('drawBtn')"))
 
+    page.click("#maxBtn"); page.wait_for_timeout(400)
+    page.screenshot(path=f"{OUT}/11-max.png")
+    print("max: acct hidden", page.evaluate("() => getComputedStyle(document.getElementById('acct')).display === 'none'"), "market row visible", page.is_visible("#tkMkt"))
+    page.click("#maxBtn"); page.wait_for_timeout(200)
     page.click("#posBtn"); page.wait_for_timeout(300)
     page.screenshot(path=f"{OUT}/6-sheet.png")
     page.click("[data-mod='501']"); page.wait_for_timeout(300)
