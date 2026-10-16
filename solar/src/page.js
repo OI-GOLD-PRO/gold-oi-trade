@@ -15,21 +15,24 @@ export const PAGE = /* html */ `<!doctype html>
 <style>
 :root{
   --bg:#0f1412; --card:#171e1b; --line:#26302c; --text:#e8efe9; --muted:#8a9a92;
-  --sun:#f2b33d; --charge:#3fbf8a; --drain:#ef6f5e; --grid:#6ea8ff;
+  --sun:#f2b33d; --sun2:#e8793a; --charge:#3fbf8a; --drain:#ef6f5e; --grid:#6ea8ff;
   --num:'JetBrains Mono',ui-monospace,monospace;
 }
 @media (prefers-color-scheme: light){
   :root{ --bg:#f3f1ea; --card:#ffffff; --line:#e3e0d6; --text:#1c2420; --muted:#6c7770;
-    --sun:#c9850c; --charge:#16875a; --drain:#c8432f; --grid:#2f6fd6; }
+    --sun:#c9850c; --sun2:#c4581c; --charge:#16875a; --drain:#c8432f; --grid:#2f6fd6; }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 'IBM Plex Sans Thai',system-ui,sans-serif;
   padding:max(14px,env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));max-width:560px;margin-inline:auto}
-header{display:flex;align-items:baseline;justify-content:space-between;margin:4px 2px 14px}
+header{display:flex;align-items:baseline;justify-content:space-between;margin:4px 2px 12px}
 h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}
 .upd{color:var(--muted);font-size:13px}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--charge);margin-right:6px;vertical-align:1px}
 .dot.old{background:var(--drain)}
+.tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:14px;margin-bottom:12px;position:sticky;top:max(6px,env(safe-area-inset-top));z-index:5}
+.tabs button{border:0;background:transparent;color:var(--muted);font:600 15px 'IBM Plex Sans Thai',system-ui,sans-serif;padding:9px;border-radius:10px}
+.tabs button.on{background:color-mix(in srgb,var(--text) 10%,transparent);color:var(--text)}
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}
 .label{color:var(--muted);font-size:13px}
 .num{font-family:var(--num);font-weight:700;letter-spacing:-.5px}
@@ -49,24 +52,48 @@ h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}
 .tile .sub{color:var(--muted);font-size:12px;margin-top:2px}
 .sun{color:var(--sun)} .gridc{color:var(--grid)}
 h2{font-size:15px;margin:0 0 10px;font-weight:600}
+h2 .label{font-weight:400}
 .io{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .io .big{font-size:28px}
 .io .big small{font-size:14px;color:var(--muted);font-weight:500;font-family:inherit}
 .rows{margin-top:12px;border-top:1px solid var(--line)}
-.row{display:flex;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
+.row{display:flex;justify-content:space-between;gap:10px;padding:8px 0;border-bottom:1px solid var(--line);font-size:14px}
 .row:last-child{border-bottom:0}
-.row span:last-child{font-family:var(--num);font-weight:500}
+.row span:last-child{font-family:var(--num);font-weight:500;text-align:right}
+.row.total span{font-weight:700}
+.sub-h{margin:14px 0 2px;font-size:12px;color:var(--muted);letter-spacing:.3px}
 svg{display:block;width:100%;height:auto}
-.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:6px;flex-wrap:wrap}
-.legend i{display:inline-block;width:10px;height:3px;border-radius:2px;margin-right:5px;vertical-align:3px}
-.hist .row{display:grid;grid-template-columns:1.1fr 1fr 1fr .8fr;gap:6px}
-.hist .row span{font-family:var(--num);font-size:13px}
-.hist .head span{font-family:inherit;color:var(--muted);font-size:12px}
+.ch{padding:10px 0 6px;border-top:1px solid var(--line)}
+.ch:first-child{border-top:0;padding-top:0}
+.ch-h{display:flex;justify-content:space-between;align-items:baseline;font-size:13px;margin-bottom:2px}
+.ch-h b{font-weight:600}
+.ch-h .rv{font-family:var(--num);font-weight:700;font-size:14px}
+.ch-h .rv small{color:var(--muted);font-weight:500}
+.ch svg{touch-action:pan-y}
+.cursor{font-size:12px;color:var(--muted);text-align:center;margin-top:4px}
+.cal-nav{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.cal-nav button{border:1px solid var(--line);background:transparent;color:var(--text);width:40px;height:36px;border-radius:10px;font-size:18px}
+.cal-nav button:disabled{opacity:.3}
+.cal-nav b{font-size:16px}
+.cal{display:grid;grid-template-columns:repeat(7,1fr);gap:4px}
+.cal .wd{text-align:center;font-size:11px;color:var(--muted);padding-bottom:2px}
+.cal .d{border:1px solid var(--line);border-radius:10px;min-height:62px;padding:4px 3px;text-align:center;background:transparent;color:var(--text);font-family:inherit;display:flex;flex-direction:column;align-items:center;gap:1px}
+.cal .d .n{font-size:13px;font-weight:600}
+.cal .d .a,.cal .d .b{font-family:var(--num);font-size:10.5px;line-height:1.25}
+.cal .d .a{color:var(--sun)} .cal .d .b{color:var(--drain)}
+.cal .d.none{opacity:.35}
+.cal .d.today{border-color:var(--muted)}
+.cal .d.sel{border-color:var(--charge);background:color-mix(in srgb,var(--charge) 12%,transparent)}
+.cal .pad{min-height:62px}
+.legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:8px;flex-wrap:wrap}
+.legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .err{background:color-mix(in srgb,var(--drain) 14%,transparent);border:1px solid color-mix(in srgb,var(--drain) 40%,transparent);color:var(--text);border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:12px;display:none}
 .keybox{display:none}
 .keybox input{width:100%;padding:12px;border-radius:12px;border:1px solid var(--line);background:var(--bg);color:var(--text);font-size:16px;margin:10px 0}
 .keybox button,.btn{width:100%;padding:12px;border-radius:12px;border:0;background:var(--charge);color:#06120c;font-weight:700;font-size:15px;font-family:inherit}
 .muted{color:var(--muted)}
+.hide{display:none}
+#day-detail{scroll-margin-top:72px}
 </style>
 </head>
 <body>
@@ -77,91 +104,67 @@ svg{display:block;width:100%;height:auto}
 
 <div class="card keybox" id="keybox">
   <h2>ใส่รหัสเข้าใช้</h2>
-  <div class="label">รหัสเดียวกับ APP_KEY ที่ตั้งใน Cloudflare (ใส่ครั้งเดียว เครื่องนี้จะจำไว้)</div>
+  <div class="label">รหัส SOLAR_APP_KEY (ใส่ครั้งเดียว เครื่องนี้จะจำไว้)</div>
   <input id="keyin" type="password" autocomplete="current-password" placeholder="รหัส">
   <button onclick="saveKey()">เข้าใช้</button>
 </div>
 
 <div class="err" id="err"></div>
 
-<div id="app" style="display:none">
-  <section class="card hero">
-    <div class="batt"><div class="fill" id="fill"></div></div>
-    <div>
-      <div class="label">แบตเตอรี่ · LiFePO4 <span id="cap"></span></div>
-      <div class="soc num"><span id="soc">–</span><small>%</small></div>
-      <div class="num muted" id="volt">– V</div>
-      <div class="state" id="state">–</div>
-    </div>
-    <div class="eta" id="eta" style="grid-column:1/-1">–</div>
-  </section>
+<div id="app" class="hide">
+  <nav class="tabs">
+    <button id="tab-now" class="on" onclick="showTab('now')">วันนี้</button>
+    <button id="tab-hist" onclick="showTab('hist')">ย้อนหลัง</button>
+  </nav>
 
-  <div class="tiles">
-    <div class="tile"><div class="label">โซลาร์ 1 · อินเวอร์เตอร์</div><div class="v num sun" id="pv1">–</div><div class="sub">8 แผง</div></div>
-    <div class="tile"><div class="label">โซลาร์ 2 · MPPT</div><div class="v num sun" id="pv2">–</div><div class="sub" id="pv2sub">4 แผง</div></div>
-    <div class="tile"><div class="label">โหลดในบ้าน</div><div class="v num" id="load">–</div><div class="sub">จากอินเวอร์เตอร์</div></div>
-    <div class="tile"><div class="label">ไฟกริด</div><div class="v num gridc" id="grid">–</div><div class="sub" id="gridsub">&nbsp;</div></div>
+  <!-- ===== TODAY ===== -->
+  <div id="view-now">
+    <section class="card hero">
+      <div class="batt"><div class="fill" id="fill"></div></div>
+      <div>
+        <div class="label">แบตเตอรี่ · LiFePO4 <span id="cap"></span></div>
+        <div class="soc num"><span id="soc">–</span><small>%</small></div>
+        <div class="num muted" id="volt">– V</div>
+        <div class="state" id="state">–</div>
+      </div>
+      <div class="eta" id="eta" style="grid-column:1/-1">–</div>
+    </section>
+
+    <div class="tiles">
+      <div class="tile"><div class="label">แผงชุด 1 · อินเวอร์เตอร์</div><div class="v num sun" id="pv1">–</div><div class="sub">8 แผง</div></div>
+      <div class="tile"><div class="label">แผงชุด 2 · MPPT</div><div class="v num" style="color:var(--sun2)" id="pv2">–</div><div class="sub" id="pv2sub">4 แผง</div></div>
+      <div class="tile"><div class="label">ไฟที่บ้านใช้</div><div class="v num gridc" id="load">–</div><div class="sub">จากอินเวอร์เตอร์</div></div>
+      <div class="tile"><div class="label">ไฟกริด</div><div class="v num" id="grid">–</div><div class="sub" id="gridsub">&nbsp;</div></div>
+    </div>
+
+    <div id="today-summary"></div>
+    <section class="card"><h2>กราฟวันนี้ <span class="label">· แตะหรือลากบนกราฟเพื่อดูค่า</span></h2><div id="today-charts"></div></section>
+
+    <button class="btn" onclick="pollNow(this)">ดึงค่าล่าสุดตอนนี้</button>
+    <p class="muted" style="font-size:12px;margin-top:12px">อัปเดตทุก 1 นาที · 1 วัน = 05:00 ถึง 05:00 · ตัวเลข Ah คำนวณจากกระแส MPPT + อินเวอร์เตอร์ (ค่าประมาณ ±5–10%)</p>
   </div>
 
-  <section class="card">
-    <h2>วันนี้ <span class="label" style="font-weight:400">(ตั้งแต่ 05:00 ถึง 05:00 พรุ่งนี้)</span></h2>
-    <div class="io">
-      <div><div class="label">ชาร์จเข้าแบต</div><div class="big num" style="color:var(--charge)"><span id="ahin">–</span> <small>Ah</small></div><div class="num muted" id="kwhin">– kWh</div></div>
-      <div><div class="label">ใช้ไปจากแบต</div><div class="big num" style="color:var(--drain)"><span id="ahout">–</span> <small>Ah</small></div><div class="num muted" id="kwhout">– kWh</div></div>
-    </div>
-    <div class="rows">
-      <div class="row"><span>MPPT ชาร์จเข้า</span><span id="ahm">–</span></div>
-      <div class="row"><span>อินเวอร์เตอร์ ชาร์จเข้า</span><span id="ahic">–</span></div>
-      <div class="row"><span>อินเวอร์เตอร์ ดึงออก</span><span id="ahid">–</span></div>
-      <div class="row"><span>โซลาร์ 1 · อินเวอร์เตอร์ ผลิต</span><span id="pvk1">–</span></div>
-      <div class="row"><span>โซลาร์ 2 · MPPT ผลิต</span><span id="pvk2">–</span></div>
-      <div class="row"><span><b>โซลาร์ผลิตรวม</b></span><span id="pvk"><b>–</b></span></div>
-      <div class="row"><span>โหลดใช้ไฟรวม</span><span id="loadk">–</span></div>
-      <div class="row"><span>แบตต่ำสุด</span><span id="minv">–</span></div>
-      <div class="row"><span>แตะ 50V (จุดตัด)</span><span id="cut">–</span></div>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>ช่วงมีแดด <span class="label" style="font-weight:400">· ฝั่งอินเวอร์เตอร์ (8 แผง)</span></h2>
-    <div class="label" id="sunwin">ยังไม่มีแดดวันนี้</div>
-    <div class="io" style="margin-top:10px">
-      <div><div class="label">แผงผลิต</div><div class="big num sun"><span id="sunpv">–</span> <small>kWh</small></div></div>
-      <div><div class="label">บ้านใช้ไป</div><div class="big num"><span id="sunload">–</span> <small>kWh</small></div></div>
-    </div>
-    <div class="rows">
-      <div class="row"><span>เหลือชาร์จเข้าแบต</span><span id="sunchg" style="color:var(--charge)">–</span></div>
-      <div class="row"><span>ดึงจากแบตช่วงมีแดด</span><span id="sundis" style="color:var(--drain)">–</span></div>
-      <div class="row"><span>แผงพอใช้ในบ้าน</span><span id="suncover">–</span></div>
-    </div>
-  </section>
-
-  <section class="card">
-    <h2>แบต % และกระแสวันนี้</h2>
-    <div id="chart"></div>
-    <div class="legend">
-      <span><i style="background:var(--text)"></i>แบต %</span>
-      <span><i style="background:var(--charge)"></i>ชาร์จเข้า (A)</span>
-      <span><i style="background:var(--drain)"></i>จ่ายออก (A)</span>
-      <span><i style="background:var(--sun)"></i>โซลาร์ (W)</span>
-    </div>
-  </section>
-
-  <section class="card hist">
-    <h2>ย้อนหลัง</h2>
-    <div class="row head"><span>วันที่</span><span>เข้า Ah</span><span>ออก Ah</span><span>ต่ำสุด</span></div>
-    <div id="hist"></div>
-  </section>
-
-  <button class="btn" onclick="pollNow(this)">ดึงค่าล่าสุดตอนนี้</button>
-  <p class="muted" style="font-size:12px;margin-top:12px">ข้อมูลอัปเดตทุก 1 นาที · ตัวเลข Ah คำนวณจากกระแส MPPT + อินเวอร์เตอร์ (ค่าประมาณ ±5–10%)</p>
+  <!-- ===== HISTORY ===== -->
+  <div id="view-hist" class="hide">
+    <section class="card">
+      <div class="cal-nav">
+        <button id="prevM" onclick="moveMonth(-1)" aria-label="เดือนก่อน">‹</button>
+        <b id="monthTitle">–</b>
+        <button id="nextM" onclick="moveMonth(1)" aria-label="เดือนถัดไป">›</button>
+      </div>
+      <div class="cal" id="cal"></div>
+      <div class="legend"><span><i style="background:var(--sun)"></i>โซลาร์รวม kWh</span><span><i style="background:var(--drain)"></i>ใช้แบต Ah</span></div>
+      <div class="rows" id="monthTotals"></div>
+    </section>
+    <div id="day-detail"><p class="muted" style="text-align:center">แตะวันที่ในปฏิทินเพื่อดูรายละเอียด</p></div>
+  </div>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-let DAY_START = 5;
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
+let DAY_START = 5, CFG = { cutoffV: 50 };
 
 function saveKey() {
   KEY = $('keyin').value.trim();
@@ -172,7 +175,7 @@ function saveKey() {
 
 async function api(path) {
   const r = await fetch(path, { headers: { 'x-key': KEY } });
-  if (r.status === 401) { $('keybox').style.display = 'block'; $('app').style.display = 'none'; throw new Error('auth'); }
+  if (r.status === 401) { $('keybox').style.display = 'block'; $('app').classList.add('hide'); throw new Error('auth'); }
   const j = await r.json();
   if (!r.ok) throw new Error(j.error || r.status);
   return j;
@@ -182,27 +185,160 @@ const fmt = (x, d = 0) => (x == null || isNaN(x) ? '–' : Number(x).toLocaleStr
 const watts = (w) => (w == null ? '–' : w >= 1000 ? fmt(w / 1000, 2) + '<small> kW</small>' : fmt(w) + '<small> W</small>');
 const hhmm = (t) => (t ? new Date(t).toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }) : '–');
 const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 1 ? 'เมื่อสักครู่' : m < 60 ? m + ' นาทีที่แล้ว' : Math.round(m / 60) + ' ชม.ที่แล้ว'; };
+const thaiDate = (d, opt) => new Date(d + 'T00:00:00Z').toLocaleDateString('th-TH', Object.assign({ timeZone: 'UTC' }, opt));
+const solarDay = (ts) => new Date(ts + (7 - DAY_START) * 3600000).toISOString().slice(0, 10);
 
-function render(d) {
+// ---------- tabs ----------
+function showTab(t) {
+  $('view-now').classList.toggle('hide', t !== 'now');
+  $('view-hist').classList.toggle('hide', t !== 'hist');
+  $('tab-now').classList.toggle('on', t === 'now');
+  $('tab-hist').classList.toggle('on', t === 'hist');
+  if (t === 'hist' && !MONTH) { MONTH = solarDay(Date.now()).slice(0, 7); loadMonth(); }
+}
+
+// ---------- summary card (shared by today + history day) ----------
+function summaryHTML(t, title) {
+  const sun = t.sunStartAt
+    ? 'แผงเริ่มผลิต ' + hhmm(t.sunStartAt) + ' → ' + (t.sunLive ? 'ยังผลิตอยู่' : 'หมดแดด ' + hhmm(t.sunEndAt)) + ' · ' + fmt(t.sunHours, 1) + ' ชม.'
+    : 'ไม่มีข้อมูลช่วงมีแดด';
+  return '<section class="card"><h2>' + title + '</h2>' +
+    '<div class="io">' +
+      '<div><div class="label">ชาร์จเข้าแบต</div><div class="big num" style="color:var(--charge)">' + fmt(t.ahIn, 1) + ' <small>Ah</small></div><div class="num muted">' + fmt(t.kwhIn, 2) + ' kWh</div></div>' +
+      '<div><div class="label">ใช้ไปจากแบต</div><div class="big num" style="color:var(--drain)">' + fmt(t.ahOut, 1) + ' <small>Ah</small></div><div class="num muted">' + fmt(t.kwhOut, 2) + ' kWh</div></div>' +
+    '</div>' +
+    '<div class="sub-h">แบตเตอรี่</div><div class="rows">' +
+      '<div class="row"><span>ชาร์จแบต 1 · อินเวอร์เตอร์</span><span>' + fmt(t.ahInvChg, 1) + ' Ah</span></div>' +
+      '<div class="row"><span>ชาร์จแบต 2 · MPPT</span><span>' + fmt(t.ahMppt, 1) + ' Ah</span></div>' +
+      '<div class="row"><span>อินเวอร์เตอร์ดึงจากแบต</span><span>' + fmt(t.ahInvDis, 1) + ' Ah</span></div>' +
+      '<div class="row"><span>แบตต่ำสุด</span><span>' + (t.minV != null ? fmt(t.minV, 1) + ' V · ' + hhmm(t.minVAt) : '–') + '</span></div>' +
+      '<div class="row"><span>แตะ ' + CFG.cutoffV + 'V (จุดตัด)</span><span>' + (t.cutoffAt ? hhmm(t.cutoffAt) : 'ไม่ถึง') + '</span></div>' +
+    '</div>' +
+    '<div class="sub-h">โซลาร์และไฟในบ้าน</div><div class="rows">' +
+      '<div class="row"><span>แผงชุด 1 · อินเวอร์เตอร์</span><span>' + fmt(t.pvInvKwh, 2) + ' kWh</span></div>' +
+      '<div class="row"><span>แผงชุด 2 · MPPT</span><span>' + fmt(t.pvMpptKwh, 2) + ' kWh</span></div>' +
+      '<div class="row total"><span>แผงรวม</span><span>' + fmt(t.pvTotalKwh, 2) + ' kWh</span></div>' +
+      '<div class="row total"><span>ไฟที่บ้านใช้ทั้งวัน</span><span>' + fmt(t.kwhLoad, 2) + ' kWh</span></div>' +
+    '</div>' +
+    '<div class="sub-h">ช่วงมีแดด · ฝั่งอินเวอร์เตอร์</div><div class="label" style="margin-top:4px">' + sun + '</div><div class="rows">' +
+      '<div class="row"><span>แผงผลิต</span><span class="sun">' + fmt(t.sunPvKwh, 2) + ' kWh</span></div>' +
+      '<div class="row"><span>บ้านใช้ไป</span><span>' + fmt(t.sunLoadKwh, 2) + ' kWh</span></div>' +
+      '<div class="row"><span>เหลือชาร์จเข้าแบต</span><span style="color:var(--charge)">' + fmt(t.sunChgAh, 1) + ' Ah · ' + fmt(t.sunChgKwh, 2) + ' kWh</span></div>' +
+      '<div class="row"><span>ดึงจากแบตช่วงมีแดด</span><span style="color:var(--drain)">' + fmt(t.sunDisAh, 1) + ' Ah</span></div>' +
+      '<div class="row"><span>แผงพอใช้ในบ้าน</span><span>' + (t.sunLoadKwh > 0 ? fmt((t.sunPvKwh / t.sunLoadKwh) * 100) + '%' : '–') + '</span></div>' +
+    '</div></section>';
+}
+
+// ---------- stacked charts with a shared cursor ----------
+const CHARTS = [
+  { k: 'load', title: 'ไฟที่บ้านใช้ทั้งหมด', unit: 'W', color: '--grid', kind: 'area' },
+  { k: 'pv1', title: 'แผงชุด 1 · อินเวอร์เตอร์', unit: 'W', color: '--sun', kind: 'area' },
+  { k: 'pv2', title: 'แผงชุด 2 · MPPT', unit: 'W', color: '--sun2', kind: 'area' },
+  { k: 'pv', title: 'แผงรวม', unit: 'W', color: '--sun', kind: 'area' },
+  { k: 'c1', title: 'ชาร์จแบต 1 · อินเวอร์เตอร์ (+เข้า / −ดึงออก)', unit: 'A', color: '--charge', kind: 'signed', d: 1 },
+  { k: 'c2', title: 'ชาร์จแบต 2 · MPPT', unit: 'A', color: '--charge', kind: 'area', d: 1 },
+  { k: 'net', title: 'ชาร์จรวม · กระแสแบตสุทธิ', unit: 'A', color: '--charge', kind: 'signed', d: 1 },
+  { k: 'v', title: 'แรงดันแบต', unit: 'V', color: '--text', kind: 'line', d: 1 },
+];
+
+function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+function renderCharts(el, S, date) {
+  const t0 = Date.parse(date + 'T00:00:00Z') - (7 - DAY_START) * 3600000, t1 = t0 + 86400000;
+  if (!S || !S.t || !S.t.length) { el.innerHTML = '<div class="muted">ไม่มีข้อมูลกราฟของวันนี้</div>'; return; }
+  const W = 340, H = 92, P = { l: 34, r: 6, t: 6, b: 14 }, iw = W - P.l - P.r, ih = H - P.t - P.b;
+  const x = (t) => P.l + ((t - t0) / (t1 - t0)) * iw;
+  const line = css('--line'), muted = css('--muted');
+  let html = '';
+  CHARTS.forEach((c, ci) => {
+    const vals = S[c.k] || [];
+    const nums = vals.filter((v) => v != null);
+    let lo, hi;
+    if (c.kind === 'line') { lo = Math.min(...nums, CFG.cutoffV) - 0.3; hi = Math.max(...nums, lo + 1) + 0.3; }
+    else if (c.kind === 'signed') { const m = Math.max(5, ...nums.map(Math.abs)); lo = -m; hi = m; }
+    else { lo = 0; hi = Math.max(c.unit === 'A' ? 5 : 100, ...nums); }
+    const y = (v) => P.t + ih - ((v - lo) / (hi - lo)) * ih;
+    const col = css(c.color);
+    let g = '';
+    for (let h = 0; h <= 24; h += 6) { const xx = x(t0 + h * 3600000); g += '<line x1="' + xx + '" x2="' + xx + '" y1="' + P.t + '" y2="' + (P.t + ih) + '" stroke="' + line + '"/>'; g += '<text x="' + xx + '" y="' + (H - 2) + '" font-size="8.5" text-anchor="' + (h === 24 ? 'end' : 'middle') + '" fill="' + muted + '">' + String((h + DAY_START) % 24).padStart(2, '0') + ':00</text>'; }
+    // build segments, breaking on gaps > 5 min
+    const segs = []; let cur = [];
+    for (let i = 0; i < S.t.length; i++) {
+      const v = vals[i];
+      if (v == null || (i && S.t[i] - S.t[i - 1] > 300000)) { if (cur.length) segs.push(cur); cur = []; }
+      if (v != null) cur.push([x(S.t[i]), v]);
+    }
+    if (cur.length) segs.push(cur);
+    if (c.kind === 'signed') {
+      const z = y(0);
+      g += '<line x1="' + P.l + '" x2="' + (P.l + iw) + '" y1="' + z + '" y2="' + z + '" stroke="' + muted + '" stroke-dasharray="2 3" stroke-width=".7"/>';
+      for (const sg of segs) {
+        const pos = sg.map(([px, v]) => px.toFixed(1) + ',' + y(Math.max(0, v)).toFixed(1)).join(' ');
+        const neg = sg.map(([px, v]) => px.toFixed(1) + ',' + y(Math.min(0, v)).toFixed(1)).join(' ');
+        const a = sg[0][0].toFixed(1), b = sg[sg.length - 1][0].toFixed(1);
+        g += '<polygon points="' + a + ',' + z + ' ' + pos + ' ' + b + ',' + z + '" fill="' + css('--charge') + '" opacity=".55"/>';
+        g += '<polygon points="' + a + ',' + z + ' ' + neg + ' ' + b + ',' + z + '" fill="' + css('--drain') + '" opacity=".55"/>';
+      }
+    } else {
+      for (const sg of segs) {
+        const pts = sg.map(([px, v]) => px.toFixed(1) + ',' + y(v).toFixed(1)).join(' ');
+        if (c.kind === 'area') { const base = y(lo); g += '<polygon points="' + sg[0][0].toFixed(1) + ',' + base + ' ' + pts + ' ' + sg[sg.length - 1][0].toFixed(1) + ',' + base + '" fill="' + col + '" opacity=".22"/>'; }
+        g += '<polyline points="' + pts + '" fill="none" stroke="' + col + '" stroke-width="1.3" stroke-linejoin="round"/>';
+      }
+      if (c.k === 'v') { const yc = y(CFG.cutoffV); g += '<line x1="' + P.l + '" x2="' + (P.l + iw) + '" y1="' + yc + '" y2="' + yc + '" stroke="' + css('--drain') + '" stroke-dasharray="4 3" stroke-width=".8"/><text x="' + (P.l + iw - 2) + '" y="' + (yc - 3) + '" font-size="8.5" text-anchor="end" fill="' + css('--drain') + '">ตัด ' + CFG.cutoffV + 'V</text>'; }
+    }
+    const tick = (v) => (c.unit === 'W' && Math.abs(v) >= 1000 ? (v / 1000).toFixed(1) + 'k' : (c.kind === 'line' ? v.toFixed(1) : Math.round(v)));
+    g += '<text x="' + (P.l - 4) + '" y="' + (P.t + 8) + '" font-size="8.5" text-anchor="end" fill="' + muted + '">' + tick(hi) + '</text>';
+    g += '<text x="' + (P.l - 4) + '" y="' + (P.t + ih) + '" font-size="8.5" text-anchor="end" fill="' + muted + '">' + tick(lo) + '</text>';
+    g += '<line class="cx" x1="0" x2="0" y1="' + P.t + '" y2="' + (P.t + ih) + '" stroke="' + css('--text') + '" stroke-width=".8" opacity="0"/>';
+    html += '<div class="ch"><div class="ch-h"><b>' + c.title + '</b><span class="rv" data-k="' + c.k + '"></span></div><svg viewBox="0 0 ' + W + ' ' + H + '" data-ci="' + ci + '">' + g + '</svg></div>';
+  });
+  html += '<div class="cursor">–</div>';
+  el.innerHTML = html;
+
+  const svgs = el.querySelectorAll('svg'), rvs = el.querySelectorAll('.rv'), cursor = el.querySelector('.cursor');
+  function show(i, active) {
+    rvs.forEach((r) => {
+      const c = CHARTS.find((q) => q.k === r.dataset.k), v = S[c.k][i];
+      r.innerHTML = v == null ? '–' : (c.unit === 'W' ? watts(v) : fmt(v, c.d || 0) + '<small> ' + c.unit + '</small>');
+      if (c.kind === 'signed' && v != null) r.style.color = v >= 0 ? css('--charge') : css('--drain');
+    });
+    const px = x(S.t[i]);
+    svgs.forEach((s) => { const l = s.querySelector('.cx'); l.setAttribute('x1', px); l.setAttribute('x2', px); l.setAttribute('opacity', active ? '.7' : '0'); });
+    cursor.textContent = (active ? 'เวลา ' : 'ล่าสุด ') + hhmm(S.t[i]);
+  }
+  function at(evt, s) {
+    const r = s.getBoundingClientRect();
+    const t = t0 + ((((evt.clientX - r.left) / r.width) * W - P.l) / iw) * (t1 - t0);
+    let lo = 0, hi = S.t.length - 1;
+    while (hi - lo > 1) { const m = (lo + hi) >> 1; if (S.t[m] < t) lo = m; else hi = m; }
+    return Math.abs(S.t[lo] - t) < Math.abs(S.t[hi] - t) ? lo : hi;
+  }
+  svgs.forEach((s) => {
+    s.addEventListener('pointerdown', (e) => show(at(e, s), true));
+    s.addEventListener('pointermove', (e) => { if (e.pointerType === 'mouse' || e.buttons) show(at(e, s), true); });
+  });
+  show(S.t.length - 1, false);
+}
+
+// ---------- today ----------
+function renderNow(d) {
   const L = d.latest;
-  if (!L) { $('err').style.display = 'block'; $('err').textContent = 'ยังไม่มีข้อมูล รอรอบดึงข้อมูลแรก (ไม่เกิน 1 นาที) หรือกดปุ่ม "ดึงค่าล่าสุดตอนนี้"'; $('app').style.display = 'block'; return; }
-  $('app').style.display = 'block';
-  const old = Date.now() - L.ts > 20 * 60000;
+  CFG = d.config; DAY_START = CFG.dayStartH ?? 5;
+  $('app').classList.remove('hide');
+  if (!L) { $('err').style.display = 'block'; $('err').textContent = 'ยังไม่มีข้อมูล รอรอบดึงข้อมูลแรก (ไม่เกิน 1 นาที) หรือกด "ดึงค่าล่าสุดตอนนี้"'; return; }
+  const old = Date.now() - L.ts > 10 * 60000;
   $('dot').className = 'dot' + (old ? ' old' : '');
   $('upd').textContent = 'อัปเดต ' + hhmm(L.ts) + ' · ' + ago(L.ts);
   if (L.err) { $('err').style.display = 'block'; $('err').textContent = 'ดึงข้อมูลบางส่วนไม่ได้: ' + L.err; } else $('err').style.display = 'none';
 
-  const c = d.config;
-  DAY_START = c.dayStartH ?? 5;
-  $('cap').textContent = '· ' + c.capacityAh + ' Ah';
+  $('cap').textContent = '· ' + CFG.capacityAh + ' Ah';
   $('soc').textContent = fmt(L.soc);
   $('volt').textContent = fmt(L.batt_v, 1) + ' V';
   const pct = Math.max(0, Math.min(100, L.soc ?? 0));
   $('fill').style.height = 'calc(' + pct + '% - 8px)';
   $('fill').style.background = pct < 25 ? 'var(--drain)' : pct < 45 ? 'var(--sun)' : 'var(--charge)';
-
-  const net = L.net_a ?? 0;
-  const st = $('state');
+  const net = L.net_a ?? 0, st = $('state');
   if (net > 0.5) { st.className = 'state c'; st.innerHTML = '▲ กำลังชาร์จ <span class="num">+' + fmt(net, 1) + ' A</span>'; }
   else if (net < -0.5) { st.className = 'state d'; st.innerHTML = '▼ กำลังจ่ายออก <span class="num">' + fmt(net, 1) + ' A</span>'; }
   else { st.className = 'state'; st.textContent = 'นิ่ง (ไม่ชาร์จ/ไม่จ่าย)'; }
@@ -210,14 +346,12 @@ function render(d) {
   const e = d.eta;
   if (e && e.hours != null) {
     const until = new Date(Date.now() + e.hours * 3600000);
-    const dayKey = (t) => new Date(t + 7 * 3600000).toISOString().slice(0, 10);
-    const dd = Math.round((Date.parse(dayKey(until.getTime())) - Date.parse(dayKey(Date.now()))) / 86400000);
+    const dd = Math.round((Date.parse(solarDay(until.getTime() + DAY_START * 3600000)) - Date.parse(solarDay(Date.now() + DAY_START * 3600000))) / 86400000);
     const when = (dd === 0 ? '' : dd === 1 ? 'พรุ่งนี้ ' : 'อีก ' + dd + ' วัน ') + hhmm(until);
-    $('eta').innerHTML = 'ใช้ต่อได้อีกประมาณ <b class="num">' + fmt(e.hours, 1) + ' ชม.</b> จนถึง ' + c.cutoffV + 'V (ราว ' + when + ') · เหลือใช้ได้ ~' + fmt(e.remainAh) + ' Ah';
+    $('eta').innerHTML = 'ใช้ต่อได้อีกประมาณ <b class="num">' + fmt(e.hours, 1) + ' ชม.</b> จนถึง ' + CFG.cutoffV + 'V (ราว ' + when + ') · เหลือใช้ได้ ~' + fmt(e.remainAh) + ' Ah';
   } else if (e) {
-    $('eta').innerHTML = (e.state === 'charging' ? 'กำลังชาร์จ · ' : '') + 'เหลือใช้ได้ ~<b class="num">' + fmt(e.remainAh) + ' Ah</b> ก่อนถึง ' + c.cutoffV + 'V';
+    $('eta').innerHTML = (e.state === 'charging' ? 'กำลังชาร์จ · ' : '') + 'เหลือใช้ได้ ~<b class="num">' + fmt(e.remainAh) + ' Ah</b> ก่อนถึง ' + CFG.cutoffV + 'V';
   }
-
   $('pv1').innerHTML = watts(L.inv_pv_w);
   $('pv2').innerHTML = watts(L.mppt_pv_w);
   $('pv2sub').textContent = '4 แผง · ชาร์จ ' + fmt(L.mppt_a, 1) + ' A' + (L.mppt_temp != null ? ' · ' + L.mppt_temp + '°C' : '');
@@ -226,97 +360,77 @@ function render(d) {
   $('gridsub').textContent = L.grid_v ? 'มีไฟกริด' : 'ไฟดับ / ไม่ได้ต่อ';
 
   const t = d.today;
-  $('ahin').textContent = fmt(t.ahIn, 1);
-  $('ahout').textContent = fmt(t.ahOut, 1);
-  $('kwhin').textContent = fmt(t.kwhIn, 2) + ' kWh';
-  $('kwhout').textContent = fmt(t.kwhOut, 2) + ' kWh';
-  $('ahm').textContent = fmt(t.ahMppt, 1) + ' Ah';
-  $('ahic').textContent = fmt(t.ahInvChg, 1) + ' Ah';
-  $('ahid').textContent = fmt(t.ahInvDis, 1) + ' Ah';
-  $('pvk1').textContent = fmt(t.pvInvKwh, 2) + ' kWh';
-  $('pvk2').textContent = fmt(t.pvMpptKwh, 2) + ' kWh';
-  $('pvk').innerHTML = '<b>' + fmt(t.pvTotalKwh, 2) + ' kWh</b>';
-
-  if (t.sunStartAt) {
-    const live = L.inv_pv_w >= 30 && Date.now() - t.sunEndAt < 10 * 60000;
-    $('sunwin').textContent = 'แผงเริ่มผลิต ' + hhmm(t.sunStartAt) + ' → ' + (live ? 'ยังผลิตอยู่' : 'หมดแดด ' + hhmm(t.sunEndAt)) + ' · ' + fmt(t.sunHours, 1) + ' ชม.';
-    $('sunpv').textContent = fmt(t.sunPvKwh, 2);
-    $('sunload').textContent = fmt(t.sunLoadKwh, 2);
-    $('sunchg').textContent = fmt(t.sunChgAh, 1) + ' Ah · ' + fmt(t.sunChgKwh, 2) + ' kWh';
-    $('sundis').textContent = fmt(t.sunDisAh, 1) + ' Ah · ' + fmt(t.sunDisKwh, 2) + ' kWh';
-    $('suncover').textContent = t.sunLoadKwh > 0 ? fmt(Math.min(999, (t.sunPvKwh / t.sunLoadKwh) * 100)) + '% ของที่บ้านใช้' : '–';
-  }
-  $('loadk').textContent = fmt(t.kwhLoad, 2) + ' kWh';
-  $('minv').textContent = t.minV != null ? fmt(t.minV, 1) + ' V · ' + hhmm(t.minVAt) : '–';
-  $('cut').textContent = t.cutoffAt ? hhmm(t.cutoffAt) : 'ยังไม่ถึง';
-
-  chart(d.series);
+  t.sunLive = L.inv_pv_w >= 30 && t.sunEndAt && Date.now() - t.sunEndAt < 10 * 60000;
+  $('today-summary').innerHTML = summaryHTML(t, 'วันนี้ <span class="label">· 05:00 ถึง 05:00 พรุ่งนี้</span>');
+  renderCharts($('today-charts'), d.series, t.date);
 }
 
-function chart(s) {
-  const W = 340, H = 170, P = { l: 26, r: 30, t: 8, b: 20 };
-  const iw = W - P.l - P.r, ih = H - P.t - P.b;
-  const css = getComputedStyle(document.documentElement);
-  const col = (n) => css.getPropertyValue(n).trim();
-  if (!s.length) { $('chart').innerHTML = '<div class="muted">ยังไม่มีข้อมูลวันนี้</div>'; return; }
-  const shift = (7 - DAY_START) * 3600000; // solar day starts at DAY_START:00 Thai time
-  const d0 = new Date(s[0].t + shift); d0.setUTCHours(0, 0, 0, 0);
-  const t0 = d0.getTime() - shift, t1 = t0 + 86400000;
-  const x = (t) => P.l + ((t - t0) / (t1 - t0)) * iw;
-  const maxA = Math.max(10, ...s.map((p) => Math.abs(p.a || 0)));
-  const maxPv = Math.max(500, ...s.map((p) => p.pv || 0));
-  const yA = (a) => P.t + ih / 2 - (a / maxA) * (ih / 2);
-  const ySoc = (v) => P.t + ih - (v / 100) * ih;
-  const yPv = (w) => P.t + ih - (w / maxPv) * ih;
-  let g = '';
-  for (const h of [0, 6, 12, 18, 24]) {
-    const xx = x(t0 + h * 3600000);
-    g += '<line x1="' + xx + '" x2="' + xx + '" y1="' + P.t + '" y2="' + (P.t + ih) + '" stroke="' + col('--line') + '"/>';
-    g += '<text x="' + xx + '" y="' + (H - 5) + '" font-size="10" text-anchor="middle" fill="' + col('--muted') + '">' + String((h + DAY_START) % 24).padStart(2, '0') + ':00</text>';
-  }
-  g += '<line x1="' + P.l + '" x2="' + (P.l + iw) + '" y1="' + yA(0) + '" y2="' + yA(0) + '" stroke="' + col('--line') + '" stroke-dasharray="3 3"/>';
-  const bw = Math.max(0.6, iw / Math.max(288, s.length * 1.05));
-  for (const p of s) {
-    if (p.a == null) continue;
-    const y = yA(p.a), y0 = yA(0);
-    g += '<rect x="' + (x(p.t) - bw / 2) + '" y="' + Math.min(y, y0) + '" width="' + bw + '" height="' + Math.abs(y - y0) + '" fill="' + (p.a >= 0 ? col('--charge') : col('--drain')) + '" opacity=".75"/>';
-  }
-  const line = (key, yf, color, w) => {
-    const pts = s.filter((p) => p[key] != null).map((p) => x(p.t).toFixed(1) + ',' + yf(p[key]).toFixed(1));
-    return pts.length > 1 ? '<polyline points="' + pts.join(' ') + '" fill="none" stroke="' + color + '" stroke-width="' + w + '" stroke-linejoin="round"/>' : '';
-  };
-  g += line('pv', yPv, col('--sun'), 1.2);
-  g += line('soc', ySoc, col('--text'), 2);
-  for (const v of [0, 50, 100]) g += '<text x="' + (P.l - 4) + '" y="' + (ySoc(v) + 3) + '" font-size="9" text-anchor="end" fill="' + col('--muted') + '">' + v + '%</text>';
-  for (const a of [maxA, -maxA]) g += '<text x="' + (P.l + iw + 4) + '" y="' + (a > 0 ? yA(a) + 8 : yA(a) - 3) + '" font-size="9" fill="' + col('--muted') + '">' + (a > 0 ? '+' : '') + Math.round(a) + 'A</text>';
-  $('chart').innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" role="img" aria-label="กราฟแบต % และกระแสวันนี้">' + g + '</svg>';
+// ---------- history: calendar ----------
+let MONTH = null, SEL = null, MONTHDATA = {};
+function moveMonth(n) {
+  const [y, m] = MONTH.split('-').map(Number);
+  const d = new Date(Date.UTC(y, m - 1 + n, 1));
+  MONTH = d.toISOString().slice(0, 7);
+  loadMonth();
 }
-
-function renderHist(list) {
-  $('hist').innerHTML = list.map((r) => {
-    const d = new Date(r.date + 'T00:00:00Z').toLocaleDateString('th-TH', { day: 'numeric', month: 'short', weekday: 'short', timeZone: 'UTC' });
-    return '<div class="row"><span style="font-family:inherit">' + d + '</span><span style="color:var(--charge)">' + fmt(r.ahIn, 0) + '</span><span style="color:var(--drain)">' + fmt(r.ahOut, 0) + '</span><span>' + (r.minSoc != null ? fmt(r.minSoc) + '%' : fmt(r.minV, 1) + 'V') + '</span></div>';
-  }).join('') || '<div class="muted" style="padding:8px 0">ยังไม่มีข้อมูล</div>';
-}
-
-async function load() {
+async function loadMonth() {
+  $('monthTitle').textContent = thaiDate(MONTH + '-01', { month: 'long', year: 'numeric' });
+  $('nextM').disabled = MONTH >= solarDay(Date.now()).slice(0, 7);
+  $('cal').innerHTML = '<div class="muted" style="grid-column:1/-1;text-align:center;padding:20px">กำลังโหลด…</div>';
   try {
-    const [now, hist] = await Promise.all([api('/api/now'), api('/api/history?days=30')]);
-    render(now);
-    renderHist(hist);
-  } catch (e) {
-    if (e.message !== 'auth') { $('err').style.display = 'block'; $('err').textContent = 'โหลดข้อมูลไม่ได้: ' + e.message; }
+    const rows = await api('/api/month?m=' + MONTH);
+    MONTHDATA = Object.fromEntries(rows.map((r) => [r.date, r]));
+    drawCal();
+  } catch (e) { if (e.message !== 'auth') $('cal').innerHTML = '<div class="muted">โหลดไม่ได้: ' + e.message + '</div>'; }
+}
+function drawCal() {
+  const [y, m] = MONTH.split('-').map(Number);
+  const first = new Date(Date.UTC(y, m - 1, 1)).getUTCDay();
+  const days = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  const today = solarDay(Date.now());
+  let h = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((w) => '<div class="wd">' + w + '</div>').join('');
+  for (let i = 0; i < first; i++) h += '<div class="pad"></div>';
+  let tot = { pv: 0, load: 0, in: 0, out: 0, n: 0 };
+  for (let dnum = 1; dnum <= days; dnum++) {
+    const ds = MONTH + '-' + String(dnum).padStart(2, '0');
+    const r = MONTHDATA[ds];
+    const cls = 'd' + (r ? '' : ' none') + (ds === today ? ' today' : '') + (ds === SEL ? ' sel' : '');
+    if (r) { tot.pv += r.pvTotalKwh || 0; tot.load += r.kwhLoad || 0; tot.in += r.ahIn || 0; tot.out += r.ahOut || 0; tot.n++; }
+    h += '<button class="' + cls + '"' + (r ? ' onclick="openDay(\\'' + ds + '\\')"' : ' disabled') + '><span class="n">' + dnum + '</span>' +
+      (r ? '<span class="a">' + fmt(r.pvTotalKwh, 1) + '</span><span class="b">' + fmt(r.ahOut, 0) + '</span>' : '') + '</button>';
   }
+  $('cal').innerHTML = h;
+  $('monthTotals').innerHTML = tot.n ? (
+    '<div class="row"><span>รวมทั้งเดือน (' + tot.n + ' วันที่มีข้อมูล)</span><span></span></div>' +
+    '<div class="row"><span>โซลาร์ผลิตรวม</span><span class="sun">' + fmt(tot.pv, 1) + ' kWh</span></div>' +
+    '<div class="row"><span>ไฟที่บ้านใช้</span><span>' + fmt(tot.load, 1) + ' kWh</span></div>' +
+    '<div class="row"><span>ชาร์จเข้าแบต / ใช้แบต</span><span><span style="color:var(--charge)">' + fmt(tot.in, 0) + '</span> / <span style="color:var(--drain)">' + fmt(tot.out, 0) + '</span> Ah</span></div>') : '';
+}
+async function openDay(ds) {
+  SEL = ds; drawCal();
+  const el = $('day-detail');
+  el.innerHTML = '<p class="muted" style="text-align:center">กำลังโหลด…</p>';
+  try {
+    const d = await api('/api/day?date=' + ds);
+    const title = thaiDate(ds, { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) + ' <span class="label">· 05:00 ถึง 05:00</span>';
+    el.innerHTML = summaryHTML(d.summary, title) + '<section class="card"><h2>กราฟ <span class="label">· แตะหรือลากบนกราฟเพื่อดูค่า</span></h2><div id="day-charts"></div></section>';
+    renderCharts($('day-charts'), d.series, ds);
+    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  } catch (e) { if (e.message !== 'auth') el.innerHTML = '<p class="muted">โหลดไม่ได้: ' + e.message + '</p>'; }
 }
 
+// ---------- load / refresh ----------
+async function load() {
+  try { renderNow(await api('/api/now')); }
+  catch (e) { if (e.message !== 'auth') { $('err').style.display = 'block'; $('err').textContent = 'โหลดข้อมูลไม่ได้: ' + e.message; } }
+}
 async function pollNow(btn) {
   btn.disabled = true; btn.textContent = 'กำลังดึง…';
   try { await api('/api/poll'); await load(); } catch (e) {}
   btn.disabled = false; btn.textContent = 'ดึงค่าล่าสุดตอนนี้';
 }
-
 load();
-setInterval(load, 60000);
+setInterval(() => { if (!document.hidden && !$('view-now').classList.contains('hide')) load(); }, 60000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) load(); });
 </script>
 </body>

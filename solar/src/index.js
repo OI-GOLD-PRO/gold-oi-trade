@@ -92,6 +92,37 @@ async function samplesBetween(env, from, to) {
   return results;
 }
 
+/** Column-oriented series for the 8 stacked charts. */
+function toSeries(day) {
+  const S = { t: [], load: [], pv1: [], pv2: [], pv: [], c1: [], c2: [], net: [], v: [] };
+  for (const s of day) {
+    const c1 = s.inv_chg_a == null && s.inv_dis_a == null ? null : r2((s.inv_chg_a ?? 0) - (s.inv_dis_a ?? 0));
+    S.t.push(s.ts);
+    S.load.push(s.load_w);
+    S.pv1.push(s.inv_pv_w);
+    S.pv2.push(s.mppt_pv_w);
+    S.pv.push(s.inv_pv_w == null && s.mppt_pv_w == null ? null : r2((s.inv_pv_w ?? 0) + (s.mppt_pv_w ?? 0)));
+    S.c1.push(c1);
+    S.c2.push(s.mppt_a);
+    S.net.push(c1 == null && s.mppt_a == null ? null : r2(netBatteryA(s)));
+    S.v.push(s.batt_v);
+  }
+  return S;
+}
+
+async function apiMonth(env, month) {
+  const c = cfg(env);
+  const today = localDate(Date.now());
+  const { results } = await env.DB.prepare("SELECT date, data FROM daily WHERE date LIKE ? AND date < ? ORDER BY date").bind(month + '-%', today).all();
+  const out = results.map((r) => ({ date: r.date, ...JSON.parse(r.data) }));
+  if (today.startsWith(month)) {
+    const [a, b] = dayRange(today);
+    const list = await samplesBetween(env, a, b);
+    if (list.length) out.push({ date: today, ...summarizeDay(list, c) });
+  }
+  return out;
+}
+
 async function apiNow(env) {
   const c = cfg(env);
   const latest = await env.DB.prepare('SELECT * FROM samples ORDER BY ts DESC LIMIT 1').first();
@@ -103,7 +134,7 @@ async function apiNow(env) {
     latest: latest && { ...latest, net_a: r2(netBatteryA(latest)) },
     eta: latest ? timeToCutoff(latest, c) : null,
     today: { date: today, ...summarizeDay(day, c) },
-    series: day.map((s) => ({ t: s.ts, soc: s.soc, v: s.batt_v, a: r2(netBatteryA(s)), pv: (s.inv_pv_w ?? 0) + (s.mppt_pv_w ?? 0), load: s.load_w })),
+    series: toSeries(day),
   };
 }
 
@@ -114,7 +145,7 @@ async function apiDay(env, date) {
   return {
     date,
     summary: summarizeDay(day, c),
-    series: day.map((s) => ({ t: s.ts, soc: s.soc, v: s.batt_v, a: r2(netBatteryA(s)), pv: (s.inv_pv_w ?? 0) + (s.mppt_pv_w ?? 0), load: s.load_w })),
+    series: toSeries(day),
   };
 }
 
@@ -172,6 +203,7 @@ export default {
       if (path === '/api/now') return json(await apiNow(env));
       if (path === '/api/day') return json(await apiDay(env, url.searchParams.get('date') || localDate(Date.now())));
       if (path === '/api/history') return json(await apiHistory(env, Math.min(3650, Number(url.searchParams.get('days') || 14))));
+      if (path === '/api/month') return json(await apiMonth(env, (url.searchParams.get('m') || localDate(Date.now()).slice(0, 7)).slice(0, 7)));
       if (path === '/api/poll') return json(await poll(env, { force: true }));
       if (path === '/api/debug') return json(await kvGet(env.DB, 'last_raw'));
       return json({ error: 'not found' }, 404);
