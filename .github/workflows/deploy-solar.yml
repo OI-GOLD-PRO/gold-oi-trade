@@ -58,7 +58,9 @@ jobs:
         run: |
           jq -n 'env | {DESS_USER, DESS_PASSWORD, TUYA_CLIENT_ID, TUYA_SECRET, APP_KEY}
                  | with_entries(select(.value != null and .value != ""))' > secrets.json
-          echo "secrets present: $(jq -r 'keys | join(", ")' secrets.json)"
+          SENT=$(jq -r 'keys | join(", ")' secrets.json)
+          MISSING=$(jq -r '["DESS_USER","DESS_PASSWORD","TUYA_CLIENT_ID","TUYA_SECRET","APP_KEY"] - keys | join(", ")' secrets.json)
+          echo "::notice title=Secrets::sent [${SENT}] missing [${MISSING}]"
           if [ "$(jq 'length' secrets.json)" -gt 0 ]; then npx wrangler secret bulk secrets.json; fi
           rm -f secrets.json
 
