@@ -216,7 +216,8 @@ function summaryHTML(t, title) {
     '<div class="sub-h">แบตเตอรี่</div><div class="rows">' +
       '<div class="row"><span>ชาร์จแบต 1 · อินเวอร์เตอร์</span><span>' + fmt(t.ahInvChg, 1) + ' Ah</span></div>' +
       '<div class="row"><span>ชาร์จแบต 2 · MPPT</span><span>' + fmt(t.ahMppt, 1) + ' Ah</span></div>' +
-      '<div class="row"><span>อินเวอร์เตอร์ดึงจากแบต</span><span>' + fmt(t.ahInvDis, 1) + ' Ah</span></div>' +
+      '<div class="row"><span>อินเวอร์เตอร์ดึงจากฝั่ง DC (แบต+MPPT)</span><span>' + fmt(t.ahInvDis, 1) + ' Ah</span></div>' +
+      '<div class="row"><span>· ในนั้นมาจาก MPPT โดยตรง</span><span>' + fmt(t.mpptToInvAh, 1) + ' Ah</span></div>' +
       '<div class="row"><span>แบตต่ำสุด</span><span>' + (t.minV != null ? fmt(t.minV, 1) + ' V · ' + hhmm(t.minVAt) : '–') + '</span></div>' +
       '<div class="row"><span>แตะ ' + CFG.cutoffV + 'V (จุดตัด)</span><span>' + (t.cutoffAt ? hhmm(t.cutoffAt) : 'ไม่ถึง') + '</span></div>' +
     '</div>' +
@@ -230,7 +231,8 @@ function summaryHTML(t, title) {
       '<div class="row"><span>แผงผลิต</span><span class="sun">' + fmt(t.sunPvKwh, 2) + ' kWh</span></div>' +
       '<div class="row"><span>บ้านใช้ไป</span><span>' + fmt(t.sunLoadKwh, 2) + ' kWh</span></div>' +
       '<div class="row"><span>เหลือชาร์จเข้าแบต</span><span style="color:var(--charge)">' + fmt(t.sunChgAh, 1) + ' Ah · ' + fmt(t.sunChgKwh, 2) + ' kWh</span></div>' +
-      '<div class="row"><span>ดึงจากแบตช่วงมีแดด</span><span style="color:var(--drain)">' + fmt(t.sunDisAh, 1) + ' Ah</span></div>' +
+      '<div class="row"><span>ดึงจากแบตจริงช่วงมีแดด</span><span style="color:var(--drain)">' + fmt(t.sunDisAh, 1) + ' Ah</span></div>' +
+      '<div class="row"><span>MPPT ส่งไปช่วยอินเวอร์เตอร์</span><span style="color:var(--sun2)">' + fmt(t.sunMpptToInvAh, 1) + ' Ah · ' + fmt(t.sunMpptToInvKwh, 2) + ' kWh</span></div>' +
       '<div class="row"><span>แผงพอใช้ในบ้าน</span><span>' + (t.sunLoadKwh > 0 ? fmt((t.sunPvKwh / t.sunLoadKwh) * 100) + '%' : '–') + '</span></div>' +
     '</div></section>';
 }
@@ -256,6 +258,7 @@ function renderFlow(L) {
   const load = Math.max(0, L.load_w || 0);
   const c1 = (L.inv_chg_a || 0) - (L.inv_dis_a || 0);           // + inverter → battery
   const invBatW = c1 * V, mpptBatW = Math.max(0, (L.mppt_a || 0) * V);
+  const netW = invBatW + mpptBatW;                                // + into the battery cells
   let gridW = load + Math.max(0, invBatW) - pv1 - Math.max(0, -invBatW);
   gridW = L.grid_v ? Math.max(0, gridW) : 0;
   if (gridW < 40) gridW = 0;
@@ -266,11 +269,12 @@ function renderFlow(L) {
   // edges: path, watts, color, reverse?
   const E = [
     { d: 'M180,74 V124', w: pv1, c: C.sun },                          // PV1 → inverter
-    { d: 'M290,74 V128', w: pv2, c: C.sun2 },                         // PV2 → MPPT
-    { d: 'M290,170 V222', w: mpptBatW, c: C.chg },                    // MPPT → battery
+    { d: 'M290,74 V104', w: pv2, c: C.sun2 },                         // PV2 → MPPT
+    { d: 'M290,140 V177', w: mpptBatW, c: C.sun2 },                   // MPPT → DC bus
     { d: 'M78,150 H140', w: gridW, c: C.grid },                       // grid → inverter
     { d: 'M180,176 V222', w: load, c: C.text },                       // inverter → home
-    { d: 'M220,160 C254,160 260,236 268,248', w: Math.abs(invBatW), c: invBatW >= 0 ? C.chg : C.dr, rev: invBatW < 0 }, // inverter ↔ battery
+    { d: 'M220,158 C252,158 256,185 282,185', w: Math.abs(invBatW), c: invBatW >= 0 ? C.chg : C.sun2, rev: invBatW < 0 }, // inverter ↔ DC bus
+    { d: 'M290,193 V224', w: Math.abs(netW), c: netW >= 0 ? C.chg : C.dr, rev: netW < 0 },  // DC bus ↔ battery (net, what the cells really do)
   ];
   let g = '<defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
     '<radialGradient id="hub" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="' + C.chg + '" stop-opacity=".35"/><stop offset="1" stop-color="' + C.chg + '" stop-opacity="0"/></radialGradient></defs>';
@@ -300,16 +304,16 @@ function renderFlow(L) {
   // PV1
   g += node(180, 50, 22, C.sun, panel(180, 50, C.sun), pv1 >= 20) + label(148, 42, 'แผงชุด 1', kw(pv1), C.sun, 'end');
   // PV2
-  g += node(290, 50, 22, C.sun2, panel(290, 50, C.sun2), pv2 >= 20) + label(300, 92, 'แผงชุด 2', kw(pv2), C.sun2, 'start');
+  g += node(290, 50, 22, C.sun2, panel(290, 50, C.sun2), pv2 >= 20) + label(300, 82, 'แผงชุด 2', kw(pv2), C.sun2, 'start');
   // Inverter hub
   g += '<rect x="132" y="122" width="96" height="56" rx="14" fill="url(#hub)"/>' +
        '<rect x="140" y="126" width="80" height="48" rx="12" fill="' + C.card + '" stroke="' + C.chg + '" stroke-width="1.6" filter="url(#glow)"/>' +
        '<path d="M156,146 q6,-10 12,0 t12,0 t12,0" fill="none" stroke="' + C.chg + '" stroke-width="2" stroke-linecap="round" transform="translate(4,0)"/>' +
        '<text x="180" y="166" text-anchor="middle" font-size="9.5" fill="' + C.muted + '" letter-spacing="1">INVERTER</text>';
   // MPPT
-  g += '<rect x="266" y="130" width="48" height="40" rx="10" fill="' + C.card + '" stroke="' + C.sun2 + '" stroke-width="1.4" opacity="' + (pv2 >= 20 ? 1 : .6) + '"/>' +
-       '<text x="290" y="154" text-anchor="middle" font-size="10" font-weight="700" fill="' + C.sun2 + '">MPPT</text>' +
-       '<text x="300" y="200" font-size="11.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + C.chg + '">' + (L.mppt_a != null ? L.mppt_a.toFixed(1) : '–') + 'A</text>';
+  g += '<rect x="266" y="104" width="48" height="36" rx="10" fill="' + C.card + '" stroke="' + C.sun2 + '" stroke-width="1.4" opacity="' + (pv2 >= 20 ? 1 : .6) + '"/>' +
+       '<text x="290" y="126" text-anchor="middle" font-size="10" font-weight="700" fill="' + C.sun2 + '">MPPT</text>' +
+       '<text x="300" y="164" font-size="11.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + C.chg + '">' + (L.mppt_a != null ? L.mppt_a.toFixed(1) : '–') + 'A</text>';
   // Grid tower
   const gridOn = !!L.grid_v;
   g += node(52, 150, 22, C.grid, '<g stroke="' + C.grid + '" fill="none" stroke-width="1.4" stroke-linejoin="round"><path d="M45,166 L52,134 L59,166 M47,156 H57 M48.5,146 H55.5 M42,140 H62"/></g>', gridW > 0) +
@@ -317,6 +321,9 @@ function renderFlow(L) {
   // Home
   g += node(180, 250, 24, C.text, '<path d="M168,252 L180,240 L192,252 M171,250 V262 H189 V250" fill="none" stroke="' + C.text + '" stroke-width="1.6" stroke-linejoin="round"/><path d="M178,262 V255 H182 V262" fill="none" stroke="' + C.text + '" stroke-width="1.4"/>', load >= 20) +
        label(132, 246, 'บ้านใช้', kw(load), C.text, 'end');
+  // DC bus (battery terminals: MPPT, inverter and cells meet here)
+  g += '<circle cx="290" cy="185" r="9" fill="' + C.card + '" stroke="' + C.muted + '" stroke-width="1.4"/><text x="290" y="188.5" text-anchor="middle" font-size="7.5" font-weight="700" fill="' + C.muted + '">DC</text>' +
+       (Math.abs(invBatW) > 20 ? '<text x="242" y="206" text-anchor="middle" font-size="9" fill="' + C.muted + '">' + (invBatW < 0 ? 'ไปอินเวอร์เตอร์' : 'จากอินเวอร์เตอร์') + '</text><text x="242" y="218" text-anchor="middle" font-size="10.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + (invBatW < 0 ? C.sun2 : C.chg) + '">' + kw(Math.abs(invBatW)) + '</text>' : '');
   // Battery
   const bc = soc < 20 ? C.dr : soc < 45 ? C.sun : C.chg;
   const fillH = Math.max(1, Math.min(26, (soc / 100) * 26));
@@ -324,8 +331,9 @@ function renderFlow(L) {
        '<rect x="276" y="230" width="28" height="40" rx="5" fill="' + C.card + '" stroke="' + bc + '" stroke-width="1.8" filter="url(#glow)"/>' +
        '<rect x="284" y="225" width="12" height="5" rx="1.5" fill="' + bc + '"/>' +
        '<rect x="280" y="' + (266 - fillH) + '" width="20" height="' + fillH + '" rx="2.5" fill="' + bc + '" opacity=".85"/>' +
-       '<text x="290" y="290" text-anchor="middle" font-size="12.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + bc + '">' + Math.round(soc) + '%</text>' +
-       label(252, 268, (L.batt_v != null ? L.batt_v.toFixed(1) + 'V' : ''), (invBatW >= 0 ? '+' : '') + ((c1 + (L.mppt_a || 0))).toFixed(1) + 'A', (c1 + (L.mppt_a || 0)) >= 0 ? C.chg : C.dr, 'end');
+       '<text x="290" y="290" text-anchor="middle" font-size="12.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + bc + '">' + Math.round(soc) + '%' + (netW >= 20 ? ' · ชาร์จ' : netW <= -20 ? ' · จ่าย' : '') + '</text>' +
+       '<text x="312" y="246" font-size="11.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + (netW >= 0 ? C.chg : C.dr) + '">' + (netW >= 0 ? '+' : '') + (c1 + (L.mppt_a || 0)).toFixed(1) + 'A</text>' +
+       '<text x="312" y="260" font-size="9.5" font-family="JetBrains Mono,monospace" fill="' + C.muted + '">' + (L.batt_v != null ? L.batt_v.toFixed(1) + 'V' : '') + '</text>';
   $('flow').innerHTML = '<svg viewBox="0 0 360 300" role="img" aria-label="แผนภาพการไหลของพลังงาน">' + g + '</svg>';
 }
 

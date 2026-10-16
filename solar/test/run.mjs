@@ -56,3 +56,15 @@ assert.ok(st.soc > 55 && st.soc < 60, 'rest calibration ' + st.soc);
 st = stepSoc(st, { ts: 91 * 60000, v: 49.9, net: -40 }, 434);
 assert.equal(st.soc, 10);
 console.log('soc OK');
+
+// 7) User's scenario: load 2 kW, PV1 1.5 kW, inverter draws 500 W from DC side, MPPT makes 1 kW
+{
+  const V = 51;
+  const sc = []; for (let i = 0; i <= 60; i++) sc.push({ ts: i * 60000, batt_v: V, inv_pv_w: 1500, mppt_pv_w: 1000, load_w: 2000, inv_chg_a: 0, inv_dis_a: 500 / V, mppt_a: 1000 / V });
+  const r = summarizeDay(sc, cfg);
+  assert.ok(Math.abs(r.ahIn - 500 / V) < 0.05, 'net charge ' + r.ahIn);  // battery really charges 500 W
+  assert.equal(r.ahOut, 0);
+  assert.equal(r.sunDisAh, 0);                                              // no real discharge in daylight
+  assert.ok(Math.abs(r.sunMpptToInvAh - 500 / V) < 0.05);                   // 500 W bridged MPPT → inverter
+  console.log('scenario OK', { ahIn: r.ahIn, sunDisAh: r.sunDisAh, sunMpptToInvAh: r.sunMpptToInvAh });
+}

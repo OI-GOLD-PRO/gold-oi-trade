@@ -29,7 +29,8 @@ export function summarizeDay(samples, cfg) {
     // Daylight window, inverter side only: first → last minute the inverter's panels produce.
     sunStartAt: null, sunEndAt: null, sunHours: 0,
     sunPvKwh: 0, sunLoadKwh: 0,
-    sunChgAh: 0, sunChgKwh: 0, sunDisAh: 0, sunDisKwh: 0,
+    sunChgAh: 0, sunChgKwh: 0, sunDisAh: 0, sunDisKwh: 0, sunMpptToInvAh: 0, sunMpptToInvKwh: 0,
+    mpptToInvAh: 0, // MPPT current that went straight to the inverter over the battery terminals
   };
   for (const s of samples) {
     if ((s.inv_pv_w ?? 0) >= SUN_MIN_W) {
@@ -62,6 +63,8 @@ export function summarizeDay(samples, cfg) {
     r.ahMppt += (s.mppt_a ?? 0) * h;
     r.ahInvChg += (s.inv_chg_a ?? 0) * h;
     r.ahInvDis += (s.inv_dis_a ?? 0) * h;
+    const bridge = Math.min(s.mppt_a ?? 0, s.inv_dis_a ?? 0);
+    r.mpptToInvAh += bridge * h;
     r.kwhPvInv += ((s.inv_pv_w ?? 0) * h) / 1000;
     r.kwhPvMppt += ((s.mppt_pv_w ?? 0) * h) / 1000;
     r.kwhLoad += ((s.load_w ?? 0) * h) / 1000;
@@ -70,8 +73,11 @@ export function summarizeDay(samples, cfg) {
       r.sunLoadKwh += ((s.load_w ?? 0) * h) / 1000;
       r.sunChgAh += (s.inv_chg_a ?? 0) * h;
       r.sunChgKwh += ((s.inv_chg_a ?? 0) * vv * h) / 1000;
-      r.sunDisAh += (s.inv_dis_a ?? 0) * h;
-      r.sunDisKwh += ((s.inv_dis_a ?? 0) * vv * h) / 1000;
+      // real battery discharge = negative net current (MPPT may be covering the inverter's draw)
+      r.sunDisAh += Math.max(0, -net) * h;
+      r.sunDisKwh += (Math.max(0, -net) * vv * h) / 1000;
+      r.sunMpptToInvAh += bridge * h;
+      r.sunMpptToInvKwh += (bridge * vv * h) / 1000;
     }
   }
   if (r.sunStartAt != null) r.sunHours = (r.sunEndAt - r.sunStartAt) / 3600000;
