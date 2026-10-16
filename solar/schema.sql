@@ -2,6 +2,7 @@ CREATE TABLE IF NOT EXISTS samples (
   ts INTEGER PRIMARY KEY,      -- epoch ms
   batt_v REAL,                 -- battery voltage (inverter, else MPPT)
   soc REAL,                    -- battery % (inverter)
+  soc_calc REAL,               -- battery % (app: Ah counting + voltage calibration)
   inv_chg_a REAL,              -- inverter charging current into battery
   inv_dis_a REAL,              -- inverter discharge current from battery
   mppt_a REAL,                 -- MPPT charging current into battery

@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#103a2e"/><stop offset="1" stop-color="#08140f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="256" cy="215" r="230" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffb347" stop-opacity=".55"/><stop offset="1" stop-color="#ffb347" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="sun" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#ffe08a"/><stop offset="1" stop-color="#f5922f"/>
+    </linearGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#2b5ea8"/><stop offset="1" stop-color="#173561"/>
+    </linearGradient>
+    <linearGradient id="wall" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#f4f6f1"/><stop offset="1" stop-color="#d9e2da"/>
+    </linearGradient>
+    <linearGradient id="bolt" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#5fe0a5"/><stop offset="1" stop-color="#1f9d68"/>
+    </linearGradient>
+    <clipPath id="roof"><polygon points="92,318 256,190 420,318"/></clipPath>
+  </defs>
+  <rect width="512" height="512" fill="url(#bg)"/>
+  <rect width="512" height="512" fill="url(#glow)"/>
+  <!-- sun rays -->
+  <g stroke="#ffc65c" stroke-width="16" stroke-linecap="round" opacity=".95">
+    <line x1="256" y1="38" x2="256" y2="72"/>
+    <line x1="134" y1="88" x2="156" y2="114"/>
+    <line x1="378" y1="88" x2="356" y2="114"/>
+    <line x1="72" y1="190" x2="106" y2="196"/>
+    <line x1="440" y1="190" x2="406" y2="196"/>
+  </g>
+  <circle cx="256" cy="200" r="104" fill="url(#sun)"/>
+  <!-- solar-panel roof -->
+  <polygon points="92,318 256,190 420,318" fill="url(#panel)" stroke="#0b1d36" stroke-width="6" stroke-linejoin="round"/>
+  <g clip-path="url(#roof)" stroke="#8fb4e8" stroke-width="3" opacity=".55">
+    <line x1="60" y1="244" x2="460" y2="244"/><line x1="60" y1="281" x2="460" y2="281"/>
+    <line x1="174" y1="180" x2="174" y2="330"/><line x1="215" y1="180" x2="215" y2="330"/>
+    <line x1="256" y1="180" x2="256" y2="330"/><line x1="297" y1="180" x2="297" y2="330"/>
+    <line x1="338" y1="180" x2="338" y2="330"/>
+  </g>
+  <!-- house -->
+  <rect x="138" y="318" width="236" height="132" rx="10" fill="url(#wall)"/>
+  <rect x="120" y="310" width="272" height="16" rx="8" fill="#0b1d36"/>
+  <!-- lightning -->
+  <polygon points="268,336 214,402 252,402 240,446 300,374 262,374 280,336" fill="url(#bolt)" stroke="#0f6b45" stroke-width="4" stroke-linejoin="round"/>
+</svg>

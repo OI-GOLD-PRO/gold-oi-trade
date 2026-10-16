@@ -3,6 +3,8 @@ import { readMppt } from './tuya.js';
 import { summarizeDay, timeToCutoff, netBatteryA } from './calc.js';
 import { localDate, dayRange, kvGet, kvSet, DAY_START_H } from './util.js';
 import { PAGE } from './page.js';
+import { stepSoc } from './soc.js';
+import { ICON_180, ICON_512 } from './icon.js';
 
 function cfg(env) {
   return {
@@ -52,6 +54,12 @@ export async function poll(env, { force = false } = {}) {
     mppt_temp: m.tempC ?? null,
     err: errs.length ? errs.join(' | ') : null,
   };
+  // App-side battery % (Ah counting + voltage calibration at rest).
+  if (row.batt_v != null) {
+    const st = stepSoc(await kvGet(env.DB, 'soc_state'), { ts: row.ts, v: row.batt_v, net: netBatteryA(row) }, cfg(env).capacityAh);
+    await kvSet(env.DB, 'soc_state', st);
+    row.soc_calc = st.soc == null ? null : Math.round(st.soc * 10) / 10;
+  }
   const cols = Object.keys(row);
   await env.DB.prepare(`INSERT OR REPLACE INTO samples (${cols.join(',')}) VALUES (${cols.map(() => '?').join(',')})`)
     .bind(...cols.map((c) => row[c]))
@@ -184,16 +192,15 @@ export default {
     }
     if (path === '/manifest.json') {
       return json({
-        name: 'โซลาร์บ้าน', short_name: 'โซลาร์', start_url: '/', display: 'standalone',
+        name: 'โซลาร์บ้าน', short_name: 'โซลาร์บ้าน', start_url: '/', display: 'standalone',
         background_color: '#0f1412', theme_color: '#0f1412',
-        icons: [{ src: '/icon.svg', sizes: 'any', type: 'image/svg+xml' }],
+        icons: [{ src: '/icon.png', sizes: '180x180', type: 'image/png' }, { src: '/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any maskable' }],
       });
     }
-    if (path === '/icon.svg') {
-      return new Response(
-        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#0f1412"/><circle cx="32" cy="26" r="11" fill="#f2b33d"/><rect x="14" y="42" width="36" height="10" rx="2" fill="#3fbf8a"/></svg>',
-        { headers: { 'content-type': 'image/svg+xml' } },
-      );
+    if (path === '/icon.png' || path === '/icon-512.png') {
+      const b64 = path === '/icon.png' ? ICON_180 : ICON_512;
+      const bin = Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
+      return new Response(bin, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' } });
     }
 
     if (!path.startsWith('/api/')) return new Response('not found', { status: 404 });

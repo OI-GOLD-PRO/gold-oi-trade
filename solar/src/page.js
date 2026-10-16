@@ -5,8 +5,9 @@ export const PAGE = /* html */ `<!doctype html>
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>โซลาร์บ้าน</title>
 <link rel="manifest" href="/manifest.json">
-<link rel="icon" href="/icon.svg">
-<link rel="apple-touch-icon" href="/icon.svg">
+<link rel="icon" type="image/png" href="/icon.png">
+<link rel="apple-touch-icon" href="/icon.png">
+<meta name="apple-mobile-web-app-title" content="โซลาร์บ้าน">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f1412">
@@ -125,6 +126,7 @@ svg{display:block;width:100%;height:auto}
         <div class="label">แบตเตอรี่ · LiFePO4 <span id="cap"></span></div>
         <div class="soc num"><span id="soc">–</span><small>%</small></div>
         <div class="num muted" id="volt">– V</div>
+        <div class="label" id="socinv"></div>
         <div class="state" id="state">–</div>
       </div>
       <div class="eta" id="eta" style="grid-column:1/-1">–</div>
@@ -333,9 +335,11 @@ function renderNow(d) {
   if (L.err) { $('err').style.display = 'block'; $('err').textContent = 'ดึงข้อมูลบางส่วนไม่ได้: ' + L.err; } else $('err').style.display = 'none';
 
   $('cap').textContent = '· ' + CFG.capacityAh + ' Ah';
-  $('soc').textContent = fmt(L.soc);
+  const socMain = L.soc_calc ?? L.soc;
+  $('soc').textContent = fmt(socMain);
   $('volt').textContent = fmt(L.batt_v, 1) + ' V';
-  const pct = Math.max(0, Math.min(100, L.soc ?? 0));
+  $('socinv').textContent = L.soc_calc != null && L.soc != null ? 'อินเวอร์เตอร์บอก ' + fmt(L.soc) + '%' : '';
+  const pct = Math.max(0, Math.min(100, socMain ?? 0));
   $('fill').style.height = 'calc(' + pct + '% - 8px)';
   $('fill').style.background = pct < 25 ? 'var(--drain)' : pct < 45 ? 'var(--sun)' : 'var(--charge)';
   const net = L.net_a ?? 0, st = $('state');

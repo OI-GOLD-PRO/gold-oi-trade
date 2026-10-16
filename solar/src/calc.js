@@ -45,7 +45,8 @@ export function summarizeDay(samples, cfg) {
       if (r.maxV == null || v > r.maxV) r.maxV = v;
       if (r.cutoffAt == null && v <= cfg.cutoffV + 0.2) r.cutoffAt = s.ts;
     }
-    if (s.soc != null && (r.minSoc == null || s.soc < r.minSoc)) { r.minSoc = s.soc; r.minSocAt = s.ts; }
+    const sc = s.soc_calc ?? s.soc;
+    if (sc != null && (r.minSoc == null || sc < r.minSoc)) { r.minSoc = sc; r.minSocAt = s.ts; }
     if (s.mppt_today_kwh != null) r.mpptTodayKwh = Math.max(r.mpptTodayKwh ?? 0, s.mppt_today_kwh);
     if (s.inv_today_kwh != null) r.invTodayKwh = Math.max(r.invTodayKwh ?? 0, s.inv_today_kwh);
 
@@ -85,7 +86,7 @@ export function summarizeDay(samples, cfg) {
 /** How long until the bank reaches the cut-off at the current draw. */
 export function timeToCutoff(latest, cfg) {
   const net = netBatteryA(latest);
-  const soc = latest.soc;
+  const soc = latest.soc_calc ?? latest.soc;
   if (soc == null) return null;
   const remainAh = Math.max(0, ((soc - cfg.cutoffSoc) / 100) * cfg.capacityAh);
   if (net >= -0.5) return { remainAh: Math.round(remainAh), hours: null, state: net > 0.5 ? 'charging' : 'idle' };

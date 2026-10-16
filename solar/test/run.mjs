@@ -40,3 +40,19 @@ assert.equal(localDate(Date.parse('2026-10-17T04:59:00+07:00')), '2026-10-16');
 assert.equal(localDate(Date.parse('2026-10-17T05:00:00+07:00')), '2026-10-17');
 assert.deepEqual(dayRange('2026-10-17'), [Date.parse('2026-10-17T05:00:00+07:00'), Date.parse('2026-10-18T05:00:00+07:00')]);
 console.log('day boundary OK');
+
+// 6) App-side SOC
+import { stepSoc, socFromVoltage } from '../src/soc.js';
+assert.equal(socFromVoltage(50), 10); assert.equal(socFromVoltage(54.5), 90); assert.equal(Math.round(socFromVoltage(52.25)), 50);
+let st = stepSoc(null, { ts: 0, v: 52.25, net: 0 }, 434);
+assert.equal(Math.round(st.soc), 50);
+// discharge 43.4 A for 1 h → −10 %, and a voltage sag must NOT pull it down while under load
+for (let i = 1; i <= 60; i++) st = stepSoc(st, { ts: i * 60000, v: 51.0, net: -43.4 }, 434);
+assert.equal(Math.round(st.soc), 40);
+// rest 30 min at 52.8 V (≈ 59.8 %) → eases toward the voltage scale
+for (let i = 61; i <= 90; i++) st = stepSoc(st, { ts: i * 60000, v: 52.8, net: 0.5 }, 434);
+assert.ok(st.soc > 55 && st.soc < 60, 'rest calibration ' + st.soc);
+// hitting 50 V caps at 10 %
+st = stepSoc(st, { ts: 91 * 60000, v: 49.9, net: -40 }, 434);
+assert.equal(st.soc, 10);
+console.log('soc OK');
