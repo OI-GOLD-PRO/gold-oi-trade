@@ -387,13 +387,13 @@
   });
 
   // ---------------- chart drawing ----------------
-  function label(ctx, x, y, text, bg, fg) {
-    ctx.font = `bold 11px ${C('--mono')}`;
-    const w = ctx.measureText(text).width + 12, h = 18;
+  function label(ctx, x, y, text, bg, fg, small) {
+    ctx.font = `bold ${small ? 9 : 11}px ${C('--mono')}`;
+    const pad = small ? 4 : 6, w = ctx.measureText(text).width + pad * 2, h = small ? 13 : 18;
     ctx.globalAlpha = 0.95; ctx.fillStyle = bg;
     ctx.beginPath(); if (ctx.roundRect) ctx.roundRect(x, y - h / 2, w, h, 4); else ctx.rect(x, y - h / 2, w, h); ctx.fill();
     ctx.globalAlpha = 1; ctx.fillStyle = fg; ctx.textAlign = 'left'; ctx.textBaseline = 'middle';
-    ctx.fillText(text, x + 6, y + .5);
+    ctx.fillText(text, x + pad, y + .5);
     return w;
   }
   function handle(ctx, x, y, col) {
@@ -419,7 +419,7 @@
       for (const x of S.positions || []) {
         if (T.mod && !T.mod.isOrder && T.mod.ticket === x.ticket) continue;
         const col = x.side === 'BUY' ? buyC : sellC, y = Y(x.open);
-        if (inPlot(y)) { ctx.globalAlpha = .8; hline(ctx, y, 0, plotW, col, 1, [6, 4]); label(ctx, plotW - 150, y, `${x.side} ${x.lots}  ${sg(x.profit)}`, col, '#fff'); }
+        if (inPlot(y)) { ctx.globalAlpha = .8; hline(ctx, y, 0, plotW, col, 1, [6, 4]); label(ctx, 1, y, `${x.side} ${x.lots} ${sg(x.profit)}`, col, '#fff', true); }
         for (const [k, c] of [['sl', slC], ['tp', tpC]]) { const yy = Y(x[k] > 0 ? x[k] : null); if (inPlot(yy)) { ctx.globalAlpha = .55; hline(ctx, yy, plotW * .55, plotW, c, 1, [2, 3]); ctx.globalAlpha = .8; ctx.font = `9px ${C('--mono')}`; ctx.fillStyle = c; ctx.textAlign = 'right'; ctx.fillText(k.toUpperCase() + ' #' + x.ticket, plotW - 4, yy - 6); } }
       }
       for (const x of S.orders || []) {
@@ -427,7 +427,7 @@
         const y = Y(x.price); if (!inPlot(y)) continue;
         const col = x.type.startsWith('BUY') ? buyC : sellC;
         ctx.globalAlpha = .7; hline(ctx, y, 0, plotW, col, 1, [1, 3]);
-        label(ctx, plotW - 150, y, `${x.type} ${x.lots}`, C('--panel'), col);
+        label(ctx, 1, y, `${x.type} ${x.lots}`, C('--panel'), col, true);
       }
     }
 

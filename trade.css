@@ -171,3 +171,10 @@ body { position: fixed; inset: 0; height: auto !important; padding-bottom: 0 !im
 #ticket .tk-lvl em, #ticket .tk-lvl.sl em, #ticket .tk-lvl.tp em { grid-column: 1 / -1; margin-left: 0; font-size: 10.5px; }
 #ticket .tk-lvl:not(.on) { padding: 9px 9px; }
 .tk-rr { white-space: nowrap; }
+
+/* iOS home-screen app with a translucent status bar: the layout viewport is short by the status bar height */
+@media (display-mode: standalone) {
+  @supports (-webkit-touch-callout: none) {
+    body { bottom: auto !important; height: calc(100vh + env(safe-area-inset-top, 0px)) !important; }
+  }
+}
