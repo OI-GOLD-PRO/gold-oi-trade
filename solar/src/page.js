@@ -113,10 +113,26 @@ svg{display:block;width:100%;height:auto}
       <div class="row"><span>MPPT ชาร์จเข้า</span><span id="ahm">–</span></div>
       <div class="row"><span>อินเวอร์เตอร์ ชาร์จเข้า</span><span id="ahic">–</span></div>
       <div class="row"><span>อินเวอร์เตอร์ ดึงออก</span><span id="ahid">–</span></div>
-      <div class="row"><span>โซลาร์ผลิตรวม</span><span id="pvk">–</span></div>
+      <div class="row"><span>โซลาร์ 1 · อินเวอร์เตอร์ ผลิต</span><span id="pvk1">–</span></div>
+      <div class="row"><span>โซลาร์ 2 · MPPT ผลิต</span><span id="pvk2">–</span></div>
+      <div class="row"><span><b>โซลาร์ผลิตรวม</b></span><span id="pvk"><b>–</b></span></div>
       <div class="row"><span>โหลดใช้ไฟรวม</span><span id="loadk">–</span></div>
       <div class="row"><span>แบตต่ำสุด</span><span id="minv">–</span></div>
       <div class="row"><span>แตะ 50V (จุดตัด)</span><span id="cut">–</span></div>
+    </div>
+  </section>
+
+  <section class="card">
+    <h2>ช่วงมีแดด <span class="label" style="font-weight:400">· ฝั่งอินเวอร์เตอร์ (8 แผง)</span></h2>
+    <div class="label" id="sunwin">ยังไม่มีแดดวันนี้</div>
+    <div class="io" style="margin-top:10px">
+      <div><div class="label">แผงผลิต</div><div class="big num sun"><span id="sunpv">–</span> <small>kWh</small></div></div>
+      <div><div class="label">บ้านใช้ไป</div><div class="big num"><span id="sunload">–</span> <small>kWh</small></div></div>
+    </div>
+    <div class="rows">
+      <div class="row"><span>เหลือชาร์จเข้าแบต</span><span id="sunchg" style="color:var(--charge)">–</span></div>
+      <div class="row"><span>ดึงจากแบตช่วงมีแดด</span><span id="sundis" style="color:var(--drain)">–</span></div>
+      <div class="row"><span>แผงพอใช้ในบ้าน</span><span id="suncover">–</span></div>
     </div>
   </section>
 
@@ -217,8 +233,19 @@ function render(d) {
   $('ahm').textContent = fmt(t.ahMppt, 1) + ' Ah';
   $('ahic').textContent = fmt(t.ahInvChg, 1) + ' Ah';
   $('ahid').textContent = fmt(t.ahInvDis, 1) + ' Ah';
-  const pvMppt = t.mpptTodayKwh || t.kwhPvMppt;
-  $('pvk').textContent = fmt(t.kwhPvInv + pvMppt, 2) + ' kWh';
+  $('pvk1').textContent = fmt(t.pvInvKwh, 2) + ' kWh';
+  $('pvk2').textContent = fmt(t.pvMpptKwh, 2) + ' kWh';
+  $('pvk').innerHTML = '<b>' + fmt(t.pvTotalKwh, 2) + ' kWh</b>';
+
+  if (t.sunStartAt) {
+    const live = L.inv_pv_w >= 30 && Date.now() - t.sunEndAt < 10 * 60000;
+    $('sunwin').textContent = 'แผงเริ่มผลิต ' + hhmm(t.sunStartAt) + ' → ' + (live ? 'ยังผลิตอยู่' : 'หมดแดด ' + hhmm(t.sunEndAt)) + ' · ' + fmt(t.sunHours, 1) + ' ชม.';
+    $('sunpv').textContent = fmt(t.sunPvKwh, 2);
+    $('sunload').textContent = fmt(t.sunLoadKwh, 2);
+    $('sunchg').textContent = fmt(t.sunChgAh, 1) + ' Ah · ' + fmt(t.sunChgKwh, 2) + ' kWh';
+    $('sundis').textContent = fmt(t.sunDisAh, 1) + ' Ah · ' + fmt(t.sunDisKwh, 2) + ' kWh';
+    $('suncover').textContent = t.sunLoadKwh > 0 ? fmt(Math.min(999, (t.sunPvKwh / t.sunLoadKwh) * 100)) + '% ของที่บ้านใช้' : '–';
+  }
   $('loadk').textContent = fmt(t.kwhLoad, 2) + ' kWh';
   $('minv').textContent = t.minV != null ? fmt(t.minV, 1) + ' V · ' + hhmm(t.minVAt) : '–';
   $('cut').textContent = t.cutoffAt ? hhmm(t.cutoffAt) : 'ยังไม่ถึง';

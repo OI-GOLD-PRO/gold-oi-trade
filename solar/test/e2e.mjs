@@ -39,12 +39,13 @@ function sim() {
   return { pv1, pv2, load, mpptA, chg, dis, soc, v };
 }
 let cur;
+globalThis.invKwh = 0;
 globalThis.fetch = async (url) => {
   url = String(url);
   const J = (o) => new Response(JSON.stringify(o));
   if (url.includes('dessmonitor')) {
     if (url.includes('authSource')) return J({ err: 0, dat: { token: 't', secret: 's', expire: 604800 } });
-    if (url.includes('webQueryDeviceEs')) return J({ err: 0, dat: { device: [{ pn: 'Q0044528678206', sn: 'Q004452867820609AD05', devcode: 2451, devaddr: 1 }] } });
+    if (url.includes('webQueryDeviceEs')) return J({ err: 0, dat: { device: [{ pn: 'Q0044528678206', sn: 'Q004452867820609AD05', devcode: 2451, devaddr: 1, energyToday: (globalThis.invKwh || 0).toFixed(1) }] } });
     if (url.includes('querySPDeviceLastData')) return J({ err: 0, dat: { pars: {
       bt_: [{ id: 'bt_battery_voltage', val: cur.v.toFixed(1) }, { id: 'bt_battery_capacity', val: Math.round(cur.soc) }, { id: 'bt_battery_charging_current', val: cur.chg.toFixed(1) }, { id: 'bt_battery_discharge_current', val: cur.dis.toFixed(1) }],
       pv_: [{ id: 'pv_output_power', val: cur.pv1 }], gd_: [{ id: 'gd_ac_input_voltage', val: '236.3' }], bc_: [{ id: 'bc_output_active_power', val: cur.load }] } } });
@@ -64,7 +65,7 @@ globalThis.fetch = async (url) => {
 };
 
 const steps = Number(process.argv[2] || 140); // 06:00 → ~17:40
-for (let i = 0; i < steps; i++) { cur = sim(); await poll(env); clock += Number(process.env.STEP_MS || 300000); }
+for (let i = 0; i < steps; i++) { cur = sim(); if (new Date(clock + 7 * 3600e3).getUTCHours() === 0 && new Date(clock).getUTCMinutes() === 0) globalThis.invKwh = 0; globalThis.invKwh += cur.pv1 * Number(process.env.STEP_MS || 300000) / 3.6e9; await poll(env); clock += Number(process.env.STEP_MS || 300000); }
 const res = await worker.fetch(new Request('https://x/api/now', { headers: { 'x-key': 'demo' } }), env);
 const now = await res.json();
 console.log('latest', now.latest, '\neta', now.eta, '\ntoday', now.today);

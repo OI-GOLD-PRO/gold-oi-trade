@@ -1,6 +1,7 @@
 // Battery bookkeeping: integrate current over time into Ah / kWh per day.
 
 const MAX_GAP_MS = 15 * 60 * 1000; // ignore gaps longer than this (outages, missing polls)
+const SUN_MIN_W = 30;                // inverter PV above this = panels producing
 
 /**
  * Net battery current (+ charging, − discharging).
@@ -24,8 +25,18 @@ export function summarizeDay(samples, cfg) {
     minV: null, minVAt: null, maxV: null,
     minSoc: null, minSocAt: null,
     cutoffAt: null,
-    mpptTodayKwh: null,
+    mpptTodayKwh: null, invTodayKwh: null,
+    // Daylight window, inverter side only: first → last minute the inverter's panels produce.
+    sunStartAt: null, sunEndAt: null, sunHours: 0,
+    sunPvKwh: 0, sunLoadKwh: 0,
+    sunChgAh: 0, sunChgKwh: 0, sunDisAh: 0, sunDisKwh: 0,
   };
+  for (const s of samples) {
+    if ((s.inv_pv_w ?? 0) >= SUN_MIN_W) {
+      if (r.sunStartAt == null) r.sunStartAt = s.ts;
+      r.sunEndAt = s.ts;
+    }
+  }
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
     const v = s.batt_v;
@@ -36,6 +47,7 @@ export function summarizeDay(samples, cfg) {
     }
     if (s.soc != null && (r.minSoc == null || s.soc < r.minSoc)) { r.minSoc = s.soc; r.minSocAt = s.ts; }
     if (s.mppt_today_kwh != null) r.mpptTodayKwh = Math.max(r.mpptTodayKwh ?? 0, s.mppt_today_kwh);
+    if (s.inv_today_kwh != null) r.invTodayKwh = Math.max(r.invTodayKwh ?? 0, s.inv_today_kwh);
 
     const next = samples[i + 1];
     if (!next) break;
@@ -52,7 +64,20 @@ export function summarizeDay(samples, cfg) {
     r.kwhPvInv += ((s.inv_pv_w ?? 0) * h) / 1000;
     r.kwhPvMppt += ((s.mppt_pv_w ?? 0) * h) / 1000;
     r.kwhLoad += ((s.load_w ?? 0) * h) / 1000;
+    if (r.sunStartAt != null && s.ts >= r.sunStartAt && s.ts < r.sunEndAt) {
+      r.sunPvKwh += ((s.inv_pv_w ?? 0) * h) / 1000;
+      r.sunLoadKwh += ((s.load_w ?? 0) * h) / 1000;
+      r.sunChgAh += (s.inv_chg_a ?? 0) * h;
+      r.sunChgKwh += ((s.inv_chg_a ?? 0) * vv * h) / 1000;
+      r.sunDisAh += (s.inv_dis_a ?? 0) * h;
+      r.sunDisKwh += ((s.inv_dis_a ?? 0) * vv * h) / 1000;
+    }
   }
+  if (r.sunStartAt != null) r.sunHours = (r.sunEndAt - r.sunStartAt) / 3600000;
+  // Solar per string: prefer the devices' own day counters, fall back to integrated power.
+  r.pvInvKwh = r.invTodayKwh || r.kwhPvInv;
+  r.pvMpptKwh = r.mpptTodayKwh || r.kwhPvMppt;
+  r.pvTotalKwh = r.pvInvKwh + r.pvMpptKwh;
   for (const k of Object.keys(r)) if (typeof r[k] === 'number' && !/At$|samples|Soc|V$/.test(k)) r[k] = Math.round(r[k] * 100) / 100;
   return r;
 }

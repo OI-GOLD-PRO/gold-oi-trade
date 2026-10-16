@@ -71,6 +71,16 @@ async function request(env, params, retried = false) {
 }
 
 /** Find the inverter (pn/sn/devcode/devaddr) once and cache it. */
+function dayEnergyFromPars(m) {
+  for (const [k, it] of m) {
+    if (/(today|of_day|day).*(energy|generat)|(energy|generat).*(today|of_day|day)/i.test(k) && /pv|solar|generat/i.test(k)) {
+      const v = toNum(it);
+      if (v != null) return /^wh$/i.test((it.unit || '').trim()) ? v / 1000 : v;
+    }
+  }
+  return null;
+}
+
 async function getDevice(env) {
   const cached = await kvGet(env.DB, 'dess_device');
   if (cached) return cached;
@@ -122,10 +132,12 @@ function flowPick(flow, group, par) {
 export async function readInverter(env) {
   const dev = await getDevice(env);
   const base = { pn: dev.pn, devcode: dev.devcode, devaddr: dev.devaddr, sn: dev.sn };
-  const [last, flow] = await Promise.all([
+  const [last, flow, list] = await Promise.all([
     request(env, { action: 'querySPDeviceLastData', i18n: 'en_US', ...base, source: '1' }),
     request(env, { action: 'webQueryDeviceEnergyFlowEs', ...base, source: '1' }).catch(() => null),
+    request(env, { action: 'webQueryDeviceEs', i18n: 'en_US', source: '1', page: '0', pagesize: '15', pn: dev.pn }).catch(() => null),
   ]);
+  const row = (list?.device || []).find((d) => String(d.sn) === dev.sn) || list?.device?.[0];
   const m = indexPars(last.pars);
   const out = {
     battV: pick(m, ['bt_battery_voltage', 'Battery Voltage']),
@@ -138,5 +150,7 @@ export async function readInverter(env) {
     gridV: pick(m, ['gd_ac_input_voltage', 'gd_grid_voltage', 'AC Input Voltage']),
     pvTodayKwh: null,
   };
-  return { values: out, raw: { pars: last.pars, flow } };
+  const rowToday = row?.energyToday != null ? Number(row.energyToday) : null;
+  out.pvTodayKwh = dayEnergyFromPars(m) ?? (Number.isFinite(rowToday) ? rowToday : null);
+  return { values: out, raw: { pars: last.pars, flow, deviceRow: row } };
 }

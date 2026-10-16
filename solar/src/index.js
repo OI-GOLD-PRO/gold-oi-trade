@@ -48,6 +48,7 @@ export async function poll(env, { force = false } = {}) {
     load_w: r2(i.loadW),
     grid_v: r2(i.gridV),
     mppt_today_kwh: m.todayKwh ?? null,
+    inv_today_kwh: i.pvTodayKwh ?? null,
     mppt_temp: m.tempC ?? null,
     err: errs.length ? errs.join(' | ') : null,
   };

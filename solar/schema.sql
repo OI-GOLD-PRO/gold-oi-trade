@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS samples (
   load_w REAL,                 -- house load
   grid_v REAL,                 -- grid voltage
   mppt_today_kwh REAL,         -- MPPT's own day counter
+  inv_today_kwh REAL,          -- inverter's own day counter (SmartESS)
   mppt_temp REAL,
   err TEXT                     -- fetch errors, if any
 );
