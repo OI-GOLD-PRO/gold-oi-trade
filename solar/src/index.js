@@ -20,9 +20,21 @@ const r2 = (x) => (x == null ? null : Math.round(x * 100) / 100);
 // ---- polling ---------------------------------------------------------------
 
 // Tuya free tier ≈ 26k API calls/month → read the MPPT every MPPT_EVERY_MIN minutes and reuse it in between.
+// Night pause: once the MPPT string goes dark after 17:00 (or any time before 05:00) stop calling Tuya
+// until 05:00 — saves ~half the monthly API quota. Cached counters (day kWh, temp) are kept.
+function mpptAsleep(cached) {
+  const h = new Date(Date.now() + 7 * 3600000).getUTCHours();
+  if (h < 5) return true;
+  return h >= 17 && cached && (cached.data?.values?.pvW ?? 0) < 5;
+}
+
 async function readMpptThrottled(env, force) {
   const every = Number(env.MPPT_EVERY_MIN || 2);
   const cached = await kvGet(env.DB, 'mppt_last');
+  if (!force && cached && mpptAsleep(cached)) {
+    const v = cached.data.values;
+    return { values: { ...v, pvV: 0, pvA: 0, pvW: 0, battW: 0, battA: 0, sleeping: true }, raw: null };
+  }
   const minute = Math.floor(Date.now() / 60000);
   if (!force && cached && minute % every !== 0 && Date.now() - cached.ts < (every + 1) * 60000) return cached.data;
   const data = await readMppt(env);
@@ -137,7 +149,9 @@ async function apiNow(env) {
   const today = localDate(Date.now());
   const [a, b] = dayRange(today);
   const day = await samplesBetween(env, a, b);
+  const ml = await kvGet(env.DB, 'mppt_last');
   return {
+    mpptSleeping: !!(ml && mpptAsleep(ml)),
     config: { ...c, dayStartH: DAY_START_H },
     latest: latest && { ...latest, net_a: r2(netBatteryA(latest)) },
     eta: latest ? timeToCutoff(latest, c) : null,

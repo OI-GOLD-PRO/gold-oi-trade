@@ -3,7 +3,7 @@ export const PAGE = /* html */ `<!doctype html>
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>โซลาร์บ้าน</title>
+<title>Stamp HOME</title>
 <link rel="manifest" href="/manifest.json">
 <link rel="icon" type="image/png" href="/icon.png">
 <link rel="apple-touch-icon" href="/icon.png">
@@ -12,7 +12,7 @@ export const PAGE = /* html */ `<!doctype html>
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="theme-color" content="#0f1412">
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&family=Orbitron:wght@600;800&display=swap" rel="stylesheet">
 <style>
 :root{
   --bg:#0f1412; --card:#171e1b; --line:#26302c; --text:#e8efe9; --muted:#8a9a92;
@@ -26,9 +26,16 @@ export const PAGE = /* html */ `<!doctype html>
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 'IBM Plex Sans Thai',system-ui,sans-serif;
   padding:max(14px,env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));max-width:560px;margin-inline:auto}
-header{display:flex;align-items:baseline;justify-content:space-between;margin:4px 2px 12px}
-h1{font-size:20px;margin:0;font-weight:700;letter-spacing:.2px}
-.upd{color:var(--muted);font-size:13px}
+header{margin:2px 2px 14px}
+.topbar{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.ver{font:600 11px var(--num);color:var(--muted);border:1px solid var(--line);border-radius:999px;padding:2px 8px;letter-spacing:.5px}
+.upd{color:var(--muted);font-size:12.5px;text-align:right}
+.brand{text-align:center;margin-top:10px;position:relative}
+.brand h1{margin:0;font-family:'Orbitron',var(--num);font-weight:800;font-size:30px;letter-spacing:3px;line-height:1.1;
+  background:linear-gradient(92deg,var(--sun) 0%,#ffe08a 38%,var(--charge) 100%);-webkit-background-clip:text;background-clip:text;color:transparent;
+  filter:drop-shadow(0 0 12px color-mix(in srgb,var(--sun) 35%,transparent))}
+.brand .bar{height:2px;width:150px;margin:8px auto 0;border-radius:2px;background:linear-gradient(90deg,transparent,var(--charge),var(--sun),transparent);box-shadow:0 0 10px var(--charge)}
+.brand .tag{margin-top:6px;font:600 9.5px 'Orbitron',var(--num);letter-spacing:4px;color:var(--muted)}
 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--charge);margin-right:6px;vertical-align:1px}
 .dot.old{background:var(--drain)}
 .tabs{display:grid;grid-template-columns:1fr 1fr;gap:4px;padding:4px;background:var(--card);border:1px solid var(--line);border-radius:14px;margin-bottom:12px;position:sticky;top:max(6px,env(safe-area-inset-top));z-index:5}
@@ -101,8 +108,15 @@ svg{display:block;width:100%;height:auto}
 </head>
 <body>
 <header>
-  <h1>โซลาร์บ้าน</h1>
-  <div class="upd"><span class="dot" id="dot"></span><span id="upd">กำลังโหลด…</span></div>
+  <div class="topbar">
+    <span class="ver" id="ver"></span>
+    <div class="upd"><span class="dot" id="dot"></span><span id="upd">กำลังโหลด…</span></div>
+  </div>
+  <div class="brand">
+    <h1>Stamp HOME</h1>
+    <div class="bar"></div>
+    <div class="tag">SOLAR · BATTERY · GRID</div>
+  </div>
 </header>
 
 <div class="card keybox" id="keybox">
@@ -168,6 +182,8 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
+const APP_VERSION = 'v1.8';
+document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
 let DAY_START = 5, CFG = { cutoffV: 50 };
@@ -451,7 +467,7 @@ function renderNow(d) {
   }
   $('pv1').innerHTML = watts(L.inv_pv_w);
   $('pv2').innerHTML = watts(L.mppt_pv_w);
-  $('pv2sub').textContent = '4 แผง · ชาร์จ ' + fmt(L.mppt_a, 1) + ' A' + (L.mppt_temp != null ? ' · ' + L.mppt_temp + '°C' : '');
+  $('pv2sub').textContent = d.mpptSleeping ? '4 แผง · พักดึงค่ากลางคืน ถึง 05:00' : '4 แผง · ชาร์จ ' + fmt(L.mppt_a, 1) + ' A' + (L.mppt_temp != null ? ' · ' + L.mppt_temp + '°C' : '');
   $('load').innerHTML = watts(L.load_w);
   $('grid').innerHTML = L.grid_v ? fmt(L.grid_v, 0) + '<small> V</small>' : 'ไม่มีไฟ';
   $('gridsub').textContent = L.grid_v ? 'มีไฟกริด' : 'ไฟดับ / ไม่ได้ต่อ';
