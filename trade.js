@@ -102,11 +102,35 @@
   window.OIT_state = () => S;
   window.OIT_brokerPrice = () => (online && sym() && sym().bid > 0) ? sym().bid : null;
 
+  // ---------------- sounds: order filled / failed ----------------
+  let actx = null;
+  function audio() {
+    try { actx = actx || new (window.AudioContext || window.webkitAudioContext)(); if (actx.state === 'suspended') actx.resume(); } catch (e) { actx = null; }
+    return actx;
+  }
+  // iOS only allows sound after a tap: unlock on the first touch anywhere
+  document.addEventListener('pointerdown', () => audio(), { passive: true });
+  function tone(seq) { // seq: [[freqHz, startSec, durSec], ...]
+    const a = audio(); if (!a) return;
+    const t = a.currentTime + 0.02, g = a.createGain();
+    g.gain.value = 0.9; g.connect(a.destination);
+    for (const [f, st, d] of seq) {
+      const o = a.createOscillator(), e = a.createGain();
+      o.type = 'sine'; o.frequency.value = f; o.connect(e); e.connect(g);
+      e.gain.setValueAtTime(0.0001, t + st);
+      e.gain.exponentialRampToValueAtTime(1, t + st + 0.012);
+      e.gain.exponentialRampToValueAtTime(0.0001, t + st + d);
+      o.start(t + st); o.stop(t + st + d + 0.02);
+    }
+  }
+  const soundOk = () => tone([[880, 0, 0.12], [1318.5, 0.11, 0.22]]);   // rising "ding-ding"
+  const soundFail = () => tone([[330, 0, 0.18], [220, 0.17, 0.3]]);      // falling low tone
+
   function handleResults(list) {
     for (const r of list) {
       if (!pend.has(r.id)) continue;
-      if (r.status === 'done') { O.showToast(`✅ ${esc(pend.get(r.id))} สำเร็จ${r.ticket ? ' <b>#' + r.ticket + '</b>' : ''}`, 5000); vib(30); pend.delete(r.id); }
-      else if (r.status === 'failed' || r.status === 'expired') { O.showToast(`⚠️ ${esc(pend.get(r.id))} ไม่สำเร็จ: ${esc(r.msg || r.status)}`, 10000); vib([80, 60, 80]); pend.delete(r.id); }
+      if (r.status === 'done') { O.showToast(`✅ ${esc(pend.get(r.id))} สำเร็จ${r.ticket ? ' <b>#' + r.ticket + '</b>' : ''}`, 5000); vib(30); soundOk(); pend.delete(r.id); }
+      else if (r.status === 'failed' || r.status === 'expired') { O.showToast(`⚠️ ${esc(pend.get(r.id))} ไม่สำเร็จ: ${esc(r.msg || r.status)}`, 10000); vib([80, 60, 80]); soundFail(); pend.delete(r.id); }
     }
   }
 

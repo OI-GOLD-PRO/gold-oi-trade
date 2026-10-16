@@ -69,6 +69,8 @@ with sync_playwright() as p:
     page.on("pageerror", lambda e: errors.append(str(e)))
     page.on("console", lambda m: m.type == "error" and errors.append(m.text))
     page.on("dialog", lambda d: d.accept())
+    page.add_init_script("""(() => { const C = window.AudioContext; window.__tones = 0;
+      window.AudioContext = function () { const c = new C(); const o = c.createOscillator.bind(c); c.createOscillator = () => { window.__tones++; return o(); }; return c; }; })();""")
     page.goto("http://127.0.0.1:8765/index.html")
     page.screenshot(path=f"{OUT}/0-login.png")
     page.fill("#code", "test-code"); page.click("#loginBtn")
@@ -108,6 +110,7 @@ with sync_playwright() as p:
     page.click("[data-mkt=BUY]")
     page.wait_for_timeout(1800)
     print("sent BUY market:", cmds[-1] if cmds else None)
+    print("sound played on fill:", page.evaluate("() => window.__tones") >= 2)
     page.click("[data-mkt=SELL]")
     page.wait_for_timeout(1200)
     print("sent SELL market (lines mirrored):", cmds[-1])
