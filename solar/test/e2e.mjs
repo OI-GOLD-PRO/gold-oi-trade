@@ -52,6 +52,7 @@ globalThis.fetch = async (url) => {
   }
   if (url.includes('/v1.0/token')) return J({ success: true, result: { access_token: 'x', expire_time: 7200 } });
   if (url.includes('shadow/properties')) {
+    globalThis.tuyaCalls = (globalThis.tuyaCalls || 0) + 1;
     const b = (v, a, w) => Buffer.from([v >> 8, v & 255, a >> 8, a & 255, w >> 8, w & 255]).toString('base64');
     return J({ success: true, result: { properties: [
       { code: 'cur_power', value: Math.round(cur.mpptA * cur.v * 10) },
@@ -63,12 +64,15 @@ globalThis.fetch = async (url) => {
 };
 
 const steps = Number(process.argv[2] || 140); // 06:00 → ~17:40
-for (let i = 0; i < steps; i++) { cur = sim(); await poll(env); clock += 300000; }
+for (let i = 0; i < steps; i++) { cur = sim(); await poll(env); clock += Number(process.env.STEP_MS || 300000); }
 const res = await worker.fetch(new Request('https://x/api/now', { headers: { 'x-key': 'demo' } }), env);
 const now = await res.json();
 console.log('latest', now.latest, '\neta', now.eta, '\ntoday', now.today);
 const unauth = await worker.fetch(new Request('https://x/api/now'), env);
 console.log('no key →', unauth.status);
+const hist = await (await worker.fetch(new Request('https://x/api/history?days=30', { headers: { 'x-key': 'demo' } }), env)).json();
+console.log('tuya calls:', globalThis.tuyaCalls, '| polls:', steps, '| daily rows:', sql.prepare('SELECT COUNT(*) n FROM daily').get().n);
+console.log('history:', hist.map((h) => `${h.date} in ${h.ahIn} out ${h.ahOut} samples ${h.samples}`));
 
 // Serve the page + API locally for a visual check.
 if (process.argv[3] === 'serve') {

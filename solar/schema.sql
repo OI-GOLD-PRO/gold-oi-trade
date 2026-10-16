@@ -18,3 +18,9 @@ CREATE TABLE IF NOT EXISTS kv (
   k TEXT PRIMARY KEY,
   v TEXT
 );
+
+-- One summary row per Thai calendar day, kept forever (JSON from summarizeDay).
+CREATE TABLE IF NOT EXISTS daily (
+  date TEXT PRIMARY KEY,       -- YYYY-MM-DD (Asia/Bangkok)
+  data TEXT
+);

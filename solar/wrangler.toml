@@ -3,9 +3,9 @@ name = "solar-monitor"
 main = "src/index.js"
 compatibility_date = "2026-10-01"
 
-# ดึงข้อมูลทุก 5 นาที
+# ดึงข้อมูลทุก 1 นาที (MPPT ทุก 2 นาที เพื่ออยู่ในโควตาฟรีของ Tuya)
 [triggers]
-crons = ["*/5 * * * *"]
+crons = ["* * * * *"]
 
 [[d1_databases]]
 binding = "DB"
@@ -19,3 +19,4 @@ CUTOFF_SOC = "10"       # % ที่ถือว่าหมด (LiFePO4 50V �
 NOMINAL_V = "51.2"
 TUYA_REGION = "sg"      # Singapore Data Center
 TUYA_DEVICE_ID = "a388c65aef93d7a41bfjah"
+MPPT_EVERY_MIN = "2"

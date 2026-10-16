@@ -138,7 +138,7 @@ svg{display:block;width:100%;height:auto}
   </section>
 
   <button class="btn" onclick="pollNow(this)">ดึงค่าล่าสุดตอนนี้</button>
-  <p class="muted" style="font-size:12px;margin-top:12px">ข้อมูลอัปเดตทุก 5 นาที · ตัวเลข Ah คำนวณจากกระแส MPPT + อินเวอร์เตอร์ (ค่าประมาณ ±5–10%)</p>
+  <p class="muted" style="font-size:12px;margin-top:12px">ข้อมูลอัปเดตทุก 1 นาที · ตัวเลข Ah คำนวณจากกระแส MPPT + อินเวอร์เตอร์ (ค่าประมาณ ±5–10%)</p>
 </div>
 
 <script>
@@ -168,7 +168,7 @@ const ago = (t) => { const m = Math.round((Date.now() - t) / 60000); return m < 
 
 function render(d) {
   const L = d.latest;
-  if (!L) { $('err').style.display = 'block'; $('err').textContent = 'ยังไม่มีข้อมูล รอรอบดึงข้อมูลแรก (ไม่เกิน 5 นาที) หรือกดปุ่ม "ดึงค่าล่าสุดตอนนี้"'; $('app').style.display = 'block'; return; }
+  if (!L) { $('err').style.display = 'block'; $('err').textContent = 'ยังไม่มีข้อมูล รอรอบดึงข้อมูลแรก (ไม่เกิน 1 นาที) หรือกดปุ่ม "ดึงค่าล่าสุดตอนนี้"'; $('app').style.display = 'block'; return; }
   $('app').style.display = 'block';
   const old = Date.now() - L.ts > 20 * 60000;
   $('dot').className = 'dot' + (old ? ' old' : '');
@@ -245,7 +245,7 @@ function chart(s) {
     g += '<text x="' + xx + '" y="' + (H - 5) + '" font-size="10" text-anchor="middle" fill="' + col('--muted') + '">' + String(h).padStart(2, '0') + ':00</text>';
   }
   g += '<line x1="' + P.l + '" x2="' + (P.l + iw) + '" y1="' + yA(0) + '" y2="' + yA(0) + '" stroke="' + col('--line') + '" stroke-dasharray="3 3"/>';
-  const bw = Math.max(1, iw / 288 - 0.3);
+  const bw = Math.max(0.6, iw / Math.max(288, s.length * 1.05));
   for (const p of s) {
     if (p.a == null) continue;
     const y = yA(p.a), y0 = yA(0);
@@ -271,7 +271,7 @@ function renderHist(list) {
 
 async function load() {
   try {
-    const [now, hist] = await Promise.all([api('/api/now'), api('/api/history?days=14')]);
+    const [now, hist] = await Promise.all([api('/api/now'), api('/api/history?days=30')]);
     render(now);
     renderHist(hist);
   } catch (e) {

@@ -17,8 +17,19 @@ const r2 = (x) => (x == null ? null : Math.round(x * 100) / 100);
 
 // ---- polling ---------------------------------------------------------------
 
-export async function poll(env) {
-  const [inv, mppt] = await Promise.allSettled([readInverter(env), readMppt(env)]);
+// Tuya free tier ≈ 26k API calls/month → read the MPPT every MPPT_EVERY_MIN minutes and reuse it in between.
+async function readMpptThrottled(env, force) {
+  const every = Number(env.MPPT_EVERY_MIN || 2);
+  const cached = await kvGet(env.DB, 'mppt_last');
+  const minute = Math.floor(Date.now() / 60000);
+  if (!force && cached && minute % every !== 0 && Date.now() - cached.ts < (every + 1) * 60000) return cached.data;
+  const data = await readMppt(env);
+  await kvSet(env.DB, 'mppt_last', { ts: Date.now(), data });
+  return data;
+}
+
+export async function poll(env, { force = false } = {}) {
+  const [inv, mppt] = await Promise.allSettled([readInverter(env), readMpptThrottled(env, force)]);
   const i = inv.status === 'fulfilled' ? inv.value.values : {};
   const m = mppt.status === 'fulfilled' ? mppt.value.values : {};
   const errs = [];
@@ -51,11 +62,26 @@ export async function poll(env) {
     mppt: mppt.status === 'fulfilled' ? mppt.value : String(mppt.reason),
   });
 
-  // Keep ~120 days of samples.
-  if (new Date().getUTCHours() === 20 && new Date().getUTCMinutes() < 5) {
+  // Daily summary (kept forever): today every 10 min, and yesterday once just after midnight.
+  const nowLocal = new Date(row.ts + 7 * 3600000);
+  const min = nowLocal.getUTCMinutes();
+  if (min % 10 === 0) await saveDay(env, localDate(row.ts));
+  if (nowLocal.getUTCHours() === 0 && min === 5) await saveDay(env, localDate(row.ts - 86400000));
+
+  // Keep ~120 days of per-minute samples (daily summaries stay).
+  if (nowLocal.getUTCHours() === 3 && min === 0) {
     await env.DB.prepare('DELETE FROM samples WHERE ts < ?').bind(Date.now() - 120 * 86400000).run();
   }
   return row;
+}
+
+export async function saveDay(env, date) {
+  const [a, b] = dayRange(date);
+  const list = await samplesBetween(env, a, b);
+  if (!list.length) return;
+  const sum = summarizeDay(list, cfg(env));
+  await env.DB.prepare('INSERT INTO daily (date, data) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET data = excluded.data')
+    .bind(date, JSON.stringify(sum)).run();
 }
 
 // ---- reads -----------------------------------------------------------------
@@ -94,16 +120,11 @@ async function apiDay(env, date) {
 async function apiHistory(env, days) {
   const c = cfg(env);
   const today = localDate(Date.now());
-  const [, end] = dayRange(today);
-  const start = end - days * 86400000;
-  const all = await samplesBetween(env, start, end);
-  const byDay = new Map();
-  for (const s of all) {
-    const d = localDate(s.ts);
-    if (!byDay.has(d)) byDay.set(d, []);
-    byDay.get(d).push(s);
-  }
-  return [...byDay.entries()].reverse().map(([date, list]) => ({ date, ...summarizeDay(list, c) }));
+  const [a, b] = dayRange(today);
+  const live = { date: today, ...summarizeDay(await samplesBetween(env, a, b), c) };
+  const { results } = await env.DB.prepare('SELECT date, data FROM daily WHERE date < ? ORDER BY date DESC LIMIT ?').bind(today, days).all();
+  const past = results.map((r) => ({ date: r.date, ...JSON.parse(r.data) }));
+  return live.samples ? [live, ...past] : past;
 }
 
 // ---- HTTP ------------------------------------------------------------------
@@ -149,8 +170,8 @@ export default {
     try {
       if (path === '/api/now') return json(await apiNow(env));
       if (path === '/api/day') return json(await apiDay(env, url.searchParams.get('date') || localDate(Date.now())));
-      if (path === '/api/history') return json(await apiHistory(env, Math.min(60, Number(url.searchParams.get('days') || 14))));
-      if (path === '/api/poll') return json(await poll(env));
+      if (path === '/api/history') return json(await apiHistory(env, Math.min(3650, Number(url.searchParams.get('days') || 14))));
+      if (path === '/api/poll') return json(await poll(env, { force: true }));
       if (path === '/api/debug') return json(await kvGet(env.DB, 'last_raw'));
       return json({ error: 'not found' }, 404);
     } catch (e) {
