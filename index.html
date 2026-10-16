@@ -168,7 +168,7 @@
 (function () {
   const SYMBOL = 'XAUUSDT';
   // เวอร์ชันแอป: แก้เล็กเพิ่มเลขท้าย (2 หลัก), เพิ่มฟีเจอร์ใหญ่เพิ่มเลขกลาง
-  const APP_VER = '0.4.06'; // based on OI Gold Pro V1.7.00
+  const APP_VER = '0.4.07'; // based on OI Gold Pro V1.7.01
   const ZONE_HALF = 2.5; // ครึ่งความกว้างโซนกำแพง OI ($) รวมเป็นโซน $5
   const TZ_SHIFT = 7 * 3600; // แสดงเวลาไทยบนแกนเวลา
 
@@ -464,10 +464,6 @@
       if (oi.topV && oi.topV.includes(r.strike)) {
         ctx.globalAlpha = 0.95; ctx.lineWidth = 2; ctx.strokeStyle = volC;
         hline(0, mid);
-      }
-      if (hit && hit.strike === r.strike && Date.now() < hit.until) {
-        ctx.globalAlpha = 0.9; ctx.strokeStyle = C('--gold'); ctx.lineWidth = 2.5;
-        ctx.beginPath(); ctx.moveTo(0, Math.round(y) + .5); ctx.lineTo(plotW, Math.round(y) + .5); ctx.stroke();
       }
       // แท่ง Call (บนเส้น) และ Put (ใต้เส้น) ยื่นจากขอบขวา
       ctx.globalAlpha = 0.9;
