@@ -1,7 +1,7 @@
 import { readInverter } from './dess.js';
 import { readMppt } from './tuya.js';
 import { summarizeDay, timeToCutoff, netBatteryA } from './calc.js';
-import { localDate, dayRange, kvGet, kvSet } from './util.js';
+import { localDate, dayRange, kvGet, kvSet, DAY_START_H } from './util.js';
 import { PAGE } from './page.js';
 
 function cfg(env) {
@@ -62,11 +62,11 @@ export async function poll(env, { force = false } = {}) {
     mppt: mppt.status === 'fulfilled' ? mppt.value : String(mppt.reason),
   });
 
-  // Daily summary (kept forever): today every 10 min, and yesterday once just after midnight.
+  // Daily summary (kept forever): current day every 10 min; previous day closed at 05:05.
   const nowLocal = new Date(row.ts + 7 * 3600000);
   const min = nowLocal.getUTCMinutes();
   if (min % 10 === 0) await saveDay(env, localDate(row.ts));
-  if (nowLocal.getUTCHours() === 0 && min === 5) await saveDay(env, localDate(row.ts - 86400000));
+  if (nowLocal.getUTCHours() === 5 && min === 5) await saveDay(env, localDate(row.ts - 86400000));
 
   // Keep ~120 days of per-minute samples (daily summaries stay).
   if (nowLocal.getUTCHours() === 3 && min === 0) {
@@ -98,7 +98,7 @@ async function apiNow(env) {
   const [a, b] = dayRange(today);
   const day = await samplesBetween(env, a, b);
   return {
-    config: c,
+    config: { ...c, dayStartH: DAY_START_H },
     latest: latest && { ...latest, net_a: r2(netBatteryA(latest)) },
     eta: latest ? timeToCutoff(latest, c) : null,
     today: { date: today, ...summarizeDay(day, c) },

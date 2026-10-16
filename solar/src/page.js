@@ -104,7 +104,7 @@ svg{display:block;width:100%;height:auto}
   </div>
 
   <section class="card">
-    <h2>วันนี้</h2>
+    <h2>วันนี้ <span class="label" style="font-weight:400">(ตั้งแต่ 05:00 ถึง 05:00 พรุ่งนี้)</span></h2>
     <div class="io">
       <div><div class="label">ชาร์จเข้าแบต</div><div class="big num" style="color:var(--charge)"><span id="ahin">–</span> <small>Ah</small></div><div class="num muted" id="kwhin">– kWh</div></div>
       <div><div class="label">ใช้ไปจากแบต</div><div class="big num" style="color:var(--drain)"><span id="ahout">–</span> <small>Ah</small></div><div class="num muted" id="kwhout">– kWh</div></div>
@@ -143,6 +143,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
+let DAY_START = 5;
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
 
@@ -176,6 +177,7 @@ function render(d) {
   if (L.err) { $('err').style.display = 'block'; $('err').textContent = 'ดึงข้อมูลบางส่วนไม่ได้: ' + L.err; } else $('err').style.display = 'none';
 
   const c = d.config;
+  DAY_START = c.dayStartH ?? 5;
   $('cap').textContent = '· ' + c.capacityAh + ' Ah';
   $('soc').textContent = fmt(L.soc);
   $('volt').textContent = fmt(L.batt_v, 1) + ' V';
@@ -230,8 +232,9 @@ function chart(s) {
   const css = getComputedStyle(document.documentElement);
   const col = (n) => css.getPropertyValue(n).trim();
   if (!s.length) { $('chart').innerHTML = '<div class="muted">ยังไม่มีข้อมูลวันนี้</div>'; return; }
-  const d0 = new Date(s[0].t + 7 * 3600000); d0.setUTCHours(0, 0, 0, 0);
-  const t0 = d0.getTime() - 7 * 3600000, t1 = t0 + 86400000;
+  const shift = (7 - DAY_START) * 3600000; // solar day starts at DAY_START:00 Thai time
+  const d0 = new Date(s[0].t + shift); d0.setUTCHours(0, 0, 0, 0);
+  const t0 = d0.getTime() - shift, t1 = t0 + 86400000;
   const x = (t) => P.l + ((t - t0) / (t1 - t0)) * iw;
   const maxA = Math.max(10, ...s.map((p) => Math.abs(p.a || 0)));
   const maxPv = Math.max(500, ...s.map((p) => p.pv || 0));
@@ -242,7 +245,7 @@ function chart(s) {
   for (const h of [0, 6, 12, 18, 24]) {
     const xx = x(t0 + h * 3600000);
     g += '<line x1="' + xx + '" x2="' + xx + '" y1="' + P.t + '" y2="' + (P.t + ih) + '" stroke="' + col('--line') + '"/>';
-    g += '<text x="' + xx + '" y="' + (H - 5) + '" font-size="10" text-anchor="middle" fill="' + col('--muted') + '">' + String(h).padStart(2, '0') + ':00</text>';
+    g += '<text x="' + xx + '" y="' + (H - 5) + '" font-size="10" text-anchor="middle" fill="' + col('--muted') + '">' + String((h + DAY_START) % 24).padStart(2, '0') + ':00</text>';
   }
   g += '<line x1="' + P.l + '" x2="' + (P.l + iw) + '" y1="' + yA(0) + '" y2="' + yA(0) + '" stroke="' + col('--line') + '" stroke-dasharray="3 3"/>';
   const bw = Math.max(0.6, iw / Math.max(288, s.length * 1.05));

@@ -21,15 +21,18 @@ export async function hmacSha256(key, text) {
 
 // Thailand is UTC+7 all year (no daylight saving).
 export const TZ_OFFSET_MS = 7 * 3600 * 1000;
+// A "solar day" runs 05:00 → 05:00 so a day's charging and that night's usage stay together.
+export const DAY_START_H = 5;
+const SHIFT_MS = TZ_OFFSET_MS - DAY_START_H * 3600 * 1000;
 
-/** "YYYY-MM-DD" of a timestamp in Thai time. */
+/** "YYYY-MM-DD" of the solar day a timestamp belongs to (Thai time, day starts 05:00). */
 export function localDate(ts) {
-  return new Date(ts + TZ_OFFSET_MS).toISOString().slice(0, 10);
+  return new Date(ts + SHIFT_MS).toISOString().slice(0, 10);
 }
 
-/** [start, end) epoch ms of a Thai calendar day. */
+/** [start, end) epoch ms of a solar day: 05:00 that date → 05:00 next date, Thai time. */
 export function dayRange(dateStr) {
-  const start = Date.parse(`${dateStr}T00:00:00Z`) - TZ_OFFSET_MS;
+  const start = Date.parse(`${dateStr}T00:00:00Z`) - SHIFT_MS;
   return [start, start + 86400000];
 }
 

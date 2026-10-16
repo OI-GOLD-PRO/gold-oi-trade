@@ -33,3 +33,10 @@ const eta = timeToCutoff({ soc: 60, mppt_a: 0, inv_chg_a: 0, inv_dis_a: 21.7 }, 
 console.log('ETA:', eta);
 assert.equal(eta.remainAh, 217); assert.equal(eta.hours, 10);
 console.log('unit tests OK');
+
+// 5) Solar day boundary: 05:00 Thai time
+import { localDate, dayRange } from '../src/util.js';
+assert.equal(localDate(Date.parse('2026-10-17T04:59:00+07:00')), '2026-10-16');
+assert.equal(localDate(Date.parse('2026-10-17T05:00:00+07:00')), '2026-10-17');
+assert.deepEqual(dayRange('2026-10-17'), [Date.parse('2026-10-17T05:00:00+07:00'), Date.parse('2026-10-18T05:00:00+07:00')]);
+console.log('day boundary OK');
