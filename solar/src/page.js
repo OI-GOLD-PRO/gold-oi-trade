@@ -94,6 +94,8 @@ svg{display:block;width:100%;height:auto}
 .keybox button,.btn{width:100%;padding:12px;border-radius:12px;border:0;background:var(--charge);color:#06120c;font-weight:700;font-size:15px;font-family:inherit}
 .muted{color:var(--muted)}
 .hide{display:none}
+.flow{background:radial-gradient(120% 90% at 50% 0%,color-mix(in srgb,var(--charge) 8%,var(--card)),var(--card))}
+.flow svg{max-width:420px;margin:0 auto}
 #day-detail{scroll-margin-top:72px}
 </style>
 </head>
@@ -131,6 +133,8 @@ svg{display:block;width:100%;height:auto}
       </div>
       <div class="eta" id="eta" style="grid-column:1/-1">–</div>
     </section>
+
+    <section class="card flow"><h2>การไหลของพลังงาน <span class="label">· ตอนนี้</span></h2><div id="flow"></div></section>
 
     <div class="tiles">
       <div class="tile"><div class="label">แผงชุด 1 · อินเวอร์เตอร์</div><div class="v num sun" id="pv1">–</div><div class="sub">8 แผง</div></div>
@@ -244,6 +248,87 @@ const CHARTS = [
 ];
 
 function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+// ---------- energy flow diagram ----------
+function renderFlow(L) {
+  const V = L.batt_v || 51.2;
+  const pv1 = Math.max(0, L.inv_pv_w || 0), pv2 = Math.max(0, L.mppt_pv_w || 0);
+  const load = Math.max(0, L.load_w || 0);
+  const c1 = (L.inv_chg_a || 0) - (L.inv_dis_a || 0);           // + inverter → battery
+  const invBatW = c1 * V, mpptBatW = Math.max(0, (L.mppt_a || 0) * V);
+  let gridW = load + Math.max(0, invBatW) - pv1 - Math.max(0, -invBatW);
+  gridW = L.grid_v ? Math.max(0, gridW) : 0;
+  if (gridW < 40) gridW = 0;
+  const soc = L.soc_calc ?? L.soc ?? 0;
+  const C = { sun: css('--sun'), sun2: css('--sun2'), chg: css('--charge'), dr: css('--drain'), grid: css('--grid'), text: css('--text'), muted: css('--muted'), line: css('--line'), card: css('--card') };
+  const kw = (w) => (w >= 1000 ? (w / 1000).toFixed(2) + ' kW' : Math.round(w) + ' W');
+
+  // edges: path, watts, color, reverse?
+  const E = [
+    { d: 'M180,74 V124', w: pv1, c: C.sun },                          // PV1 → inverter
+    { d: 'M290,74 V128', w: pv2, c: C.sun2 },                         // PV2 → MPPT
+    { d: 'M290,170 V222', w: mpptBatW, c: C.chg },                    // MPPT → battery
+    { d: 'M78,150 H140', w: gridW, c: C.grid },                       // grid → inverter
+    { d: 'M180,176 V222', w: load, c: C.text },                       // inverter → home
+    { d: 'M220,160 C254,160 260,236 268,248', w: Math.abs(invBatW), c: invBatW >= 0 ? C.chg : C.dr, rev: invBatW < 0 }, // inverter ↔ battery
+  ];
+  let g = '<defs><filter id="glow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter>' +
+    '<radialGradient id="hub" cx="50%" cy="40%" r="70%"><stop offset="0" stop-color="' + C.chg + '" stop-opacity=".35"/><stop offset="1" stop-color="' + C.chg + '" stop-opacity="0"/></radialGradient></defs>';
+  // faint tech grid
+  for (let x = 20; x < 360; x += 20) g += '<line x1="' + x + '" y1="0" x2="' + x + '" y2="300" stroke="' + C.line + '" stroke-width=".5" opacity=".5"/>';
+  for (let y = 20; y < 300; y += 20) g += '<line x1="0" y1="' + y + '" x2="360" y2="' + y + '" stroke="' + C.line + '" stroke-width=".5" opacity=".5"/>';
+
+  E.forEach((e, i) => {
+    const on = e.w >= 20;
+    g += '<path id="fp' + i + '" d="' + e.d + '" fill="none" stroke="' + (on ? e.c : C.muted) + '" stroke-width="' + (on ? 2.4 : 1.4) + '" opacity="' + (on ? .55 : .25) + '" stroke-dasharray="' + (on ? '' : '3 4') + '" stroke-linecap="round"/>';
+    if (on) {
+      const dur = Math.max(0.6, Math.min(3.2, 3.4 - Math.log10(e.w) * 0.9)).toFixed(2);
+      for (let k = 0; k < 3; k++) {
+        g += '<circle r="3.2" fill="' + e.c + '" filter="url(#glow)"><animateMotion dur="' + dur + 's" repeatCount="indefinite" begin="' + (k * dur / 3).toFixed(2) + 's"' +
+          (e.rev ? ' keyPoints="1;0" keyTimes="0;1" calcMode="linear"' : '') + '><mpath href="#fp' + i + '"/></animateMotion></circle>';
+      }
+    }
+  });
+
+  const node = (x, y, r, color, inner, active) =>
+    '<circle cx="' + x + '" cy="' + y + '" r="' + (r + 6) + '" fill="' + color + '" opacity="' + (active ? .12 : .04) + '"/>' +
+    '<circle cx="' + x + '" cy="' + y + '" r="' + r + '" fill="' + C.card + '" stroke="' + color + '" stroke-width="1.6" opacity="' + (active ? 1 : .55) + '"' + (active ? ' filter="url(#glow)"' : '') + '/>' + inner;
+  const panel = (x, y, col) => '<g transform="translate(' + (x - 13) + ',' + (y - 8) + ')" stroke="' + col + '" fill="none" stroke-width="1.4"><path d="M3,0 H26 L23,16 H0 Z"/><path d="M10,0 L8,16 M17,0 L15,16 M1.5,8 H24.5"/></g>';
+  const label = (x, y, t, v, col, anchor) => '<text x="' + x + '" y="' + y + '" text-anchor="' + (anchor || 'middle') + '" font-size="10" fill="' + C.muted + '">' + t + '</text>' +
+    '<text x="' + x + '" y="' + (y + 14) + '" text-anchor="' + (anchor || 'middle') + '" font-size="12.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + col + '">' + v + '</text>';
+
+  // PV1
+  g += node(180, 50, 22, C.sun, panel(180, 50, C.sun), pv1 >= 20) + label(148, 42, 'แผงชุด 1', kw(pv1), C.sun, 'end');
+  // PV2
+  g += node(290, 50, 22, C.sun2, panel(290, 50, C.sun2), pv2 >= 20) + label(300, 92, 'แผงชุด 2', kw(pv2), C.sun2, 'start');
+  // Inverter hub
+  g += '<rect x="132" y="122" width="96" height="56" rx="14" fill="url(#hub)"/>' +
+       '<rect x="140" y="126" width="80" height="48" rx="12" fill="' + C.card + '" stroke="' + C.chg + '" stroke-width="1.6" filter="url(#glow)"/>' +
+       '<path d="M156,146 q6,-10 12,0 t12,0 t12,0" fill="none" stroke="' + C.chg + '" stroke-width="2" stroke-linecap="round" transform="translate(4,0)"/>' +
+       '<text x="180" y="166" text-anchor="middle" font-size="9.5" fill="' + C.muted + '" letter-spacing="1">INVERTER</text>';
+  // MPPT
+  g += '<rect x="266" y="130" width="48" height="40" rx="10" fill="' + C.card + '" stroke="' + C.sun2 + '" stroke-width="1.4" opacity="' + (pv2 >= 20 ? 1 : .6) + '"/>' +
+       '<text x="290" y="154" text-anchor="middle" font-size="10" font-weight="700" fill="' + C.sun2 + '">MPPT</text>' +
+       '<text x="300" y="200" font-size="11.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + C.chg + '">' + (L.mppt_a != null ? L.mppt_a.toFixed(1) : '–') + 'A</text>';
+  // Grid tower
+  const gridOn = !!L.grid_v;
+  g += node(52, 150, 22, C.grid, '<g stroke="' + C.grid + '" fill="none" stroke-width="1.4" stroke-linejoin="round"><path d="M45,166 L52,134 L59,166 M47,156 H57 M48.5,146 H55.5 M42,140 H62"/></g>', gridW > 0) +
+       label(52, 188, 'กริด ' + (gridOn ? Math.round(L.grid_v) + 'V' : 'ไม่มีไฟ'), gridW > 0 ? '~' + kw(gridW) : (gridOn ? 'สแตนด์บาย' : '–'), C.grid);
+  // Home
+  g += node(180, 250, 24, C.text, '<path d="M168,252 L180,240 L192,252 M171,250 V262 H189 V250" fill="none" stroke="' + C.text + '" stroke-width="1.6" stroke-linejoin="round"/><path d="M178,262 V255 H182 V262" fill="none" stroke="' + C.text + '" stroke-width="1.4"/>', load >= 20) +
+       label(132, 246, 'บ้านใช้', kw(load), C.text, 'end');
+  // Battery
+  const bc = soc < 20 ? C.dr : soc < 45 ? C.sun : C.chg;
+  const fillH = Math.max(1, Math.min(26, (soc / 100) * 26));
+  g += '<circle cx="290" cy="250" r="30" fill="' + bc + '" opacity=".1"/>' +
+       '<rect x="276" y="230" width="28" height="40" rx="5" fill="' + C.card + '" stroke="' + bc + '" stroke-width="1.8" filter="url(#glow)"/>' +
+       '<rect x="284" y="225" width="12" height="5" rx="1.5" fill="' + bc + '"/>' +
+       '<rect x="280" y="' + (266 - fillH) + '" width="20" height="' + fillH + '" rx="2.5" fill="' + bc + '" opacity=".85"/>' +
+       '<text x="290" y="290" text-anchor="middle" font-size="12.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + bc + '">' + Math.round(soc) + '%</text>' +
+       label(252, 268, (L.batt_v != null ? L.batt_v.toFixed(1) + 'V' : ''), (invBatW >= 0 ? '+' : '') + ((c1 + (L.mppt_a || 0))).toFixed(1) + 'A', (c1 + (L.mppt_a || 0)) >= 0 ? C.chg : C.dr, 'end');
+  $('flow').innerHTML = '<svg viewBox="0 0 360 300" role="img" aria-label="แผนภาพการไหลของพลังงาน">' + g + '</svg>';
+}
+
 
 function renderCharts(el, S, date) {
   const t0 = Date.parse(date + 'T00:00:00Z') - (7 - DAY_START) * 3600000, t1 = t0 + 86400000;
@@ -367,6 +452,7 @@ function renderNow(d) {
   t.sunLive = L.inv_pv_w >= 30 && t.sunEndAt && Date.now() - t.sunEndAt < 10 * 60000;
   $('today-summary').innerHTML = summaryHTML(t, 'วันนี้ <span class="label">· 05:00 ถึง 05:00 พรุ่งนี้</span>');
   renderCharts($('today-charts'), d.series, t.date);
+  renderFlow(L);
 }
 
 // ---------- history: calendar ----------
