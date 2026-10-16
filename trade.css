@@ -172,9 +172,6 @@ body { position: fixed; inset: 0; height: auto !important; padding-bottom: 0 !im
 #ticket .tk-lvl:not(.on) { padding: 9px 9px; }
 .tk-rr { white-space: nowrap; }
 
-/* iOS home-screen app with a translucent status bar: the layout viewport is short by the status bar height */
-@media (display-mode: standalone) {
-  @supports (-webkit-touch-callout: none) {
-    body { bottom: auto !important; height: calc(100vh + env(safe-area-inset-top, 0px)) !important; }
-  }
-}
+/* iOS home-screen app: the strip under the web view shows the page background — paint it the panel color
+   so the bottom of the screen looks continuous with the trade buttons (the top stays chart-dark) */
+html { background: linear-gradient(to bottom, var(--bg) 50%, var(--panel) 50%) !important; }
