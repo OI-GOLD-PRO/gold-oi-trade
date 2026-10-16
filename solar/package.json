@@ -1,0 +1,6 @@
+{
+  "name": "solar-monitor",
+  "private": true,
+  "type": "module",
+  "scripts": { "test": "node test/run.mjs" }
+}

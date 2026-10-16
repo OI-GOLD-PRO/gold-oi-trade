@@ -1,0 +1,21 @@
+# โซลาร์บ้าน — Worker แยกจาก hub ของแอป OI (คนละชื่อ คนละฐานข้อมูล)
+name = "solar-monitor"
+main = "src/index.js"
+compatibility_date = "2026-10-01"
+
+# ดึงข้อมูลทุก 5 นาที
+[triggers]
+crons = ["*/5 * * * *"]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "solar-monitor-db"
+database_id = "__D1_ID__"   # GitHub Actions ใส่ให้อัตโนมัติตอนขึ้นระบบ
+
+[vars]
+CAPACITY_AH = "434"     # 314 Ah + ลูกมือสอง ~120 Ah
+CUTOFF_V = "50"         # แรงดันตัด
+CUTOFF_SOC = "10"       # % ที่ถือว่าหมด (LiFePO4 50V ≈ 10%)
+NOMINAL_V = "51.2"
+TUYA_REGION = "sg"      # Singapore Data Center
+TUYA_DEVICE_ID = "a388c65aef93d7a41bfjah"

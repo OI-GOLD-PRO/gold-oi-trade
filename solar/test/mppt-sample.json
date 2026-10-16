@@ -1,0 +1,342 @@
+{
+  "result": {
+    "properties": [
+      {
+        "code": "charge_mode",
+        "custom_name": "",
+        "dp_id": 1,
+        "name": "",
+        "time": 1784992392598,
+        "type": "enum",
+        "value": "mode_1"
+      },
+      {
+        "code": "voltage_current",
+        "custom_name": "",
+        "dp_id": 2,
+        "name": "",
+        "time": 1784992392598,
+        "type": "value",
+        "value": 0
+      },
+      {
+        "code": "voltage_current_1",
+        "custom_name": "",
+        "dp_id": 3,
+        "name": "",
+        "time": 1784992392598,
+        "type": "value",
+        "value": 0
+      },
+      {
+        "code": "cur_current",
+        "custom_name": "",
+        "dp_id": 4,
+        "name": "",
+        "time": 1784992392598,
+        "type": "value",
+        "value": 0
+      },
+      {
+        "code": "power_current",
+        "custom_name": "",
+        "dp_id": 5,
+        "name": "",
+        "time": 1784992392598,
+        "type": "value",
+        "value": 0
+      },
+      {
+        "code": "switch",
+        "custom_name": "",
+        "dp_id": 6,
+        "name": "",
+        "time": 1784992392598,
+        "type": "bool",
+        "value": false
+      },
+      {
+        "code": "fault",
+        "custom_name": "",
+        "dp_id": 7,
+        "name": "",
+        "time": 1792107301760,
+        "type": "bitmap",
+        "value": 64
+      },
+      {
+        "code": "device_mode",
+        "custom_name": "",
+        "dp_id": 8,
+        "name": "",
+        "time": 1784992392598,
+        "type": "enum",
+        "value": "0H"
+      },
+      {
+        "code": "runtime_total",
+        "custom_name": "",
+        "dp_id": 9,
+        "name": "",
+        "time": 1784992392598,
+        "type": "value",
+        "value": 0
+      },
+      {
+        "code": "electric_total",
+        "custom_name": "",
+        "dp_id": 10,
+        "name": "",
+        "time": 1784992392598,
+        "type": "value",
+        "value": 0
+      },
+      {
+        "code": "overvol_value",
+        "custom_name": "",
+        "dp_id": 11,
+        "name": "",
+        "time": 1791095694191,
+        "type": "value",
+        "value": 582
+      },
+      {
+        "code": "undervol_value",
+        "custom_name": "",
+        "dp_id": 12,
+        "name": "",
+        "time": 1791095694412,
+        "type": "value",
+        "value": 460
+      },
+      {
+        "code": "current_max",
+        "custom_name": "",
+        "dp_id": 13,
+        "name": "",
+        "time": 1784992392598,
+        "type": "value",
+        "value": 0
+      },
+      {
+        "code": "self_checking",
+        "custom_name": "",
+        "dp_id": 14,
+        "name": "",
+        "time": 1784992392598,
+        "type": "bool",
+        "value": false
+      },
+      {
+        "code": "switch_1",
+        "custom_name": "",
+        "dp_id": 15,
+        "name": "",
+        "time": 1787752939303,
+        "type": "bool",
+        "value": false
+      },
+      {
+        "code": "usb_switch_1",
+        "custom_name": "",
+        "dp_id": 16,
+        "name": "",
+        "time": 1784992392598,
+        "type": "bool",
+        "value": false
+      },
+      {
+        "code": "usb_switch_2",
+        "custom_name": "",
+        "dp_id": 17,
+        "name": "",
+        "time": 1784992392598,
+        "type": "bool",
+        "value": false
+      },
+      {
+        "code": "cur_power",
+        "custom_name": "",
+        "dp_id": 101,
+        "name": "",
+        "time": 1792144250914,
+        "type": "value",
+        "value": 1307
+      },
+      {
+        "code": "forward_energy_total",
+        "custom_name": "",
+        "dp_id": 102,
+        "name": "",
+        "time": 1792144251027,
+        "type": "value",
+        "value": 639
+      },
+      {
+        "code": "reverse_energy_total",
+        "custom_name": "",
+        "dp_id": 103,
+        "name": "",
+        "time": 1792083626182,
+        "type": "value",
+        "value": 5291
+      },
+      {
+        "code": "phase_a",
+        "custom_name": "",
+        "dp_id": 104,
+        "name": "",
+        "time": 1792144251238,
+        "type": "raw",
+        "value": "BnkACAXQ"
+      },
+      {
+        "code": "phase_b",
+        "custom_name": "",
+        "dp_id": 105,
+        "name": "",
+        "time": 1792144251480,
+        "type": "raw",
+        "value": "AgwAGwII"
+      },
+      {
+        "code": "phase_c",
+        "custom_name": "",
+        "dp_id": 106,
+        "name": "",
+        "time": 1792144251584,
+        "type": "raw",
+        "value": "AAAAAAAA"
+      },
+      {
+        "code": "switch_8",
+        "custom_name": "",
+        "dp_id": 107,
+        "name": "",
+        "time": 1784992392598,
+        "type": "bool",
+        "value": false
+      },
+      {
+        "code": "temp_current",
+        "custom_name": "",
+        "dp_id": 108,
+        "name": "",
+        "time": 1792144064597,
+        "type": "value",
+        "value": 48
+      },
+      {
+        "code": "switch_4",
+        "custom_name": "",
+        "dp_id": 109,
+        "name": "",
+        "time": 1784992392598,
+        "type": "bool",
+        "value": false
+      },
+      {
+        "code": "cel_vol_under",
+        "custom_name": "",
+        "dp_id": 110,
+        "name": "",
+        "time": 1791095694400,
+        "type": "value",
+        "value": 520
+      },
+      {
+        "code": "work_mode",
+        "custom_name": "",
+        "dp_id": 111,
+        "name": "",
+        "time": 1791095694597,
+        "type": "enum",
+        "value": "USER"
+      },
+      {
+        "code": "mode",
+        "custom_name": "",
+        "dp_id": 112,
+        "name": "",
+        "time": 1791095694622,
+        "type": "enum",
+        "value": "USE"
+      },
+      {
+        "code": "oven_time",
+        "custom_name": "",
+        "dp_id": 113,
+        "name": "",
+        "time": 1791095694817,
+        "type": "value",
+        "value": 24
+      },
+      {
+        "code": "alarm_bright",
+        "custom_name": "",
+        "dp_id": 114,
+        "name": "",
+        "time": 1791095694499,
+        "type": "value",
+        "value": 100
+      },
+      {
+        "code": "rtc_timer",
+        "custom_name": "",
+        "dp_id": 115,
+        "name": "",
+        "time": 1791095778098,
+        "type": "raw",
+        "value": "Eh4GHg=="
+      },
+      {
+        "code": "switch_led",
+        "custom_name": "",
+        "dp_id": 116,
+        "name": "",
+        "time": 1787112700322,
+        "type": "bool",
+        "value": false
+      },
+      {
+        "code": "balance_vol",
+        "custom_name": "",
+        "dp_id": 117,
+        "name": "",
+        "time": 1791095694087,
+        "type": "value",
+        "value": 579
+      },
+      {
+        "code": "mcu_info",
+        "custom_name": "",
+        "dp_id": 118,
+        "name": "",
+        "time": 1787075048532,
+        "type": "string",
+        "value": "HM-4096"
+      },
+      {
+        "code": "battery_info",
+        "custom_name": "",
+        "dp_id": 119,
+        "name": "",
+        "time": 1787075048542,
+        "type": "string",
+        "value": "3C0B594B2D0C"
+      },
+      {
+        "code": "device_restart",
+        "custom_name": "",
+        "dp_id": 120,
+        "name": "",
+        "time": 1784992392598,
+        "type": "bool",
+        "value": false
+      }
+    ]
+  },
+  "success": true,
+  "t": 1792144293270,
+  "tid": "2b5abe73c94711f196e0ee6127e7a251"
+}
