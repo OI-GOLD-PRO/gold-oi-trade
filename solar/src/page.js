@@ -69,6 +69,12 @@ h2 .label{font-weight:400}
 .row:last-child{border-bottom:0}
 .row span:last-child{font-family:var(--num);font-weight:500;text-align:right}
 .row.total span{font-weight:700}
+.row.hl{margin:6px -10px;padding:12px 12px;border:1px solid color-mix(in srgb,var(--grid) 55%,transparent);border-radius:12px;
+  background:linear-gradient(90deg,color-mix(in srgb,var(--grid) 18%,transparent),color-mix(in srgb,var(--grid) 6%,transparent));
+  box-shadow:0 0 14px color-mix(in srgb,var(--grid) 25%,transparent)}
+.row.hl span:first-child{font-weight:700;color:var(--text)}
+.row.hl span:last-child{font-size:20px;font-weight:700;color:var(--grid)}
+.row.hl small{font-size:12px;color:var(--muted);font-weight:500}
 .sub-h{margin:14px 0 2px;font-size:12px;color:var(--muted);letter-spacing:.3px}
 svg{display:block;width:100%;height:auto}
 .ch{padding:10px 0 6px;border-top:1px solid var(--line)}
@@ -182,7 +188,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.1';
+const APP_VERSION = 'v2.2';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -243,7 +249,7 @@ function summaryHTML(t, title) {
       '<div class="row"><span>แผงชุด 1 · อินเวอร์เตอร์</span><span>' + fmt(t.pvInvKwh, 2) + ' kWh</span></div>' +
       '<div class="row"><span>แผงชุด 2 · MPPT</span><span>' + fmt(t.pvMpptKwh, 2) + ' kWh</span></div>' +
       '<div class="row total"><span>แผงรวม</span><span>' + fmt(t.pvTotalKwh, 2) + ' kWh</span></div>' +
-      '<div class="row total"><span>ไฟที่บ้านใช้ทั้งวัน</span><span>' + fmt(t.kwhLoad, 2) + ' kWh</span></div>' +
+      '<div class="row hl"><span>🏠 ไฟที่บ้านใช้ทั้งวัน</span><span>' + fmt(t.kwhLoad, 2) + ' <small>kWh</small></span></div>' +
     '</div>' +
     '<div class="sub-h">ช่วงมีแดด · ฝั่งอินเวอร์เตอร์</div><div class="label" style="margin-top:4px">' + sun + '</div><div class="rows">' +
       '<div class="row"><span>แผงผลิต</span><span class="sun">' + fmt(t.sunPvKwh, 2) + ' kWh</span></div>' +
