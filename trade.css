@@ -191,3 +191,10 @@ button.icon { width: 30px !important; height: 30px !important; font-size: 14px !
 .tfs #maxBtn { flex: none; width: 30px; font-size: 13px; }
 body.oit-max .legend, body.oit-max #acct, body.oit-max #ticket > .tk-row:not(#tkMkt):not(#tkModRow), body.oit-max #tkMod { display: none !important; }
 body.oit-max #ticket { border-top: 0; }
+
+/* Gold Scalping section inside the ƒx menu */
+#indMenu .gsbox { display: grid; gap: 5px; border-bottom: 1px solid var(--line); padding-bottom: 6px; }
+#indMenu .gsbox .row { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+#indMenu .gsbox .gsb { padding: 5px 8px; font: 600 11px var(--sans); }
+#indMenu .gsbox .gsinfo { font: 10px var(--sans); color: var(--muted); }
+#indMenu .gsbox select { padding: 3px 2px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: 600 11px var(--mono); }

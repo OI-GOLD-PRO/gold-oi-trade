@@ -126,6 +126,22 @@ with sync_playwright() as p:
     page.click("#tkPendX"); page.wait_for_timeout(200)
     print("indicator/draw buttons present:", page.evaluate("() => !!document.getElementById('indBtn') && !!document.getElementById('drawBtn')"))
 
+    # Gold Scalping indicator: normal vs OI mode
+    page.click("#indBtn"); page.wait_for_timeout(300)
+    page.click("[data-gst=on]"); page.wait_for_timeout(1800)
+    gs = page.evaluate("() => { const g = window.OIT_goldScalp; return { on: g.cfg.on, sig: g.result && g.result.nSig }; }")
+    page.screenshot(path=f"{OUT}/12-gs-menu.png")
+    page.evaluate("() => document.getElementById('indMenu').hidden = true"); page.wait_for_timeout(500)
+    page.screenshot(path=f"{OUT}/12-gs-normal.png")
+    page.click("#indBtn"); page.wait_for_timeout(200)
+    page.click("[data-gsm=oi]"); page.wait_for_timeout(1500)
+    gs2 = page.evaluate("() => { const g = window.OIT_goldScalp; return { sig: g.result && g.result.nSig, zones: g.result && g.result.nZones }; }")
+    page.evaluate("() => document.getElementById('indMenu').hidden = true"); page.wait_for_timeout(500)
+    page.screenshot(path=f"{OUT}/13-gs-oi.png")
+    page.click("#indBtn"); page.wait_for_timeout(200)
+    print("goldscalp normal:", gs, " oi:", gs2, " menu inputs:", page.evaluate("() => document.querySelectorAll('#gsBox [data-gs]').length"))
+    page.click("#indBtn") if page.is_visible("#indMenu") else None
+    page.wait_for_timeout(200)
     page.click("#maxBtn"); page.wait_for_timeout(400)
     page.screenshot(path=f"{OUT}/11-max.png")
     print("max: acct hidden", page.evaluate("() => getComputedStyle(document.getElementById('acct')).display === 'none'"), "market row visible", page.is_visible("#tkMkt"))
