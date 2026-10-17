@@ -182,7 +182,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v1.8';
+const APP_VERSION = 'v1.9';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -339,7 +339,7 @@ function renderFlow(L) {
        label(132, 246, 'บ้านใช้', kw(load), C.text, 'end');
   // DC bus (battery terminals: MPPT, inverter and cells meet here)
   g += '<circle cx="290" cy="185" r="9" fill="' + C.card + '" stroke="' + C.muted + '" stroke-width="1.4"/><text x="290" y="188.5" text-anchor="middle" font-size="7.5" font-weight="700" fill="' + C.muted + '">DC</text>' +
-       (Math.abs(invBatW) > 20 ? '<text x="242" y="206" text-anchor="middle" font-size="9" fill="' + C.muted + '">' + (invBatW < 0 ? 'ไปอินเวอร์เตอร์' : 'จากอินเวอร์เตอร์') + '</text><text x="242" y="218" text-anchor="middle" font-size="10.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + (invBatW < 0 ? C.sun2 : C.chg) + '">' + kw(Math.abs(invBatW)) + '</text>' : '');
+       (Math.abs(invBatW) > 20 ? '<text x="242" y="206" text-anchor="middle" font-size="9" fill="' + C.muted + '">' + (invBatW < 0 ? 'ไปอินเวอร์เตอร์' : 'จากอินเวอร์เตอร์') + '</text><text x="242" y="218" text-anchor="middle" font-size="10.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + (invBatW < 0 ? C.sun2 : C.chg) + '">' + kw(Math.abs(invBatW)) + '</text><text x="242" y="231" text-anchor="middle" font-size="10.5" font-weight="700" font-family="JetBrains Mono,monospace" fill="' + (invBatW < 0 ? C.sun2 : C.chg) + '">' + Math.abs(c1).toFixed(1) + 'A</text>' : '');
   // Battery
   const bc = soc < 20 ? C.dr : soc < 45 ? C.sun : C.chg;
   const fillH = Math.max(1, Math.min(26, (soc / 100) * 26));
