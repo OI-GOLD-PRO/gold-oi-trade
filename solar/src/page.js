@@ -182,11 +182,13 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.0';
+const APP_VERSION = 'v2.1';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
 let DAY_START = 5, CFG = { cutoffV: 50 };
+// Usable % shown to the user: 0 % = cut-off (50 V, the 10 % reserve), 100 % = full.
+const usable = (soc) => (soc == null ? null : Math.max(0, Math.min(100, ((soc - (CFG.cutoffSoc ?? 10)) / (100 - (CFG.cutoffSoc ?? 10))) * 100)));
 
 function saveKey() {
   KEY = $('keyin').value.trim();
@@ -278,7 +280,7 @@ function renderFlow(L) {
   let gridW = load + Math.max(0, invBatW) - pv1 - Math.max(0, -invBatW);
   gridW = L.grid_v ? Math.max(0, gridW) : 0;
   if (gridW < 40) gridW = 0;
-  const soc = L.soc_calc ?? L.soc ?? 0;
+  const soc = usable(L.soc_calc ?? L.soc) ?? 0;
   const C = { sun: css('--sun'), sun2: css('--sun2'), chg: css('--charge'), dr: css('--drain'), grid: css('--grid'), text: css('--text'), muted: css('--muted'), line: css('--line'), card: css('--card') };
   const kw = (w) => (w >= 1000 ? (w / 1000).toFixed(2) + ' kW' : Math.round(w) + ' W');
 
@@ -444,10 +446,11 @@ function renderNow(d) {
   if (L.err) { $('err').style.display = 'block'; $('err').textContent = 'ดึงข้อมูลบางส่วนไม่ได้: ' + L.err; } else $('err').style.display = 'none';
 
   $('cap').textContent = '· ' + CFG.capacityAh + ' Ah';
-  const socMain = L.soc_calc ?? L.soc;
+  const socRaw = L.soc_calc ?? L.soc;
+  const socMain = usable(socRaw);
   $('soc').textContent = fmt(socMain);
   $('volt').textContent = fmt(L.batt_v, 1) + ' V';
-  $('socinv').textContent = L.soc_calc != null && L.soc != null ? 'อินเวอร์เตอร์บอก ' + fmt(L.soc) + '%' : '';
+  $('socinv').textContent = 'ใช้ได้จริงก่อนถึง ' + CFG.cutoffV + 'V' + (socRaw != null ? ' · รวมสำรองในแบต ' + fmt(socRaw) + '%' : '') + (L.soc_calc != null && L.soc != null ? ' · อินเวอร์เตอร์บอก ' + fmt(L.soc) + '%' : '');
   const pct = Math.max(0, Math.min(100, socMain ?? 0));
   $('fill').style.height = 'calc(' + pct + '% - 8px)';
   $('fill').style.background = pct < 25 ? 'var(--drain)' : pct < 45 ? 'var(--sun)' : 'var(--charge)';
