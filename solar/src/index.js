@@ -66,6 +66,11 @@ export async function poll(env, { force = false } = {}) {
     mppt_temp: m.tempC ?? null,
     err: errs.length ? errs.join(' | ') : null,
   };
+  // One-time re-baseline: battery was empty (hit cut-off) — replay the Ah counter from that moment.
+  if (!(await kvGet(env.DB, 'soc_rebase_v1'))) {
+    await rebaseSoc(env, row.ts);
+    await kvSet(env.DB, 'soc_rebase_v1', { at: row.ts });
+  }
   // App-side battery % (Ah counting + voltage calibration at rest).
   if (row.batt_v != null) {
     const st = stepSoc(await kvGet(env.DB, 'soc_state'), { ts: row.ts, v: row.batt_v, net: netBatteryA(row) }, cfg(env).capacityAh);
@@ -94,6 +99,31 @@ export async function poll(env, { force = false } = {}) {
     await env.DB.prepare('DELETE FROM samples WHERE ts < ?').bind(Date.now() - 120 * 86400000).run();
   }
   return row;
+}
+
+/**
+ * Re-baseline the app battery %: start at the empty point (cut-off %) from the last time the bank
+ * touched the cut-off voltage in the past 24 h (or from 05:00 today if it never did), then replay
+ * every sample's net current up to now and rewrite soc_calc for those rows.
+ */
+export async function rebaseSoc(env, now) {
+  const c = cfg(env);
+  const hit = await env.DB.prepare('SELECT ts FROM samples WHERE ts >= ? AND batt_v <= ? ORDER BY ts DESC LIMIT 1')
+    .bind(now - 86400000, c.cutoffV + 0.2).first();
+  const from = hit ? hit.ts : dayRange(localDate(now))[0];
+  const list = await samplesBetween(env, from, now + 1);
+  if (!list.length) return null;
+  let st = { soc: c.cutoffSoc, ts: list[0].ts, restSince: null, fullSince: null, src: 'rebase' };
+  const upd = [];
+  for (let i = 0; i < list.length; i++) {
+    const s = list[i];
+    if (i > 0 && s.batt_v != null) st = stepSoc(st, { ts: s.ts, v: s.batt_v, net: netBatteryA(s) }, c.capacityAh);
+    upd.push(env.DB.prepare('UPDATE samples SET soc_calc = ? WHERE ts = ?').bind(Math.round(st.soc * 10) / 10, s.ts));
+  }
+  for (let i = 0; i < upd.length; i += 200) await env.DB.batch(upd.slice(i, i + 200));
+  await kvSet(env.DB, 'soc_state', st);
+  await kvSet(env.DB, 'soc_rebase_info', { from, fromCutoff: !!hit, samples: list.length, soc: st.soc });
+  return st;
 }
 
 export async function saveDay(env, date) {

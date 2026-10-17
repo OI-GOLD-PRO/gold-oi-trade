@@ -7,6 +7,7 @@ import worker, { poll } from '../src/index.js';
 const sql = new DatabaseSync(':memory:');
 sql.exec(fs.readFileSync(new URL('../schema.sql', import.meta.url), 'utf8'));
 const DB = {
+  async batch(stmts) { for (const st of stmts) await st.run(); return []; },
   prepare(q) {
     let args = [];
     const st = {

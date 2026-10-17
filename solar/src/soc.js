@@ -3,6 +3,7 @@
 //  • at rest (|net| < 3 A for ≥ 10 min) → ease toward the voltage scale
 //  • charging and holding ≥ 54.5 V for ≥ 5 min → at least 90 %
 //  • voltage ≤ 50.0 V → at most 10 %
+//  • never below 10 % (the inverter cuts off there)
 
 export const SOC_SCALE = { v0: 50.0, p0: 10, v1: 54.5, p1: 90 };
 const REST_A = 3;
@@ -45,6 +46,8 @@ export function stepSoc(state, sample, capacityAh, scale = SOC_SCALE) {
   if (holdingFull && ts - fullSince >= FULL_HOLD_MS && soc < scale.p1) { soc = scale.p1; src = 'full'; }
 
   if (v != null && v <= scale.v0 && soc > scale.p0) { soc = scale.p0; src = 'empty'; }
+  // The inverter cuts off at the empty point, so the bank can't go below it.
+  if (soc < scale.p0) { soc = scale.p0; src = 'floor'; }
 
   return { soc: clamp(soc, 0, 100), ts, restSince, fullSince, src };
 }

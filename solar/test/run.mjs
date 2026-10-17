@@ -68,3 +68,11 @@ console.log('soc OK');
   assert.ok(Math.abs(r.sunMpptToInvAh - 500 / V) < 0.05);                   // 500 W bridged MPPT → inverter
   console.log('scenario OK', { ahIn: r.ahIn, sunDisAh: r.sunDisAh, sunMpptToInvAh: r.sunMpptToInvAh });
 }
+
+// 8) floor: Ah counting never drops below the empty point
+{
+  let st = { soc: 12, ts: 0, restSince: null, fullSince: null };
+  for (let i = 1; i <= 60; i++) st = stepSoc(st, { ts: i * 60000, v: 50.3, net: -20 }, 434);
+  assert.equal(st.soc, 10);
+  console.log('floor OK');
+}
