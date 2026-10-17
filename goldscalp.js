@@ -14,9 +14,11 @@
     trend: false, trendLen: 200, trendType: 'SMA',
     ribbon: false, ribLen: 60, ribType: 'HMA',
   };
+  if (O.cfg && O.cfg.tol) DEF.dist = Math.round(O.cfg.tol * 2 * 100) / 100; // ใกล้โซน = 2 เท่าของระยะเตือน (ทอง $3)
+  const KEY = 'oit_gs' + (O.sfx || '');
   let cfg = Object.assign({}, DEF);
-  try { Object.assign(cfg, JSON.parse(localStorage.getItem('oit_gs') || '{}')); } catch (e) {}
-  const save = () => { try { localStorage.setItem('oit_gs', JSON.stringify(cfg)); } catch (e) {} };
+  try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
+  const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} };
 
   // ---------- maths (same as Pine) ----------
   const smaArr = (v, n) => { const o = []; let s = 0, c = 0; v.forEach((x, i) => { s += x; if (i >= n) s -= v[i - n]; o.push(i >= n - 1 ? s / n : null); }); return o; };
@@ -49,7 +51,7 @@
     if (S) { Object.values(S).forEach(s => { try { O.chart.removeSeries(s); } catch (e) {} }); S = null; }
     try { O.series.setMarkers([]); } catch (e) {}
     R = null;
-    if (!cfg.on) { O.markDirty(); return; }
+    if (!cfg.on) { O.markDirty(); paintTbl(); return; }
     const add = o => O.chart.addLineSeries(o);
     S = {
       out_s: add(lineOpt('#ef5350')), out_b: add(lineOpt('#01a546')),
@@ -58,7 +60,7 @@
     };
     if (cfg.trend) S.trend = add(lineOpt('#ffd54f', { lineWidth: 3 }));
     if (cfg.ribbon) { S.rib_o = add(lineOpt('#ff0000', { visible: false })); S.rib_c = add(lineOpt('#62ff42', { visible: false })); }
-    lastKey = ''; compute();
+    lastKey = ''; compute(); tblAt = 0; paintTbl(); refreshTbl(true);
   }
 
   // nearest-zone test (prices already on the chart's broker scale: OI.oi.rows[].price)
@@ -69,6 +71,66 @@
     if (cfg.vol) (oi.topV || []).forEach(s => set.add(s));
     return oi.rows.filter(r => set.has(r.strike) && r.price !== null).map(r => r.price);
   }
+
+  // one entry per bar: null or { up, strong, mark }
+  function sigsOf(B, bd, Z) {
+    const { r100, r0, r90, r10 } = bd;
+    const near = b => Z && Z.some(z => z >= b.low - cfg.dist && z <= b.high + cfg.dist);
+    return B.map((b, i) => {
+      if (r10[i] === null || r0[i] === null) return null;
+      const buyStrong = b.open < r0[i] && b.close > r0[i], sellStrong = b.open > r100[i] && b.close < r100[i];
+      const buyWeak = b.open < r10[i] && b.close > r10[i], sellWeak = b.open > r90[i] && b.close < r90[i];
+      let m = null;
+      if (buyStrong) m = { s: 'BUY!!', up: true, c: '#216d1f' };
+      else if (buyWeak) m = { s: 'BUY', up: true, c: '#60f0b9' };
+      else if (sellStrong) m = { s: 'SELL!!', up: false, c: '#ff0000' };
+      else if (sellWeak) m = { s: 'SELL', up: false, c: '#f87846' };
+      if (!m || (Z && !near(b))) return null;
+      return { up: m.up, strong: m.s.endsWith('!!'), mark: { time: b.time, position: m.up ? 'belowBar' : 'aboveBar', color: m.c, shape: m.up ? 'arrowUp' : 'arrowDown', text: m.s, size: 1 } };
+    });
+  }
+  function bandsOf(B) {
+    const C = B.map(b => b.close);
+    const atr = rmaArr(trArr(B), 100), orsi = rsiArr(C, cfg.rsiLen);
+    const adj = C.map((c, i) => atr[i] === null || orsi[i] === null ? null : c + atr[i] * orsi[i] / 100);
+    const first = adj.findIndex(v => v !== null);
+    const rma = Array(Math.max(first, 0)).fill(null).concat(first < 0 ? [] : maOf(cfg.maType, adj.slice(first), cfg.mid));
+    const band = k => rma.map((m, i) => m === null || atr[i] === null ? null : m + atr[i] * k);
+    return { r100: band(cfg.out / 10), r0: band(-cfg.out / 10), r90: band(cfg.inn / 10), r10: band(-cfg.inn / 10) };
+  }
+
+  // ---------- TF table (M1..H4, last 5 bars) ----------
+  const TFL = [['1m', 'M1'], ['5m', 'M5'], ['15m', 'M15'], ['30m', 'M30'], ['1h', 'H1'], ['4h', 'H4']];
+  const tblData = {}; let tblBusy = false, tblAt = 0;
+  function paintTbl() {
+    const el = $('gsTbl'); if (!el) return;
+    el.classList.toggle('on', !!cfg.on);
+    if (!cfg.on) return;
+    el.innerHTML = TFL.map(([t, lab]) => {
+      const d = tblData[t] || [];
+      const cells = Array.from({ length: 5 }, (_, k) => { const x = d[d.length - 5 + k]; return x ? `<i class="${x.up ? 'u' : 'd'}${x.strong ? ' s' : ''}">${x.up ? '▲' : '▼'}</i>` : '<i>·</i>'; }).join('');
+      return `<div class="c${O.tf === t ? ' cur' : ''}" data-tf="${t}"><b>${lab}</b><div class="a">${cells}</div></div>`;
+    }).join('');
+  }
+  async function refreshTbl(force) {
+    if (!cfg.on || tblBusy || document.visibilityState === 'hidden') return;
+    if (!force && Date.now() - tblAt < 25000) return;
+    tblBusy = true;
+    try {
+      const Z = cfg.mode === 'oi' ? zones() : null;
+      const res = await Promise.all(TFL.map(async ([t]) => {
+        const B = await O.fetchTF(t, 450);
+        if (!B || B.length < 120) return [t, null];
+        const sg = sigsOf(B, bandsOf(B), Z);
+        return [t, sg.slice(-5).map(x => x)];
+      }));
+      res.forEach(([t, d]) => { if (d) tblData[t] = d; });
+      tblAt = Date.now();
+    } catch (e) { console.error(e); }
+    tblBusy = false; paintTbl();
+  }
+  setInterval(() => refreshTbl(false), 10000);
+  setInterval(paintTbl, 2000);
 
   let lastKey = '';
   function compute() {
@@ -101,20 +163,8 @@
 
     // signals (open crosses back through the band by the close)
     const Z = cfg.mode === 'oi' ? zones() : null;
-    const near = b => Z && Z.some(z => z >= b.low - cfg.dist && z <= b.high + cfg.dist);
-    const marks = [];
-    B.forEach((b, i) => {
-      if (r10[i] === null || r0[i] === null) return;
-      const buyStrong = b.open < r0[i] && b.close > r0[i], sellStrong = b.open > r100[i] && b.close < r100[i];
-      const buyWeak = b.open < r10[i] && b.close > r10[i], sellWeak = b.open > r90[i] && b.close < r90[i];
-      let m = null;
-      if (buyStrong) m = { s: 'BUY!!', up: true, c: '#216d1f' };
-      else if (buyWeak) m = { s: 'BUY', up: true, c: '#60f0b9' };
-      else if (sellStrong) m = { s: 'SELL!!', up: false, c: '#ff0000' };
-      else if (sellWeak) m = { s: 'SELL', up: false, c: '#f87846' };
-      if (!m || (Z && !near(b))) return;
-      marks.push({ time: T[i], position: m.up ? 'belowBar' : 'aboveBar', color: m.c, shape: m.up ? 'arrowUp' : 'arrowDown', text: m.s, size: 1 });
-    });
+    const sigs = sigsOf(B, { r100, r0, r90, r10 }, Z);
+    const marks = sigs.filter(x => x).map(x => x.mark);
     try { O.series.setMarkers(marks); } catch (e) {}
     R = { T, r100, r0, r90, r10, rib, nSig: marks.length, nZones: Z ? Z.length : null };
     O.markDirty();
@@ -172,7 +222,7 @@
     d.innerHTML = `<div class="row"><button class="gsb${cfg.on ? ' on' : ''}" data-gst="on"><i style="background:#60f0b9"></i>Gold Scalping</button><span id="gsInfo" class="gsinfo"></span></div>` +
       (cfg.on ? `
       <div class="row"><button class="gsb${cfg.mode === 'normal' ? ' on' : ''}" data-gsm="normal">ปกติ (ตามโค้ด)</button><button class="gsb${cfg.mode === 'oi' ? ' on' : ''}" data-gsm="oi">เฉพาะใกล้โซน OI</button></div>
-      ${cfg.mode === 'oi' ? `<div class="row ps">${num('dist', 'ใกล้ ($)', 0.5)}${chk('walls', 'กำแพง OI')}${chk('vol', 'วอลลุ่ม')}</div>` : ''}
+      ${cfg.mode === 'oi' ? `<div class="row ps">${num('dist', 'ใกล้ (จุดราคา)', O.cfg && O.cfg.tick < 1 ? 0.05 : 5)}${chk('walls', 'กำแพง OI')}${chk('vol', 'วอลลุ่ม')}</div>` : ''}
       <div class="row ps">${num('rsiLen', 'RSI')}${num('mid', 'MID')}${sel('maType', 'RSI MA')}${num('out', 'OUT')}${num('inn', 'IN')}</div>
       <div class="row ps">${chk('trend', 'MA Trend')}${cfg.trend ? num('trendLen', 'คาบ') + sel('trendType', 'ชนิด') : ''}</div>
       <div class="row ps">${chk('ribbon', 'MA Ribbon')}${cfg.ribbon ? num('ribLen', 'คาบ') + sel('ribType', 'ชนิด') : ''}</div>` : '');
@@ -194,7 +244,7 @@
       if (t.dataset.gsm) cfg.mode = t.dataset.gsm;
       else cfg[t.dataset.gst] = !cfg[t.dataset.gst];
       save(); const rebuild = t.dataset.gst === 'on' || t.dataset.gst === 'trend' || t.dataset.gst === 'ribbon';
-      if (rebuild) build(); else { lastKey = ''; compute(); }
+      if (rebuild) build(); else { lastKey = ''; compute(); refreshTbl(true); }
       remount(); $('indBtn').classList.toggle('has', cfg.on || $('indBtn').classList.contains('has'));
     });
     menu.addEventListener('change', e => {
@@ -202,10 +252,10 @@
       const k = inp.dataset.gs;
       if (inp.tagName === 'SELECT') cfg[k] = inp.value;
       else { let v = parseFloat(inp.value); if (!isFinite(v) || v <= 0) v = DEF[k]; if (k !== 'dist') v = Math.max(1, Math.min(500, Math.round(v))); cfg[k] = v; inp.value = v; }
-      save(); lastKey = ''; compute();
+      save(); lastKey = ''; compute(); refreshTbl(true);
     });
   }
   // "reset all" in the ƒx menu should not wipe this indicator's own setting
   if (cfg.on) build();
-  window.OIT_goldScalp = { get cfg() { return cfg; }, get result() { return R; }, build };
+  window.OI_goldScalp = { get cfg() { return cfg; }, get result() { return R; }, build };
 })();

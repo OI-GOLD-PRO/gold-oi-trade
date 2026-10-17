@@ -52,12 +52,22 @@ rep('''  </div>
 (function () {''')
 rep('''})();
 </script>
+<script src="goldscalp.js"></script>
 </body>''', '''})();
 </script>
 <script src="trade.js"></script>
 <script src="dash.js"></script>
 <script src="goldscalp.js"></script>
 </body>''')
+
+# --- gold only (V1.9+ has a symbol switcher; the trade app trades the MT5 gold symbol only) ---
+rep('''<button id="symBtn" class="symbtn" aria-label="เลือกสัญลักษณ์"><b id="symName">XAUUSD</b><i>▾</i></button>''', '<b id="symName">XAUUSD</b>')
+rep('    <div id="symMenu" hidden></div>\n', '')
+rep_re(r"  try \{ const q = new URLSearchParams\(location\.search\)\.get\('sym'\)[^\n]*\n", "")
+rep_re(r"  \$\('symMenu'\)\.innerHTML = .*?\n  \}\);\n(?=  window\.OI = \{)", "")
+# no body-height hacks (they pushed the ticket off-screen on iPhone; trade.css lays the page out)
+rep_re(r"  /\* เต็มจอจริงบน iPhone[^\n]*\n  body \{ position: fixed;[^\n]*\n", "")
+rep_re(r"  // บางเครื่องความสูงจอไม่ตรงกับ CSS[^\n]*\n  const fitH = [^\n]*\n  fitH\(\);[^\n]*\n", "")
 
 # --- chart shift: adj = perp − broker (chart), gAdj = perp − GC (for OI strikes) ---
 rep("let adj = 0, basisEma = null,", "let adj = 0, gAdj = 0, brokerBasis = null, basisEma = null,")
@@ -99,8 +109,8 @@ rep('''      basisEma = first ? basis : basisEma * 0.7 + basis * 0.3;
 rep("const ym = series.priceToCoordinate(oi.maxPain);", "const ym = series.priceToCoordinate(oi.mpPrice);")
 rep("const lab = oi.maxPain.toFixed(2);", "const lab = oi.mpPrice.toFixed(2);")
 # tip + alert toast
-rep("strike <b>${r.strike}</b> → GC ${r.price.toFixed(2)}", "strike <b>${r.strike}</b> → โบรก ${r.price.toFixed(2)}")
-rep("strike <b>${r.strike}</b> (GC ${r.price.toFixed(2)})", "strike <b>${r.strike}</b> (${r.price.toFixed(2)})")
+rep("strike <b>${r.strike}</b> → ${SC.note} ${r.price.toFixed(SC.dec)}", "strike <b>${r.strike}</b> → โบรก ${r.price.toFixed(2)}")
+rep("strike <b>${r.strike}</b> (${SC.note} ${r.price.toFixed(SC.dec)})", "strike <b>${r.strike}</b> (${r.price.toFixed(2)})")
 # second axis now shows GC price
 rep("const sTop = top + adj, sBot = bot + adj,", "const sTop = top + gcOff(), sBot = bot + gcOff(),")
 rep("const y = series.priceToCoordinate(v - adj);", "const y = series.priceToCoordinate(v - gcOff());")
@@ -110,12 +120,10 @@ rep("ctx.fillText('SPOT', x0 + aw / 2, 9);", "ctx.fillText('GC', x0 + aw / 2, 9)
 # MM vs Max Pain uses GC-scale price
 rep("const S = lastClose, M = oi.maxPain;", "const S = lastClose + gcOff(), M = oi.maxPain;")
 # header price = broker bid when EA online
-rep("    $('price').textContent = lastClose.toFixed(2);",
+rep("    $('price').textContent = lastClose.toFixed(SC.dec);",
     "    const bp = window.OIT_brokerPrice ? window.OIT_brokerPrice() : null;\n    $('price').textContent = (bp !== null && bp !== undefined ? bp : lastClose).toFixed(2);")
 
-# --- overlay hooks for trade.js ---
-rep("    drawMeasure(w, h);\n  }", "    drawMeasure(w, h);\n    overlayHooks.forEach(f => { try { f(ctx, w, h); } catch (e) { console.error(e); } });\n  }")
-rep("  let dirty = true, lastKey = '';", "  let dirty = true, lastKey = '';\n  const overlayHooks = [];")
+# (overlay hooks: OI Gold Pro V1.8+ already has overlayHooks and exports it as window.OI.hooks)
 
 # --- data + login through the hub ---
 rep_re(r"  const API_BASE = '[^']*';\n  const apiData = [^\n]*\n",
@@ -138,20 +146,23 @@ rep("      showLogin(res.reason === 'expired' ?",
 rep_re(r"  const GH_OWNER =.*?\n(?=  // หมายเหตุ: raw\.githubusercontent)",
        "  const NEWS_URL = 'https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-pro/main/news.json';\n")
 
-# --- expose an API for trade.js ---
-rep_re(r"(  if \(saved\) \{ \$\('login'\)\.hidden = true;[^\n]*\n)\}\)\(\);", r'''\1
-  window.OI = {
-    HUB, chart, series, chartEl, hooks: overlayHooks,
-    get oi() { return oi; }, get lastClose() { return lastClose; }, get rawClose() { return rawClose; },
-    get authCode() { return authCode; },
+# --- expose an API for trade.js (extends the window.OI that OI Gold Pro already exports) ---
+rep("    markDirty() { dirty = true; },\n  };", '''    markDirty() { dirty = true; },
+    HUB, get rawClose() { return rawClose; }, get authCode() { return authCode; },
     get drawTool() { return typeof drawTool === 'undefined' ? null : drawTool; },
-    gcOff, showToast, hideToast, lockChart, showPrice,
-    markDirty() { dirty = true; },
+    gcOff, showPrice,
     setBrokerBasis(b) { brokerBasis = b; setChartAdj(b); },
     clearBrokerBasis() { if (brokerBasis === null) return; brokerBasis = null; if (basisEma !== null) setChartAdj(basisEma); },
-  };
-})();''')
+  };''')
 
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "index.html")
 open(out, "w", encoding="utf-8").write(s)
 print(f"ported OI Gold Pro V{src_ver} → trade app V{APP_VER}")
+
+gs_src = os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), "goldscalp.js")
+if os.path.exists(gs_src):
+    g = open(gs_src, encoding="utf-8").read()
+    if g.count("'oi_gs'") != 1:
+        raise SystemExit("goldscalp.js: storage key anchor not found")
+    open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "goldscalp.js"), "w", encoding="utf-8").write(g.replace("'oi_gs'", "'oit_gs'"))
+    print("goldscalp.js copied from OI Gold Pro")
