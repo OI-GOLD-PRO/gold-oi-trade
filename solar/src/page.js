@@ -104,6 +104,13 @@ svg{display:block;width:100%;height:auto}
 .cal .d.today{border-color:var(--muted)}
 .cal .d.sel{border-color:var(--charge);background:color-mix(in srgb,var(--charge) 12%,transparent)}
 .cal .pad{min-height:62px}
+.cal .d.inr{background:color-mix(in srgb,var(--gridx) 16%,transparent);border-color:var(--gridx)}
+.rbtn{width:100%;padding:10px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--text);font-weight:600;font-size:14px;font-family:inherit;margin-top:12px}
+.rbtn.on{border-color:var(--gridx);color:var(--gridx)}
+.rng{margin-top:12px;padding:12px;border-radius:14px;border:1px solid color-mix(in srgb,var(--gridx) 45%,transparent);background:color-mix(in srgb,var(--gridx) 6%,transparent)}
+.rng .tiles2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:8px 0}
+.rng .tiles2 div{background:var(--card);border-radius:12px;padding:8px}
+.rng .tiles2 .big{font-size:20px}
 .legend{display:flex;gap:14px;font-size:12px;color:var(--muted);margin-top:8px;flex-wrap:wrap}
 .legend i{display:inline-block;width:9px;height:9px;border-radius:3px;margin-right:5px;vertical-align:-1px}
 .err{background:color-mix(in srgb,var(--drain) 14%,transparent);border:1px solid color-mix(in srgb,var(--drain) 40%,transparent);color:var(--text);border-radius:12px;padding:10px 12px;font-size:13px;margin-bottom:12px;display:none}
@@ -185,16 +192,18 @@ svg{display:block;width:100%;height:auto}
         <button id="nextM" onclick="moveMonth(1)" aria-label="เดือนถัดไป">›</button>
       </div>
       <div class="cal" id="cal"></div>
+      <button class="rbtn" id="rangeBtn" onclick="toggleRange()">เลือกช่วงวัน</button>
       <div class="legend"><span><i style="background:var(--sun)"></i>โซลาร์รวม kWh</span><span><i style="background:var(--drain)"></i>ใช้แบต Ah</span><span><i style="background:var(--gridx)"></i>กริด kWh</span></div>
       <div class="rows" id="monthTotals"></div>
     </section>
+    <div id="range-box"></div>
     <div id="day-detail"><p class="muted" style="text-align:center">แตะวันที่ในปฏิทินเพื่อดูรายละเอียด</p></div>
   </div>
 </div>
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.4';
+const APP_VERSION = 'v2.5';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -534,9 +543,10 @@ function drawCal() {
   for (let dnum = 1; dnum <= days; dnum++) {
     const ds = MONTH + '-' + String(dnum).padStart(2, '0');
     const r = MONTHDATA[ds];
-    const cls = 'd' + (r ? '' : ' none') + (ds === today ? ' today' : '') + (ds === SEL ? ' sel' : '');
+    const inR = RA && (RB ? ds >= RA && ds <= RB : ds === RA);
+    const cls = 'd' + (r ? '' : ' none') + (ds === today ? ' today' : '') + (ds === SEL ? ' sel' : '') + (inR ? ' inr' : '');
     if (r) { tot.pv += r.pvTotalKwh || 0; tot.load += r.kwhLoad || 0; tot.grid += r.gridKwh || 0; tot.in += r.ahIn || 0; tot.out += r.ahOut || 0; tot.n++; }
-    h += '<button class="' + cls + '"' + (r ? ' onclick="openDay(\\'' + ds + '\\')"' : ' disabled') + '><span class="n">' + dnum + '</span>' +
+    h += '<button class="' + cls + '"' + (RANGE_MODE || r ? ' onclick="pickDay(\\'' + ds + '\\')"' : ' disabled') + '><span class="n">' + dnum + '</span>' +
       (r ? '<span class="a">' + fmt(r.pvTotalKwh, 1) + '</span><span class="b">' + fmt(r.ahOut, 0) + '</span>' + (r.gridKwh > 0.05 ? '<span class="c">' + fmt(r.gridKwh, 1) + '</span>' : '') : '') + '</button>';
   }
   $('cal').innerHTML = h;
@@ -547,6 +557,51 @@ function drawCal() {
     '<div class="row"><span>ใช้ไฟกริด (คำนวณ)</span><span style="color:var(--gridx)">' + fmt(tot.grid, 1) + ' kWh</span></div>' +
     '<div class="row"><span>ชาร์จเข้าแบต / ใช้แบต</span><span><span style="color:var(--charge)">' + fmt(tot.in, 0) + '</span> / <span style="color:var(--drain)">' + fmt(tot.out, 0) + '</span> Ah</span></div>') : '';
 }
+// ---------- range totals ----------
+let RANGE_MODE = false, RA = null, RB = null;
+function toggleRange() {
+  RANGE_MODE = !RANGE_MODE; RA = RB = null;
+  $('rangeBtn').classList.toggle('on', RANGE_MODE);
+  $('rangeBtn').textContent = RANGE_MODE ? 'ยกเลิกการเลือกช่วง' : 'เลือกช่วงวัน';
+  $('range-box').innerHTML = RANGE_MODE ? '<p class="muted" style="text-align:center">แตะวันเริ่มต้น แล้วแตะวันสุดท้ายของช่วง</p>' : '';
+  drawCal();
+}
+function pickDay(ds) {
+  if (!RANGE_MODE) { openDay(ds); return; }
+  if (!RA || RB) { RA = ds; RB = null; $('range-box').innerHTML = '<p class="muted" style="text-align:center">แตะวันสุดท้ายของช่วง</p>'; drawCal(); return; }
+  RB = ds; if (RB < RA) [RA, RB] = [RB, RA];
+  drawCal(); loadRange();
+}
+async function loadRange() {
+  const box = $('range-box');
+  box.innerHTML = '<p class="muted" style="text-align:center">กำลังคำนวณ…</p>';
+  try { box.innerHTML = rangeHTML(await api('/api/range?from=' + RA + '&to=' + RB)); }
+  catch (e) { if (e.message !== 'auth') box.innerHTML = '<p class="muted">คำนวณไม่ได้: ' + e.message + '</p>'; }
+}
+function rangeHTML(d) {
+  const t = d.totals, n = d.days;
+  const title = thaiDate(RA, { day: 'numeric', month: 'short', year: 'numeric' }) + ' – ' + thaiDate(RB, { day: 'numeric', month: 'short', year: 'numeric' });
+  if (!n) return '<div class="rng"><b>' + title + '</b><p class="muted">ไม่มีข้อมูลในช่วงนี้</p></div>';
+  const avg = (x) => fmt(x / n, 2);
+  const h = (x) => Math.floor(x / 60) + ' ชม. ' + (x % 60) + ' น.';
+  return '<div class="rng"><b>รวมช่วง ' + title + '</b> <span class="label">· มีข้อมูล ' + n + ' วัน</span>' +
+    '<div class="tiles2">' +
+      '<div><div class="label">โซลาร์ผลิต</div><div class="num big sun">' + fmt(t.pvTotalKwh, 1) + ' <small>kWh</small></div><div class="label">เฉลี่ย ' + avg(t.pvTotalKwh) + ' kWh/วัน</div></div>' +
+      '<div><div class="label">ไฟที่บ้านใช้</div><div class="num big">' + fmt(t.kwhLoad, 1) + ' <small>kWh</small></div><div class="label">เฉลี่ย ' + avg(t.kwhLoad) + ' kWh/วัน</div></div>' +
+      '<div><div class="label">ใช้ไฟกริด (คำนวณ)</div><div class="num big" style="color:var(--gridx)">' + fmt(t.gridKwh, 1) + ' <small>kWh</small></div><div class="label">' + h(t.gridMinutes) + ' · สูงสุด ' + fmt(t.gridPeakW) + ' W</div></div>' +
+      '<div><div class="label">แบต ชาร์จ / ใช้</div><div class="num big"><span style="color:var(--charge)">' + fmt(t.ahIn, 0) + '</span> / <span style="color:var(--drain)">' + fmt(t.ahOut, 0) + '</span> <small>Ah</small></div><div class="label">' + fmt(t.kwhIn, 1) + ' / ' + fmt(t.kwhOut, 1) + ' kWh</div></div>' +
+    '</div>' +
+    '<div class="rows">' +
+      '<div class="row"><span>ไฟบ้าน − โซลาร์ (ที่ต้องพึ่งแบต/กริด)</span><span>' + fmt(t.kwhLoad - t.pvTotalKwh, 1) + ' kWh</span></div>' +
+      '<div class="row"><span>โซลาร์ 1 · อินเวอร์เตอร์</span><span>' + fmt(t.pvInvKwh, 1) + ' kWh</span></div>' +
+      '<div class="row"><span>โซลาร์ 2 · MPPT</span><span>' + fmt(t.pvMpptKwh, 1) + ' kWh</span></div>' +
+      '<div class="row"><span>ชาร์จแบต 1 · อินเวอร์เตอร์</span><span>' + fmt(t.ahInvChg, 0) + ' Ah</span></div>' +
+      '<div class="row"><span>ชาร์จแบต 2 · MPPT</span><span>' + fmt(t.ahMppt, 0) + ' Ah</span></div>' +
+      '<div class="row"><span>แบตต่ำสุดในช่วง</span><span>' + (t.minV != null ? fmt(t.minV, 1) + ' V · ' + thaiDate(t.minVDate, { day: 'numeric', month: 'short' }) + ' ' + hhmm(t.minVAt) : '–') + '</span></div>' +
+      '<div class="row"><span>วันที่ถึงจุดตัด ' + CFG.cutoffV + 'V</span><span>' + t.cutoffDays + ' จาก ' + n + ' วัน</span></div>' +
+    '</div></div>';
+}
+
 async function openDay(ds) {
   SEL = ds; drawCal();
   const el = $('day-detail');

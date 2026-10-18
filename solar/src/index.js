@@ -211,6 +211,33 @@ async function apiDay(env, date) {
   };
 }
 
+const SUM_KEYS = ['ahIn', 'ahOut', 'ahInvChg', 'ahMppt', 'ahInvDis', 'mpptToInvAh', 'kwhIn', 'kwhOut',
+  'pvTotalKwh', 'pvInvKwh', 'pvMpptKwh', 'kwhLoad', 'sunPvKwh', 'sunLoadKwh', 'gridKwh', 'gridMinutes'];
+
+/** Totals over a span of days: sums of the per-day summaries (today's part comes live from samples). */
+async function apiRange(env, from, to) {
+  const c = cfg(env);
+  const today = localDate(Date.now());
+  const { results } = await env.DB.prepare('SELECT date, data FROM daily WHERE date >= ? AND date <= ? AND date < ? ORDER BY date')
+    .bind(from, to, today).all();
+  const days = results.map((r) => ({ date: r.date, ...JSON.parse(r.data) }));
+  if (to >= today && from <= today) {
+    const [a, b] = dayRange(today);
+    const list = await samplesBetween(env, a, b);
+    if (list.length) days.push({ date: today, ...summarizeDay(list, c) });
+  }
+  const t = {};
+  for (const k of SUM_KEYS) t[k] = Math.round(days.reduce((x, d) => x + (d[k] || 0), 0) * 100) / 100;
+  t.gridPeakW = days.reduce((x, d) => Math.max(x, d.gridPeakW || 0), 0);
+  t.cutoffDays = days.filter((d) => d.cutoffAt).length;
+  let low = null;
+  for (const d of days) if (d.minV != null && (low == null || d.minV < low.v)) low = { v: d.minV, date: d.date, at: d.minVAt };
+  t.minV = low ? low.v : null;
+  t.minVDate = low ? low.date : null;
+  t.minVAt = low ? low.at : null;
+  return { from, to, days: days.length, totals: t };
+}
+
 async function apiHistory(env, days) {
   const c = cfg(env);
   const today = localDate(Date.now());
@@ -265,6 +292,15 @@ export default {
       if (path === '/api/day') return json(await apiDay(env, url.searchParams.get('date') || localDate(Date.now())));
       if (path === '/api/history') return json(await apiHistory(env, Math.min(3650, Number(url.searchParams.get('days') || 14))));
       if (path === '/api/month') return json(await apiMonth(env, (url.searchParams.get('m') || localDate(Date.now()).slice(0, 7)).slice(0, 7)));
+      if (path === '/api/range') {
+        const ok = (x) => /^\d{4}-\d{2}-\d{2}$/.test(x || '');
+        let from = url.searchParams.get('from'), to = url.searchParams.get('to');
+        if (!ok(from) || !ok(to)) return json({ error: 'bad dates' }, 400);
+        if (from > to) [from, to] = [to, from];
+        const span = (Date.parse(to) - Date.parse(from)) / 86400000;
+        if (span > 366) return json({ error: 'range too long (max 366 days)' }, 400);
+        return json(await apiRange(env, from, to));
+      }
       if (path === '/api/poll') return json(await poll(env, { force: true }));
       if (path === '/api/debug') return json(await kvGet(env.DB, 'last_raw'));
       return json({ error: 'not found' }, 404);
