@@ -31,6 +31,8 @@ function mpptAsleep(cached) {
 async function readMpptThrottled(env, force) {
   const every = Number(env.MPPT_EVERY_MIN || 2);
   const cached = await kvGet(env.DB, 'mppt_last');
+  // Manual refresh: at most one real Tuya call per 30 s, so repeated taps can't burn the quota.
+  if (force && cached && Date.now() - cached.ts < 30000) return cached.data;
   if (!force && cached && mpptAsleep(cached)) {
     const v = cached.data.values;
     return { values: { ...v, pvV: 0, pvA: 0, pvW: 0, battW: 0, battA: 0, sleeping: true }, raw: null };

@@ -44,7 +44,11 @@ header{margin:2px 2px 14px}
 .card{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;margin-bottom:12px}
 .label{color:var(--muted);font-size:13px}
 .num{font-family:var(--num);font-weight:700;letter-spacing:-.5px}
-.hero{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center}
+.hero{display:grid;grid-template-columns:auto 1fr;gap:16px;align-items:center;position:relative}
+.refresh{position:absolute;top:12px;right:12px;width:38px;height:38px;border-radius:50%;border:1px solid var(--line);background:var(--card2,transparent);color:var(--text);font-size:19px;line-height:1;display:flex;align-items:center;justify-content:center;padding:0;cursor:pointer}
+.refresh:disabled{opacity:.6;cursor:default}
+.refresh.busy{animation:spin 1s linear infinite;border-color:var(--charge);color:var(--charge)}
+@keyframes spin{to{transform:rotate(360deg)}}
 .batt{width:64px;height:112px;border:3px solid var(--text);border-radius:12px;position:relative;padding:4px;opacity:.95}
 .batt:before{content:"";position:absolute;top:-9px;left:20px;width:18px;height:6px;border-radius:3px 3px 0 0;background:var(--text)}
 .fill{position:absolute;left:4px;right:4px;bottom:4px;border-radius:7px;background:var(--charge);transition:height .6s}
@@ -143,6 +147,7 @@ svg{display:block;width:100%;height:auto}
   <!-- ===== TODAY ===== -->
   <div id="view-now">
     <section class="card hero">
+      <button class="refresh" id="refbtn" onclick="pollNow(this)" aria-label="ดึงค่าล่าสุด" title="ดึงค่าล่าสุด">↻</button>
       <div class="batt"><div class="fill" id="fill"></div></div>
       <div>
         <div class="label">แบตเตอรี่ · LiFePO4 <span id="cap"></span></div>
@@ -188,7 +193,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.2';
+const APP_VERSION = 'v2.3';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -548,9 +553,10 @@ async function load() {
   catch (e) { if (e.message !== 'auth') { $('err').style.display = 'block'; $('err').textContent = 'โหลดข้อมูลไม่ได้: ' + e.message; } }
 }
 async function pollNow(btn) {
-  btn.disabled = true; btn.textContent = 'กำลังดึง…';
-  try { await api('/api/poll'); await load(); } catch (e) {}
-  btn.disabled = false; btn.textContent = 'ดึงค่าล่าสุดตอนนี้';
+  btn.disabled = true; btn.classList.add('busy');
+  try { await api('/api/poll'); await load(); }
+  catch (e) { if (e.message !== 'auth') { $('err').style.display = 'block'; $('err').textContent = 'ดึงค่าไม่สำเร็จ: ' + e.message; } }
+  finally { btn.disabled = false; btn.classList.remove('busy'); }
 }
 load();
 setInterval(() => { if (!document.hidden && !$('view-now').classList.contains('hide')) load(); }, 60000);
