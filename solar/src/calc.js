@@ -14,6 +14,22 @@ export function netBatteryA(s) {
   return mppt + chg - dis;
 }
 
+/**
+ * Grid power drawn by the house, estimated from the inverter's own balance (SmartESS has no grid-watt field):
+ *   grid = load + (inverter → battery) − inverter PV
+ * In SBU mode the inverter hands the house to the grid when the bank hits the 50 V comeback point and
+ * stays there until it recharges to 53 V; PV then goes into the battery. "Invert Mode" = not on grid.
+ */
+export const GRID_MIN_W = 50;
+export function gridW(s, nominalV = 51.2) {
+  if (!s.grid_v) return 0;
+  if (s.load_w == null) return null;
+  if (s.inv_mode && /invert|battery/i.test(s.inv_mode)) return 0;
+  const v = s.batt_v ?? nominalV;
+  const g = s.load_w + ((s.inv_chg_a ?? 0) - (s.inv_dis_a ?? 0)) * v - (s.inv_pv_w ?? 0);
+  return g >= GRID_MIN_W ? Math.round(g) : 0;
+}
+
 /** Summarise one day of samples (sorted by ts). */
 export function summarizeDay(samples, cfg) {
   const r = {
@@ -31,6 +47,8 @@ export function summarizeDay(samples, cfg) {
     sunPvKwh: 0, sunLoadKwh: 0,
     sunChgAh: 0, sunChgKwh: 0, sunDisAh: 0, sunDisKwh: 0, sunMpptToInvAh: 0, sunMpptToInvKwh: 0,
     mpptToInvAh: 0, // MPPT current that went straight to the inverter over the battery terminals
+    // Grid (estimated): energy, minutes, peak and the time spans it was used (gaps ≤ 10 min merged).
+    gridKwh: 0, gridMinutes: 0, gridPeakW: 0, gridSpans: [],
   };
   for (const s of samples) {
     if ((s.inv_pv_w ?? 0) >= SUN_MIN_W) {
@@ -51,6 +69,14 @@ export function summarizeDay(samples, cfg) {
     if (s.mppt_today_kwh != null) r.mpptTodayKwh = Math.max(r.mpptTodayKwh ?? 0, s.mppt_today_kwh);
     if (s.inv_today_kwh != null) r.invTodayKwh = Math.max(r.invTodayKwh ?? 0, s.inv_today_kwh);
 
+    const gw = gridW(s, cfg.nominalV) ?? 0;
+    if (gw > 0) {
+      if (gw > r.gridPeakW) r.gridPeakW = gw;
+      const last = r.gridSpans[r.gridSpans.length - 1];
+      if (last && s.ts - last[1] <= 10 * 60000) last[1] = s.ts;
+      else r.gridSpans.push([s.ts, s.ts]);
+    }
+
     const next = samples[i + 1];
     if (!next) break;
     const dt = next.ts - s.ts;
@@ -68,6 +94,7 @@ export function summarizeDay(samples, cfg) {
     r.kwhPvInv += ((s.inv_pv_w ?? 0) * h) / 1000;
     r.kwhPvMppt += ((s.mppt_pv_w ?? 0) * h) / 1000;
     r.kwhLoad += ((s.load_w ?? 0) * h) / 1000;
+    if (gw > 0) { r.gridKwh += (gw * h) / 1000; r.gridMinutes += dt / 60000; }
     if (r.sunStartAt != null && s.ts >= r.sunStartAt && s.ts < r.sunEndAt) {
       r.sunPvKwh += ((s.inv_pv_w ?? 0) * h) / 1000;
       r.sunLoadKwh += ((s.load_w ?? 0) * h) / 1000;

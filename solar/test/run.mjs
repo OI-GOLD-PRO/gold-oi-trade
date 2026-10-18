@@ -76,3 +76,28 @@ console.log('soc OK');
   assert.equal(st.soc, 10);
   console.log('floor OK');
 }
+
+// 9) grid estimate (SBU: house on grid below 53 V, PV charges the bank)
+{
+  const { gridW } = await import('../src/calc.js');
+  // 09:45 real reading: load 1.15 kW, PV1 1.62 kW, inverter charging 29 A at 52.1 V → ~1.04 kW from grid
+  assert.ok(Math.abs(gridW({ grid_v: 233, load_w: 1150, inv_pv_w: 1620, inv_chg_a: 29, inv_dis_a: 0, batt_v: 52.1 }) - 1041) < 2);
+  // 13:31 real reading: battery mode, PV covers load + charging → 0
+  assert.equal(gridW({ grid_v: 235, load_w: 1473, inv_pv_w: 2250, inv_chg_a: 12, inv_dis_a: 0, batt_v: 53.4 }), 0);
+  // night on battery → 0; no mains → 0; inverter says Invert Mode → 0
+  assert.equal(gridW({ grid_v: 235, load_w: 900, inv_pv_w: 0, inv_chg_a: 0, inv_dis_a: 19, batt_v: 51 }), 0);
+  assert.equal(gridW({ grid_v: 0, load_w: 900, inv_pv_w: 0, inv_chg_a: 0, inv_dis_a: 0, batt_v: 50 }), 0);
+  assert.equal(gridW({ grid_v: 235, inv_mode: 'Invert Mode', load_w: 1150, inv_pv_w: 1620, inv_chg_a: 29, inv_dis_a: 0, batt_v: 52.1 }), 0);
+  // a day: 2 h on grid at 1 kW, then 1 h on battery
+  const day = [];
+  for (let i = 0; i <= 180; i++) {
+    const onGrid = i < 120;
+    day.push({ ts: i * 60000, grid_v: 230, batt_v: 50.5, load_w: 1000, inv_pv_w: 0, inv_chg_a: 0, inv_dis_a: onGrid ? 0 : 20 });
+  }
+  const r = summarizeDay(day, { cutoffV: 50, nominalV: 51.2 });
+  assert.ok(Math.abs(r.gridKwh - 2) < 0.02, 'grid kWh ' + r.gridKwh);
+  assert.equal(r.gridMinutes, 120);
+  assert.equal(r.gridPeakW, 1000);
+  assert.deepEqual(r.gridSpans, [[0, 119 * 60000]]);
+  console.log('grid OK', { gridKwh: r.gridKwh, gridMinutes: r.gridMinutes });
+}

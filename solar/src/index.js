@@ -1,6 +1,6 @@
 import { readInverter } from './dess.js';
 import { readMppt } from './tuya.js';
-import { summarizeDay, timeToCutoff, netBatteryA } from './calc.js';
+import { summarizeDay, timeToCutoff, netBatteryA, gridW } from './calc.js';
 import { localDate, dayRange, kvGet, kvSet, DAY_START_H } from './util.js';
 import { PAGE } from './page.js';
 import { stepSoc } from './soc.js';
@@ -63,6 +63,7 @@ export async function poll(env, { force = false } = {}) {
     mppt_pv_w: r2(m.pvW),
     load_w: r2(i.loadW),
     grid_v: r2(i.gridV),
+    inv_mode: i.mode ?? null,
     mppt_today_kwh: m.todayKwh ?? null,
     inv_today_kwh: i.pvTodayKwh ?? null,
     mppt_temp: m.tempC ?? null,
@@ -72,6 +73,12 @@ export async function poll(env, { force = false } = {}) {
   if (!(await kvGet(env.DB, 'soc_rebase_v1'))) {
     await rebaseSoc(env, row.ts);
     await kvSet(env.DB, 'soc_rebase_v1', { at: row.ts });
+  }
+  // One-time: rebuild stored daily summaries so past days get the grid numbers.
+  if (!(await kvGet(env.DB, 'daily_recalc_grid_v1'))) {
+    const { results } = await env.DB.prepare('SELECT date FROM daily').all();
+    for (const r of results) await saveDay(env, r.date);
+    await kvSet(env.DB, 'daily_recalc_grid_v1', { at: row.ts, days: results.length });
   }
   // App-side battery % (Ah counting + voltage calibration at rest).
   if (row.batt_v != null) {
@@ -146,11 +153,12 @@ async function samplesBetween(env, from, to) {
 
 /** Column-oriented series for the 8 stacked charts. */
 function toSeries(day) {
-  const S = { t: [], load: [], pv1: [], pv2: [], pv: [], c1: [], c2: [], net: [], v: [] };
+  const S = { t: [], load: [], grid: [], pv1: [], pv2: [], pv: [], c1: [], c2: [], net: [], v: [] };
   for (const s of day) {
     const c1 = s.inv_chg_a == null && s.inv_dis_a == null ? null : r2((s.inv_chg_a ?? 0) - (s.inv_dis_a ?? 0));
     S.t.push(s.ts);
     S.load.push(s.load_w);
+    S.grid.push(gridW(s));
     S.pv1.push(s.inv_pv_w);
     S.pv2.push(s.mppt_pv_w);
     S.pv.push(s.inv_pv_w == null && s.mppt_pv_w == null ? null : r2((s.inv_pv_w ?? 0) + (s.mppt_pv_w ?? 0)));
@@ -185,7 +193,7 @@ async function apiNow(env) {
   return {
     mpptSleeping: !!(ml && mpptAsleep(ml)),
     config: { ...c, dayStartH: DAY_START_H },
-    latest: latest && { ...latest, net_a: r2(netBatteryA(latest)) },
+    latest: latest && { ...latest, net_a: r2(netBatteryA(latest)), grid_w: gridW(latest, c.nominalV) },
     eta: latest ? timeToCutoff(latest, c) : null,
     today: { date: today, ...summarizeDay(day, c) },
     series: toSeries(day),

@@ -10,6 +10,7 @@ CREATE TABLE IF NOT EXISTS samples (
   mppt_pv_w REAL,              -- PV power, MPPT string (4 panels)
   load_w REAL,                 -- house load
   grid_v REAL,                 -- grid voltage
+  inv_mode TEXT,               -- inverter working state (Line Mode = on grid, Invert Mode = battery/PV)
   mppt_today_kwh REAL,         -- MPPT's own day counter
   inv_today_kwh REAL,          -- inverter's own day counter (SmartESS)
   mppt_temp REAL,

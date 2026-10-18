@@ -149,6 +149,7 @@ export async function readInverter(env) {
     loadW: flowPick(flow, 'bc_status', 'load_active_power') ?? pick(m, ['bc_output_active_power', 'bc_load_active_power', 'Output Active Power']),
     gridV: pick(m, ['gd_ac_input_voltage', 'gd_grid_voltage', 'AC Input Voltage']),
     pvTodayKwh: null,
+    mode: m.get('sy_status')?.val ?? m.get('Working State')?.val ?? null, // "Line Mode" = house on grid, "Invert Mode" = battery/PV
   };
   const rowToday = row?.energyToday != null ? Number(row.energyToday) : null;
   out.pvTodayKwh = dayEnergyFromPars(m) ?? (Number.isFinite(rowToday) ? rowToday : null);

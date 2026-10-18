@@ -16,12 +16,12 @@ export const PAGE = /* html */ `<!doctype html>
 <style>
 :root{
   --bg:#0f1412; --card:#171e1b; --line:#26302c; --text:#e8efe9; --muted:#8a9a92;
-  --sun:#f2b33d; --sun2:#e8793a; --charge:#3fbf8a; --drain:#ef6f5e; --grid:#6ea8ff;
+  --sun:#f2b33d; --sun2:#e8793a; --charge:#3fbf8a; --drain:#ef6f5e; --grid:#6ea8ff; --gridx:#b58cff;
   --num:'JetBrains Mono',ui-monospace,monospace;
 }
 @media (prefers-color-scheme: light){
   :root{ --bg:#f3f1ea; --card:#ffffff; --line:#e3e0d6; --text:#1c2420; --muted:#6c7770;
-    --sun:#c9850c; --sun2:#c4581c; --charge:#16875a; --drain:#c8432f; --grid:#2f6fd6; }
+    --sun:#c9850c; --sun2:#c4581c; --charge:#16875a; --drain:#c8432f; --grid:#2f6fd6; --gridx:#7b4fd6; }
 }
 *{box-sizing:border-box}
 body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 'IBM Plex Sans Thai',system-ui,sans-serif;
@@ -99,6 +99,7 @@ svg{display:block;width:100%;height:auto}
 .cal .d .n{font-size:13px;font-weight:600}
 .cal .d .a,.cal .d .b{font-family:var(--num);font-size:10.5px;line-height:1.25}
 .cal .d .a{color:var(--sun)} .cal .d .b{color:var(--drain)}
+.cal .d .c{font-family:var(--num);font-size:10.5px;line-height:1.25;color:var(--gridx)}
 .cal .d.none{opacity:.35}
 .cal .d.today{border-color:var(--muted)}
 .cal .d.sel{border-color:var(--charge);background:color-mix(in srgb,var(--charge) 12%,transparent)}
@@ -184,7 +185,7 @@ svg{display:block;width:100%;height:auto}
         <button id="nextM" onclick="moveMonth(1)" aria-label="เดือนถัดไป">›</button>
       </div>
       <div class="cal" id="cal"></div>
-      <div class="legend"><span><i style="background:var(--sun)"></i>โซลาร์รวม kWh</span><span><i style="background:var(--drain)"></i>ใช้แบต Ah</span></div>
+      <div class="legend"><span><i style="background:var(--sun)"></i>โซลาร์รวม kWh</span><span><i style="background:var(--drain)"></i>ใช้แบต Ah</span><span><i style="background:var(--gridx)"></i>กริด kWh</span></div>
       <div class="rows" id="monthTotals"></div>
     </section>
     <div id="day-detail"><p class="muted" style="text-align:center">แตะวันที่ในปฏิทินเพื่อดูรายละเอียด</p></div>
@@ -193,7 +194,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.3';
+const APP_VERSION = 'v2.4';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -255,6 +256,7 @@ function summaryHTML(t, title) {
       '<div class="row"><span>แผงชุด 2 · MPPT</span><span>' + fmt(t.pvMpptKwh, 2) + ' kWh</span></div>' +
       '<div class="row total"><span>แผงรวม</span><span>' + fmt(t.pvTotalKwh, 2) + ' kWh</span></div>' +
       '<div class="row hl"><span>🏠 ไฟที่บ้านใช้ทั้งวัน</span><span>' + fmt(t.kwhLoad, 2) + ' <small>kWh</small></span></div>' +
+      gridRows(t) +
     '</div>' +
     '<div class="sub-h">ช่วงมีแดด · ฝั่งอินเวอร์เตอร์</div><div class="label" style="margin-top:4px">' + sun + '</div><div class="rows">' +
       '<div class="row"><span>แผงผลิต</span><span class="sun">' + fmt(t.sunPvKwh, 2) + ' kWh</span></div>' +
@@ -266,9 +268,20 @@ function summaryHTML(t, title) {
     '</div></section>';
 }
 
+function gridRows(t) {
+  if (!(t.gridKwh > 0)) return '<div class="row"><span>🔌 ใช้ไฟกริด</span><span class="muted">ไม่ได้ใช้</span></div>';
+  const spans = (t.gridSpans || []).filter((p) => p[1] - p[0] >= 5 * 60000);
+  const mins = Math.round(t.gridMinutes || 0);
+  return '<div class="row"><span>🔌 ใช้ไฟกริด <span class="label">(คำนวณ)</span></span><span style="color:var(--gridx)">' + fmt(t.gridKwh, 2) + ' kWh</span></div>' +
+    '<div class="row"><span>· เวลาที่ใช้กริด</span><span>' + Math.floor(mins / 60) + ' ชม. ' + (mins % 60) + ' น. · สูงสุด ' + fmt(t.gridPeakW) + ' W</span></div>' +
+    (spans.length ? '<div class="row"><span>· ช่วงเวลา</span><span style="text-align:right">' + spans.slice(0, 4).map((p) => hhmm(p[0]) + '–' + hhmm(p[1])).join('<br>') + (spans.length > 4 ? '<br>+' + (spans.length - 4) + ' ช่วง' : '') + '</span></div>' : '') +
+    '<div class="row"><span>· แผง+แบตพอใช้ในบ้าน</span><span>' + (t.kwhLoad > 0 ? fmt(Math.max(0, 100 - (t.gridKwh / t.kwhLoad) * 100)) + '%' : '–') + '</span></div>';
+}
+
 // ---------- stacked charts with a shared cursor ----------
 const CHARTS = [
   { k: 'load', title: 'ไฟที่บ้านใช้ทั้งหมด', unit: 'W', color: '--grid', kind: 'area' },
+  { k: 'grid', title: 'ไฟจากกริด <span class="label">(คำนวณ)</span>', unit: 'W', color: '--gridx', kind: 'area', onlyIfUsed: true },
   { k: 'pv1', title: 'แผงชุด 1 · อินเวอร์เตอร์', unit: 'W', color: '--sun', kind: 'area' },
   { k: 'pv2', title: 'แผงชุด 2 · MPPT', unit: 'W', color: '--sun2', kind: 'area' },
   { k: 'pv', title: 'แผงรวม', unit: 'W', color: '--sun', kind: 'area' },
@@ -288,9 +301,7 @@ function renderFlow(L) {
   const c1 = (L.inv_chg_a || 0) - (L.inv_dis_a || 0);           // + inverter → battery
   const invBatW = c1 * V, mpptBatW = Math.max(0, (L.mppt_a || 0) * V);
   const netW = invBatW + mpptBatW;                                // + into the battery cells
-  let gridW = load + Math.max(0, invBatW) - pv1 - Math.max(0, -invBatW);
-  gridW = L.grid_v ? Math.max(0, gridW) : 0;
-  if (gridW < 40) gridW = 0;
+  const gridW = L.grid_w ?? 0;                                   // estimated server-side (SmartESS has no grid watts)
   const soc = usable(L.soc_calc ?? L.soc) ?? 0;
   const C = { sun: css('--sun'), sun2: css('--sun2'), chg: css('--charge'), dr: css('--drain'), grid: css('--grid'), text: css('--text'), muted: css('--muted'), line: css('--line'), card: css('--card') };
   const kw = (w) => (w >= 1000 ? (w / 1000).toFixed(2) + ' kW' : Math.round(w) + ' W');
@@ -346,7 +357,7 @@ function renderFlow(L) {
   // Grid tower
   const gridOn = !!L.grid_v;
   g += node(52, 150, 22, C.grid, '<g stroke="' + C.grid + '" fill="none" stroke-width="1.4" stroke-linejoin="round"><path d="M45,166 L52,134 L59,166 M47,156 H57 M48.5,146 H55.5 M42,140 H62"/></g>', gridW > 0) +
-       label(52, 188, 'กริด ' + (gridOn ? Math.round(L.grid_v) + 'V' : 'ไม่มีไฟ'), gridW > 0 ? '~' + kw(gridW) : (gridOn ? 'สแตนด์บาย' : '–'), C.grid);
+       label(52, 188, 'กริด ' + (gridOn ? Math.round(L.grid_v) + 'V' : 'ไม่มีไฟ'), gridW > 0 ? '~' + kw(gridW) : (gridOn ? 'ไม่ได้ใช้' : '–'), C.grid);
   // Home
   g += node(180, 250, 24, C.text, '<path d="M168,252 L180,240 L192,252 M171,250 V262 H189 V250" fill="none" stroke="' + C.text + '" stroke-width="1.6" stroke-linejoin="round"/><path d="M178,262 V255 H182 V262" fill="none" stroke="' + C.text + '" stroke-width="1.4"/>', load >= 20) +
        label(132, 246, 'บ้านใช้', kw(load), C.text, 'end');
@@ -374,7 +385,8 @@ function renderCharts(el, S, date) {
   const x = (t) => P.l + ((t - t0) / (t1 - t0)) * iw;
   const line = css('--line'), muted = css('--muted');
   let html = '';
-  CHARTS.forEach((c, ci) => {
+  const list = CHARTS.filter((c) => !c.onlyIfUsed || (S[c.k] || []).some((v) => v > 0));
+  list.forEach((c, ci) => {
     const vals = S[c.k] || [];
     const nums = vals.filter((v) => v != null);
     let lo, hi;
@@ -484,7 +496,7 @@ function renderNow(d) {
   $('pv2sub').textContent = d.mpptSleeping ? '4 แผง · พักดึงค่ากลางคืน ถึง 05:00' : '4 แผง · ชาร์จ ' + fmt(L.mppt_a, 1) + ' A' + (L.mppt_temp != null ? ' · ' + L.mppt_temp + '°C' : '');
   $('load').innerHTML = watts(L.load_w);
   $('grid').innerHTML = L.grid_v ? fmt(L.grid_v, 0) + '<small> V</small>' : 'ไม่มีไฟ';
-  $('gridsub').textContent = L.grid_v ? 'มีไฟกริด' : 'ไฟดับ / ไม่ได้ต่อ';
+  $('gridsub').textContent = !L.grid_v ? 'ไฟดับ / ไม่ได้ต่อ' : L.grid_w > 0 ? 'กำลังใช้กริด ~' + (L.grid_w >= 1000 ? fmt(L.grid_w / 1000, 2) + ' kW' : L.grid_w + ' W') : 'มีไฟ · ไม่ได้ใช้';
 
   const t = d.today;
   t.sunLive = L.inv_pv_w >= 30 && t.sunEndAt && Date.now() - t.sunEndAt < 10 * 60000;
@@ -518,20 +530,21 @@ function drawCal() {
   const today = solarDay(Date.now());
   let h = ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'].map((w) => '<div class="wd">' + w + '</div>').join('');
   for (let i = 0; i < first; i++) h += '<div class="pad"></div>';
-  let tot = { pv: 0, load: 0, in: 0, out: 0, n: 0 };
+  let tot = { pv: 0, load: 0, grid: 0, in: 0, out: 0, n: 0 };
   for (let dnum = 1; dnum <= days; dnum++) {
     const ds = MONTH + '-' + String(dnum).padStart(2, '0');
     const r = MONTHDATA[ds];
     const cls = 'd' + (r ? '' : ' none') + (ds === today ? ' today' : '') + (ds === SEL ? ' sel' : '');
-    if (r) { tot.pv += r.pvTotalKwh || 0; tot.load += r.kwhLoad || 0; tot.in += r.ahIn || 0; tot.out += r.ahOut || 0; tot.n++; }
+    if (r) { tot.pv += r.pvTotalKwh || 0; tot.load += r.kwhLoad || 0; tot.grid += r.gridKwh || 0; tot.in += r.ahIn || 0; tot.out += r.ahOut || 0; tot.n++; }
     h += '<button class="' + cls + '"' + (r ? ' onclick="openDay(\\'' + ds + '\\')"' : ' disabled') + '><span class="n">' + dnum + '</span>' +
-      (r ? '<span class="a">' + fmt(r.pvTotalKwh, 1) + '</span><span class="b">' + fmt(r.ahOut, 0) + '</span>' : '') + '</button>';
+      (r ? '<span class="a">' + fmt(r.pvTotalKwh, 1) + '</span><span class="b">' + fmt(r.ahOut, 0) + '</span>' + (r.gridKwh > 0.05 ? '<span class="c">' + fmt(r.gridKwh, 1) + '</span>' : '') : '') + '</button>';
   }
   $('cal').innerHTML = h;
   $('monthTotals').innerHTML = tot.n ? (
     '<div class="row"><span>รวมทั้งเดือน (' + tot.n + ' วันที่มีข้อมูล)</span><span></span></div>' +
     '<div class="row"><span>โซลาร์ผลิตรวม</span><span class="sun">' + fmt(tot.pv, 1) + ' kWh</span></div>' +
     '<div class="row"><span>ไฟที่บ้านใช้</span><span>' + fmt(tot.load, 1) + ' kWh</span></div>' +
+    '<div class="row"><span>ใช้ไฟกริด (คำนวณ)</span><span style="color:var(--gridx)">' + fmt(tot.grid, 1) + ' kWh</span></div>' +
     '<div class="row"><span>ชาร์จเข้าแบต / ใช้แบต</span><span><span style="color:var(--charge)">' + fmt(tot.in, 0) + '</span> / <span style="color:var(--drain)">' + fmt(tot.out, 0) + '</span> Ah</span></div>') : '';
 }
 async function openDay(ds) {
