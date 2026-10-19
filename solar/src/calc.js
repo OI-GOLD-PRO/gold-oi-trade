@@ -5,9 +5,11 @@ const SUN_MIN_W = 30;                // inverter PV above this = panels producin
 
 /**
  * Net battery current (+ charging, − discharging).
- * MPPT charges the battery directly; the inverter both charges and draws from it.
+ * Preferred: the sum measured by both BMS (bms_a, stored only when every pack reported in the last 3 min).
+ * Fallback: MPPT charges the battery directly; the inverter both charges and draws from it.
  */
 export function netBatteryA(s) {
+  if (s.bms_a != null) return s.bms_a;
   const mppt = s.mppt_a ?? 0;
   const chg = s.inv_chg_a ?? 0;
   const dis = s.inv_dis_a ?? 0;

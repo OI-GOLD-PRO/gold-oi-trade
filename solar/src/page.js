@@ -212,7 +212,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.6';
+const APP_VERSION = 'v2.7';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -350,9 +350,9 @@ function renderBms(b, L) {
   const paused = b.pausedUntil && b.pausedUntil > Date.now();
   el.innerHTML = '<h2>แบตรายลูก <span class="label">· อ่านจาก BMS</span></h2>' + b.packs.map(packHTML).join('') +
     '<div class="rows" style="margin-top:6px">' +
-      '<div class="row"><span>รวม ' + b.packs.length + ' ลูก · เหลือ</span><span>' + fmt(t.remAh, 1) + ' / ' + fmt(t.nomAh, 0) + ' Ah · ' + fmt(t.soc) + '%</span></div>' +
+      '<div class="row"><span>รวม ' + b.packs.length + ' ลูก · BMS บอกเหลือ</span><span>' + fmt(t.remAh, 1) + ' / ' + fmt(t.nomAh, 0) + ' Ah</span></div>' +
       '<div class="row"><span>กระแสรวม</span><span style="color:' + (t.a > 0.3 ? 'var(--charge)' : t.a < -0.3 ? 'var(--drain)' : 'var(--muted)') + '">' + (t.a > 0 ? '+' : '') + fmt(t.a, 2) + ' A · ' + fmt(Math.abs(t.w)) + ' W</span></div>' +
-      (appSoc != null ? '<div class="row"><span>เทียบ: แอปคำนวณ (รวมสำรอง)</span><span>' + fmt(appSoc) + '%  ·  BMS ' + fmt(t.soc) + '%</span></div>' : '') +
+      '<div class="row"><span>% แบตด้านบนนับกระแสจาก</span><span>' + (L && L.bms_a != null ? 'BMS ✓' : 'อินเวอร์เตอร์ + MPPT (BMS ขาดช่วง)') + '</span></div>' +
     '</div>' +
     '<button class="rbtn" onclick="pauseBms(' + (paused ? 0 : 10) + ')">' + (paused ? 'พักบลูทูธอยู่ถึง ' + hhmm(b.pausedUntil) + ' · กดเพื่อกลับมาอ่านต่อ' : 'พักบลูทูธ 10 นาที (เพื่อเปิดแอป XiaoxiangBMS)') + '</button>';
 }
@@ -540,7 +540,7 @@ function renderNow(d) {
   const socMain = usable(socRaw);
   $('soc').textContent = fmt(socMain);
   $('volt').textContent = fmt(L.batt_v, 1) + ' V';
-  $('socinv').textContent = 'ใช้ได้จริงก่อนถึง ' + CFG.cutoffV + 'V' + (socRaw != null ? ' · รวมสำรองในแบต ' + fmt(socRaw) + '%' : '') + (L.soc_calc != null && L.soc != null ? ' · อินเวอร์เตอร์บอก ' + fmt(L.soc) + '%' : '');
+  $('socinv').textContent = 'ใช้ได้จริงก่อนถึง ' + CFG.cutoffV + 'V' + (socRaw != null ? ' · รวมสำรองในแบต ' + fmt(socRaw) + '%' : '') + (L.soc_calc != null && L.soc != null ? ' · อินเวอร์เตอร์บอก ' + fmt(L.soc) + '%' : '') + (L.soc_calc != null ? ' · นับกระแสจาก ' + (L.bms_a != null ? 'BMS' : 'อินเวอร์เตอร์+MPPT') : '');
   const pct = Math.max(0, Math.min(100, socMain ?? 0));
   $('fill').style.height = 'calc(' + pct + '% - 8px)';
   $('fill').style.background = pct < 25 ? 'var(--drain)' : pct < 45 ? 'var(--sun)' : 'var(--charge)';

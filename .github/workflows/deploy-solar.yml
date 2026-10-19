@@ -47,7 +47,7 @@ jobs:
 
       - name: Migrate columns
         run: |
-          for col in "inv_today_kwh REAL" "soc_calc REAL" "inv_mode TEXT"; do
+          for col in "inv_today_kwh REAL" "soc_calc REAL" "inv_mode TEXT" "bms_a REAL"; do
             npx wrangler d1 execute solar-monitor-db --remote -y --command "ALTER TABLE samples ADD COLUMN $col" >/dev/null 2>&1 && echo "added $col" || echo "exists: $col"
           done
 

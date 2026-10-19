@@ -47,4 +47,9 @@ const bad = { b: [{ mac: 'A5:C2:39:41:66:FA', basic: 'dd03001b00', cells: '' }] 
 await call('/api/bms', { method: 'POST', body: JSON.stringify(bad) });
 now = await (await call('/api/now')).json();
 assert.equal(now.bms.packs[0].v, 52.5);
+// the minute poll stores the BMS current and the Ah counter uses it as the battery current
+globalThis.fetch = async () => { throw new Error('offline in test'); };
+await call('/api/poll');
+now = await (await call('/api/now')).json();
+assert.equal(now.latest.bms_a, -14.57); assert.equal(now.latest.net_a, -14.57);
 console.log('bms e2e OK', now.bms.total);

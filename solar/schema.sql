@@ -11,6 +11,7 @@ CREATE TABLE IF NOT EXISTS samples (
   load_w REAL,                 -- house load
   grid_v REAL,                 -- grid voltage
   inv_mode TEXT,               -- inverter working state (Line Mode = on grid, Invert Mode = battery/PV)
+  bms_a REAL,                  -- battery current summed from both BMS (+ charging); null when the ESP32 is offline
   mppt_today_kwh REAL,         -- MPPT's own day counter
   inv_today_kwh REAL,          -- inverter's own day counter (SmartESS)
   mppt_temp REAL,

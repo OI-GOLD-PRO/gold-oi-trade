@@ -82,6 +82,8 @@ export async function poll(env, { force = false } = {}) {
     for (const r of results) await saveDay(env, r.date);
     await kvSet(env.DB, 'daily_recalc_grid_v1', { at: row.ts, days: results.length });
   }
+  // Battery current measured by the BMS (both packs, fresh) — the Ah counter's preferred input.
+  row.bms_a = await bmsCurrentNow(env, row.ts);
   // App-side battery % (Ah counting + voltage calibration at rest).
   if (row.batt_v != null) {
     const st = stepSoc(await kvGet(env.DB, 'soc_state'), { ts: row.ts, v: row.batt_v, net: netBatteryA(row) }, cfg(env).capacityAh);
@@ -180,6 +182,21 @@ async function apiBmsPause(env, min) {
   const until = m ? Date.now() + m * 60000 : 0;
   await kvSet(env.DB, 'bms_pause_until', until);
   return { pausedUntil: until };
+}
+
+/** Sum of all packs' current if every expected pack reported within 3 min, else null. */
+async function bmsCurrentNow(env, now) {
+  const last = (await kvGet(env.DB, 'bms_last')) || {};
+  const order = parseLabels(env.BMS_LABELS);
+  const macs = order.length ? order.map((o) => o.mac) : Object.keys(last);
+  if (!macs.length) return null;
+  let a = 0;
+  for (const mac of macs) {
+    const e = last[mac];
+    if (!e || e.a == null || Math.abs(now - e.ts) > 180000) return null;
+    a += e.a;
+  }
+  return r2(a);
 }
 
 /** Latest per-battery readings + pack totals for the app (null until the ESP32 has reported). */
