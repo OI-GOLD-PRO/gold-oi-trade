@@ -29,7 +29,9 @@ jobs:
           ELF=.pio/build/esp32dev/firmware.elf
           sha256sum $ELF
           A2L=$(find ~/.platformio/packages -name xtensa-esp32-elf-addr2line | head -1)
-          $A2L -pfiaC -e $ELF 0x4015f974 0x400838bd 0x40095989 0x4009b481 0x4015f793 0x400d526e 0x400d37ea 0x400f7d6e || true
+          $A2L -pfiaC -e $ELF 0x4015f974 0x400838bd 0x40095989 0x4009b481 0x4015f793 0x400d526e 0x400d37ea 0x400f7d6e > bt.txt || true
+          echo "::notice title=elf::$(sha256sum $ELF | cut -c1-16)"
+          while read -r l; do echo "::notice title=bt::$l"; done < bt.txt
       - name: Merge into one flashable image
         run: |
           mkdir -p dist
