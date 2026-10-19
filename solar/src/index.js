@@ -82,7 +82,7 @@ export async function poll(env, { force = false } = {}) {
     for (const r of results) await saveDay(env, r.date);
     await kvSet(env.DB, 'daily_recalc_grid_v1', { at: row.ts, days: results.length });
   }
-  // Battery current measured by the BMS (both packs, fresh) — the Ah counter's preferred input.
+  // Battery current measured by the BMS (both packs, fresh) — stored for reference only, not used for the % .
   row.bms_a = await bmsCurrentNow(env, row.ts);
   // App-side battery % (Ah counting + voltage calibration at rest).
   if (row.batt_v != null) {
