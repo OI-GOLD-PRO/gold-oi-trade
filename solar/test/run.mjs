@@ -101,3 +101,38 @@ console.log('soc OK');
   assert.deepEqual(r.gridSpans, [[0, 119 * 60000]]);
   console.log('grid OK', { gridKwh: r.gridKwh, gridMinutes: r.gridMinutes });
 }
+
+// 10) JBD BMS frames — built from the user's real XiaoxiangBMS readings (17:57 on 19 Oct)
+{
+  const { frameData, parseBms, parseLabels } = await import('../src/bms.js');
+  const hex = (a) => a.map((x) => x.toString(16).padStart(2, '0')).join('');
+  const w16 = (x) => [(x >> 8) & 255, x & 255];
+  const frame = (cmd, data) => {
+    const body = [0x00, data.length, ...data];
+    const sum = body.reduce((a, b) => a + b, 0);
+    return hex([0xdd, cmd, ...body, ...w16((0x10000 - sum) & 0xffff), 0x77]);
+  };
+  const date = ((2025 - 2000) << 9) | (1 << 5) | 19; // 19 Jan 2025
+  const basic = [...w16(5258), ...w16((-805) & 0xffff), ...w16(13259), ...w16(31400), ...w16(301), ...w16(date),
+    0, 0, 0, 0, ...w16(0), 0x21, 42, 0x03, 16, 2, ...w16(2731 + 281), ...w16(2731 + 295)];
+  const cellMv = [3290, 3285, 3281, 3284, 3283, 3282, 3280, 3283, 3285, 3281, 3282, 3279, 3303, 3284, 3279, 3280];
+  const b = frame(0x03, basic), c = frame(0x04, cellMv.flatMap(w16));
+  const p = parseBms(b, c);
+  assert.equal(p.v, 52.58); assert.equal(p.a, -8.05); assert.equal(p.w, -423);
+  assert.equal(p.remAh, 132.59); assert.equal(p.nomAh, 314); assert.equal(p.soc, 42); assert.equal(p.cycles, 301);
+  assert.deepEqual(p.made, { y: 2025, m: 1, d: 19 });
+  assert.deepEqual(p.temps, [28.1, 29.5]); assert.equal(p.tMax, 29.5); assert.equal(p.nCells, 16);
+  assert.equal(p.fet, 3); assert.deepEqual(p.protNames, []);
+  assert.equal(p.cMin, 3.279); assert.equal(p.cMax, 3.303); assert.equal(p.cDelta, 0.024); assert.equal(p.cMaxIdx, 13);
+  // protection bits
+  const bad = frame(0x03, basic.map((x, i) => (i === 17 ? 0x05 : x)));       // prot low byte = cell over + pack over
+  assert.deepEqual(parseBms(bad, null).protNames, ['cellOver', 'packOver']);
+  // corrupt checksum / wrong command / truncated → rejected, basic-only still parses
+  assert.equal(parseBms(b.slice(0, -4) + '00' + '77', c), null);
+  assert.equal(frameData(b, 0x04), null);
+  assert.equal(parseBms(b, null).cells, undefined);
+  assert.equal(parseBms('dd03', c), null);
+  assert.deepEqual(parseLabels('A5:C2:39:41:66:FA=200 Ah, a4:c1:37:25:e5:e2=314 Ah'), [{ mac: 'A5:C2:39:41:66:FA', label: '200 Ah' }, { mac: 'A4:C1:37:25:E5:E2', label: '314 Ah' }]);
+  globalThis.__bmsFrames = { b, c };
+  console.log('bms OK', { v: p.v, a: p.a, rem: p.remAh, cMin: p.cMin, cMax: p.cMax });
+}

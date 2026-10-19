@@ -20,3 +20,4 @@ NOMINAL_V = "51.2"
 TUYA_REGION = "sg"      # Singapore Data Center
 TUYA_DEVICE_ID = "a388c65aef93d7a41bfjah"
 MPPT_EVERY_MIN = "2"
+BMS_LABELS = "A5:C2:39:41:66:FA=200 Ah,A4:C1:37:25:E5:E2=314 Ah"   # BMS Bluetooth MAC=name (order = display order)

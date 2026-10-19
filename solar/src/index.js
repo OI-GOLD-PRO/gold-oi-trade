@@ -4,6 +4,8 @@ import { summarizeDay, timeToCutoff, netBatteryA, gridW } from './calc.js';
 import { localDate, dayRange, kvGet, kvSet, DAY_START_H } from './util.js';
 import { PAGE } from './page.js';
 import { stepSoc } from './soc.js';
+import { parseBms, parseLabels } from './bms.js';
+import { FLASH_PAGE, FLASH_MANIFEST } from './flash.js';
 import { ICON_180, ICON_512 } from './icon.js';
 
 function cfg(env) {
@@ -106,6 +108,7 @@ export async function poll(env, { force = false } = {}) {
   // Keep ~120 days of per-minute samples (daily summaries stay).
   if (nowLocal.getUTCHours() === 3 && min === 0) {
     await env.DB.prepare('DELETE FROM samples WHERE ts < ?').bind(Date.now() - 120 * 86400000).run();
+    await env.DB.prepare('DELETE FROM bms WHERE ts < ?').bind(Date.now() - 120 * 86400000).run();
   }
   return row;
 }
@@ -142,6 +145,67 @@ export async function saveDay(env, date) {
   const sum = summarizeDay(list, cfg(env));
   await env.DB.prepare('INSERT INTO daily (date, data) VALUES (?, ?) ON CONFLICT(date) DO UPDATE SET data = excluded.data')
     .bind(date, JSON.stringify(sum)).run();
+}
+
+// ---- BMS (ESP32 relay) -----------------------------------------------------
+
+/** Device → Worker. The ESP32 sends raw JBD frames in hex; the reply tells it whether to pause Bluetooth. */
+async function apiBmsPost(env, body) {
+  const now = Date.now();
+  const last = (await kvGet(env.DB, 'bms_last')) || {};
+  let saved = 0;
+  for (const b of body?.b || []) {
+    const mac = String(b.mac || '').toUpperCase();
+    if (!/^[0-9A-F]{2}(:[0-9A-F]{2}){5}$/.test(mac)) continue;
+    const p = parseBms(b.basic, b.cells);
+    if (!p) { last[mac] = { ...(last[mac] || {}), mac, err: 'bad frame', errAt: now }; continue; }
+    const ts = now - Math.min(600, Math.max(0, Number(b.age) || 0)) * 1000;
+    const prev = last[mac] || {};
+    const e = { ...p, mac, ts, rssi: b.rssi ?? null, savedAt: prev.savedAt || 0 };
+    if (ts - e.savedAt >= 55000) {
+      await env.DB.prepare('INSERT OR REPLACE INTO bms (ts, mac, v, a, soc, rem_ah, nom_ah, cycles, cmin, cmax, tmax, prot, fet) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+        .bind(ts, mac, p.v, p.a, p.soc, p.remAh, p.nomAh, p.cycles, p.cMin ?? null, p.cMax ?? null, p.tMax, p.prot, p.fet).run();
+      e.savedAt = ts; saved++;
+    }
+    last[mac] = e;
+  }
+  await kvSet(env.DB, 'bms_last', last);
+  await kvSet(env.DB, 'bms_device', { ts: now, fw: body?.fw ?? null, up: body?.up ?? null, rssi: body?.wifi ?? null });
+  const until = (await kvGet(env.DB, 'bms_pause_until')) || 0;
+  return { ok: true, t: now, saved, pause: Math.max(0, Math.ceil((until - now) / 1000)) };
+}
+
+async function apiBmsPause(env, min) {
+  const m = Math.max(0, Math.min(120, Number(min) || 0));
+  const until = m ? Date.now() + m * 60000 : 0;
+  await kvSet(env.DB, 'bms_pause_until', until);
+  return { pausedUntil: until };
+}
+
+/** Latest per-battery readings + pack totals for the app (null until the ESP32 has reported). */
+async function bmsNow(env) {
+  const last = (await kvGet(env.DB, 'bms_last')) || {};
+  const order = parseLabels(env.BMS_LABELS);
+  const macs = [...order.map((o) => o.mac), ...Object.keys(last).filter((m) => !order.some((o) => o.mac === m))];
+  const packs = [];
+  for (const mac of macs) {
+    const e = last[mac];
+    if (!e || !e.ts || Date.now() - e.ts > 24 * 3600000) continue;
+    packs.push({ ...e, label: order.find((o) => o.mac === mac)?.label || mac });
+  }
+  if (!packs.length) return null;
+  const sum = (k) => packs.reduce((x, p) => x + (p[k] || 0), 0);
+  const fresh = packs.filter((p) => Date.now() - p.ts < 180000);
+  const rem = sum('remAh'), nom = sum('nomAh');
+  return {
+    packs,
+    total: {
+      remAh: r2(rem), nomAh: r2(nom), soc: nom ? r2((rem / nom) * 100) : null,
+      a: r2(sum('a')), w: Math.round(sum('w')), live: fresh.length === packs.length,
+    },
+    device: await kvGet(env.DB, 'bms_device'),
+    pausedUntil: (await kvGet(env.DB, 'bms_pause_until')) || 0,
+  };
 }
 
 // ---- reads -----------------------------------------------------------------
@@ -192,6 +256,7 @@ async function apiNow(env) {
   const ml = await kvGet(env.DB, 'mppt_last');
   return {
     mpptSleeping: !!(ml && mpptAsleep(ml)),
+    bms: await bmsNow(env),
     config: { ...c, dayStartH: DAY_START_H },
     latest: latest && { ...latest, net_a: r2(netBatteryA(latest)), grid_w: gridW(latest, c.nominalV) },
     eta: latest ? timeToCutoff(latest, c) : null,
@@ -271,6 +336,8 @@ export default {
     if (path === '/' || path === '/index.html') {
       return new Response(PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
     }
+    if (path === '/flash') return new Response(FLASH_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8' } });
+    if (path === '/flash/manifest.json') return json(FLASH_MANIFEST);
     if (path === '/manifest.json') {
       return json({
         name: 'โซลาร์บ้าน', short_name: 'โซลาร์บ้าน', start_url: '/', display: 'standalone',
@@ -288,6 +355,8 @@ export default {
     if (!authorized(req, env)) return json({ error: 'unauthorized' }, 401);
 
     try {
+      if (path === '/api/bms' && req.method === 'POST') return json(await apiBmsPost(env, await req.json()));
+      if (path === '/api/bms/pause') return json(await apiBmsPause(env, url.searchParams.get('min')));
       if (path === '/api/now') return json(await apiNow(env));
       if (path === '/api/day') return json(await apiDay(env, url.searchParams.get('date') || localDate(Date.now())));
       if (path === '/api/history') return json(await apiHistory(env, Math.min(3650, Number(url.searchParams.get('days') || 14))));

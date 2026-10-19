@@ -104,6 +104,13 @@ svg{display:block;width:100%;height:auto}
 .cal .d.today{border-color:var(--muted)}
 .cal .d.sel{border-color:var(--charge);background:color-mix(in srgb,var(--charge) 12%,transparent)}
 .cal .pad{min-height:62px}
+.pk{padding:12px 0;border-top:1px solid var(--line)} .pk:first-of-type{border-top:0;padding-top:4px}
+.pk-h{display:flex;justify-content:space-between;align-items:baseline}
+.pk-m{display:flex;align-items:center;gap:16px;margin:4px 0}
+.pk-m .soc{font-size:36px;line-height:1}
+.pk.stale{opacity:.55}
+.chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;background:color-mix(in srgb,var(--drain) 20%,transparent);color:var(--drain);margin:4px 4px 0 0}
+.pk svg{display:block;width:100%;height:46px;margin:6px 0 2px}
 .cal .d.inr{background:color-mix(in srgb,var(--gridx) 16%,transparent);border-color:var(--gridx)}
 .rbtn{width:100%;padding:10px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--text);font-weight:600;font-size:14px;font-family:inherit;margin-top:12px}
 .rbtn.on{border-color:var(--gridx);color:var(--gridx)}
@@ -169,6 +176,8 @@ svg{display:block;width:100%;height:auto}
 
     <section class="card flow"><h2>การไหลของพลังงาน <span class="label">· ตอนนี้</span></h2><div id="flow"></div></section>
 
+    <section class="card hide" id="bmscard"></section>
+
     <div class="tiles">
       <div class="tile"><div class="label">แผงชุด 1 · อินเวอร์เตอร์</div><div class="v num sun" id="pv1">–</div><div class="sub">8 แผง</div></div>
       <div class="tile"><div class="label">แผงชุด 2 · MPPT</div><div class="v num" style="color:var(--sun2)" id="pv2">–</div><div class="sub" id="pv2sub">4 แผง</div></div>
@@ -203,7 +212,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.5';
+const APP_VERSION = 'v2.6';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -301,6 +310,55 @@ const CHARTS = [
 ];
 
 function css(n) { return getComputedStyle(document.documentElement).getPropertyValue(n).trim(); }
+
+// ---------- per-battery BMS card (data relayed by the ESP32) ----------
+const PROT_TH = { cellOver: 'เซลล์แรงดันเกิน', cellUnder: 'เซลล์แรงดันต่ำ', packOver: 'แพ็กแรงดันเกิน', packUnder: 'แพ็กแรงดันต่ำ',
+  chgOverTemp: 'ชาร์จร้อนเกิน', chgUnderTemp: 'ชาร์จเย็นเกิน', disOverTemp: 'จ่ายร้อนเกิน', disUnderTemp: 'จ่ายเย็นเกิน',
+  chgOverCurrent: 'ชาร์จกระแสเกิน', disOverCurrent: 'จ่ายกระแสเกิน', shortCircuit: 'ลัดวงจร', icError: 'ชิป BMS ผิดปกติ', mosLock: 'MOS ล็อก' };
+function cellBars(p) {
+  if (!p.cells || !p.cells.length) return '';
+  const v = p.cells.map((x) => x / 1000), n = v.length, W = 340, H = 46;
+  const lo = Math.min(...v), hi = Math.max(...v), span = Math.max(0.05, hi - lo + 0.02), base = lo - 0.01;
+  const bw = W / n;
+  let g = '';
+  v.forEach((x, i) => {
+    const h = Math.max(3, ((x - base) / span) * (H - 12));
+    const col = x === hi && hi - lo > 0.004 ? css('--sun') : x === lo && hi - lo > 0.004 ? css('--drain') : css('--charge');
+    g += '<rect x="' + (i * bw + 1.5).toFixed(1) + '" y="' + (H - 10 - h).toFixed(1) + '" width="' + (bw - 3).toFixed(1) + '" height="' + h.toFixed(1) + '" rx="2" fill="' + col + '" opacity=".75"/>' +
+      '<text x="' + (i * bw + bw / 2).toFixed(1) + '" y="' + (H - 1) + '" font-size="7.5" text-anchor="middle" fill="' + css('--muted') + '">' + (i + 1) + '</text>';
+  });
+  return '<svg viewBox="0 0 ' + W + ' ' + H + '">' + g + '</svg>';
+}
+function packHTML(p) {
+  const stale = Date.now() - p.ts > 180000;
+  const col = p.a > 0.3 ? 'var(--charge)' : p.a < -0.3 ? 'var(--drain)' : 'var(--muted)';
+  const chips = (p.protNames || []).map((k) => '<span class="chip">⚠ ' + (PROT_TH[k] || k) + '</span>').join('') +
+    (p.fet != null && !(p.fet & 1) ? '<span class="chip">ปิดชาร์จ (MOS)</span>' : '') + (p.fet != null && !(p.fet & 2) ? '<span class="chip">ปิดจ่าย (MOS)</span>' : '');
+  return '<div class="pk' + (stale ? ' stale' : '') + '"><div class="pk-h"><b>' + p.label + '</b><span class="label">' + (stale ? 'ไม่ได้อัปเดต ' + ago(p.ts) : 'ล่าสุด ' + hhmm(p.ts)) + '</span></div>' +
+    '<div class="pk-m"><div class="soc num">' + fmt(p.soc) + '<small>%</small></div><div><div class="num">' + fmt(p.v, 2) + ' V</div>' +
+    '<div class="num" style="color:' + col + '">' + (p.a > 0 ? '+' : '') + fmt(p.a, 2) + ' A · ' + fmt(Math.abs(p.w)) + ' W</div></div></div>' +
+    '<div class="label">เหลือ <b class="num">' + fmt(p.remAh, 1) + '</b> จาก ' + fmt(p.nomAh, 0) + ' Ah · ' + fmt(p.cycles) + ' รอบ' + (p.tMax != null ? ' · ' + fmt(p.tMax, 0) + '°C' : '') + '</div>' +
+    cellBars(p) +
+    (p.cMin != null ? '<div class="label">เซลล์ ' + fmt(p.cMin, 3) + '–' + fmt(p.cMax, 3) + ' V · ต่างกัน ' + fmt(p.cDelta * 1000) + ' mV</div>' : '') +
+    chips + '</div>';
+}
+function renderBms(b, L) {
+  const el = $('bmscard');
+  if (!b || !b.packs || !b.packs.length) { el.classList.add('hide'); return; }
+  el.classList.remove('hide');
+  const t = b.total, appSoc = L ? (L.soc_calc ?? L.soc) : null;
+  const paused = b.pausedUntil && b.pausedUntil > Date.now();
+  el.innerHTML = '<h2>แบตรายลูก <span class="label">· อ่านจาก BMS</span></h2>' + b.packs.map(packHTML).join('') +
+    '<div class="rows" style="margin-top:6px">' +
+      '<div class="row"><span>รวม ' + b.packs.length + ' ลูก · เหลือ</span><span>' + fmt(t.remAh, 1) + ' / ' + fmt(t.nomAh, 0) + ' Ah · ' + fmt(t.soc) + '%</span></div>' +
+      '<div class="row"><span>กระแสรวม</span><span style="color:' + (t.a > 0.3 ? 'var(--charge)' : t.a < -0.3 ? 'var(--drain)' : 'var(--muted)') + '">' + (t.a > 0 ? '+' : '') + fmt(t.a, 2) + ' A · ' + fmt(Math.abs(t.w)) + ' W</span></div>' +
+      (appSoc != null ? '<div class="row"><span>เทียบ: แอปคำนวณ (รวมสำรอง)</span><span>' + fmt(appSoc) + '%  ·  BMS ' + fmt(t.soc) + '%</span></div>' : '') +
+    '</div>' +
+    '<button class="rbtn" onclick="pauseBms(' + (paused ? 0 : 10) + ')">' + (paused ? 'พักบลูทูธอยู่ถึง ' + hhmm(b.pausedUntil) + ' · กดเพื่อกลับมาอ่านต่อ' : 'พักบลูทูธ 10 นาที (เพื่อเปิดแอป XiaoxiangBMS)') + '</button>';
+}
+async function pauseBms(min) {
+  try { await api('/api/bms/pause?min=' + min); await load(); } catch (e) {}
+}
 
 // ---------- energy flow diagram ----------
 function renderFlow(L) {
@@ -512,6 +570,7 @@ function renderNow(d) {
   $('today-summary').innerHTML = summaryHTML(t, 'วันนี้ <span class="label">· 05:00 ถึง 05:00 พรุ่งนี้</span>');
   renderCharts($('today-charts'), d.series, t.date);
   renderFlow(L);
+  renderBms(d.bms, L);
 }
 
 // ---------- history: calendar ----------

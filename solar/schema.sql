@@ -27,3 +27,14 @@ CREATE TABLE IF NOT EXISTS daily (
   date TEXT PRIMARY KEY,       -- YYYY-MM-DD (Asia/Bangkok)
   data TEXT
 );
+
+-- BMS (JBD) readings relayed by the ESP32, one row per battery per minute.
+CREATE TABLE IF NOT EXISTS bms (
+  ts INTEGER,
+  mac TEXT,
+  v REAL, a REAL,              -- pack voltage, current (+ charging)
+  soc REAL, rem_ah REAL, nom_ah REAL, cycles INTEGER,
+  cmin REAL, cmax REAL,        -- lowest / highest cell voltage
+  tmax REAL, prot INTEGER, fet INTEGER,
+  PRIMARY KEY (mac, ts)
+);

@@ -5,7 +5,7 @@ name: Deploy solar
 on:
   push:
     branches: [main]
-    paths: ["solar/**", ".github/workflows/deploy-solar.yml"]
+    paths: ["solar/**", "!solar/firmware/**", ".github/workflows/deploy-solar.yml"]
   workflow_dispatch:
 jobs:
   deploy:
