@@ -18,7 +18,7 @@
 #include <Preferences.h>
 #include <NimBLEDevice.h>
 
-#define FW_VERSION "1.0.0"
+#define FW_VERSION "1.0.1"
 #ifndef DEFAULT_MAC1
 #define DEFAULT_MAC1 "A5:C2:39:41:66:FA"
 #endif
@@ -276,7 +276,8 @@ void setup() {
   saveRequested = false;
   Serial.printf("[cfg] server %s, BMS %s / %s\n", cfgUrl.c_str(), cfgMac[0].c_str(), cfgMac[1].c_str());
 
-  WiFi.setSleep(false);  // keeps Wi-Fi + Bluetooth sharing the radio smoothly
+  // Wi-Fi modem sleep must stay ON: the radio is shared with Bluetooth and the
+  // ESP32 coexistence layer aborts at Bluetooth start if sleep is turned off.
   WiFi.setAutoReconnect(true);
 
   NimBLEDevice::init("StampHOME");

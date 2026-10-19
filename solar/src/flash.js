@@ -1,7 +1,7 @@
 // /flash — one-button installer for the ESP32 BMS relay (ESP Web Tools, Chrome/Edge on a PC).
 // The firmware image is built by GitHub Actions and committed to solar/firmware/dist/factory.bin.
 const REPO = 'OI-GOLD-PRO/gold-oi-trade';
-const FW_VERSION = '1.0.0';
+const FW_VERSION = '1.0.1';
 
 export const FLASH_MANIFEST = {
   name: 'Stamp HOME · BMS relay',
