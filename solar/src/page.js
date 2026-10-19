@@ -111,6 +111,24 @@ svg{display:block;width:100%;height:auto}
 .pk.stale{opacity:.55}
 .chip{display:inline-block;padding:2px 9px;border-radius:999px;font-size:11.5px;background:color-mix(in srgb,var(--drain) 20%,transparent);color:var(--drain);margin:4px 4px 0 0}
 .pk svg{display:block;width:100%;height:46px;margin:6px 0 2px}
+.pk{cursor:pointer;-webkit-tap-highlight-color:transparent}
+.pk .more{color:var(--muted);font-size:12px;margin-top:6px;text-align:right}
+.sheet{position:fixed;inset:0;z-index:50;background:var(--bg);overflow-y:auto;-webkit-overflow-scrolling:touch;padding:0 16px calc(24px + env(safe-area-inset-bottom))}
+.sheet-in{max-width:520px;margin:0 auto}
+.sheet-top{position:sticky;top:0;background:var(--bg);display:flex;justify-content:space-between;align-items:center;padding:calc(12px + env(safe-area-inset-top)) 0 10px;z-index:2}
+.sheet-top b{font-size:18px}
+.xbtn{width:38px;height:38px;border-radius:999px;border:1px solid var(--line);background:var(--card);color:var(--text);font-size:18px;font-family:inherit}
+.cellrow{display:grid;grid-template-columns:30px 62px 1fr 56px;gap:8px;align-items:center;padding:5px 0;font-size:13px}
+.cellrow .n{color:var(--muted);font-family:var(--num)}
+.cellrow .vv{font-family:var(--num);font-size:14px;font-weight:600}
+.cellrow .bar{height:14px;border-radius:7px;background:var(--line);overflow:hidden}
+.cellrow .bar i{display:block;height:100%;border-radius:7px}
+.cellrow .dv{font-family:var(--num);font-size:11.5px;text-align:right;color:var(--muted)}
+.cellrow.hi .vv{color:var(--sun)} .cellrow.lo .vv{color:var(--drain)}
+.bal{display:inline-block;font-size:10px;padding:1px 6px;border-radius:999px;background:color-mix(in srgb,var(--gridx) 22%,transparent);color:var(--gridx);margin-left:4px;vertical-align:1px}
+.sheet .grid2{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin:10px 0}
+.sheet .grid2 div{background:var(--card);border-radius:12px;padding:10px}
+.sheet .grid2 .big{font-size:20px}
 .cal .d.inr{background:color-mix(in srgb,var(--gridx) 16%,transparent);border-color:var(--gridx)}
 .rbtn{width:100%;padding:10px;border-radius:12px;border:1px solid var(--line);background:transparent;color:var(--text);font-weight:600;font-size:14px;font-family:inherit;margin-top:12px}
 .rbtn.on{border-color:var(--gridx);color:var(--gridx)}
@@ -177,6 +195,7 @@ svg{display:block;width:100%;height:auto}
     <section class="card flow"><h2>การไหลของพลังงาน <span class="label">· ตอนนี้</span></h2><div id="flow"></div></section>
 
     <section class="card hide" id="bmscard"></section>
+    <div class="sheet hide" id="sheet"><div class="sheet-in" id="sheet-in"></div></div>
 
     <div class="tiles">
       <div class="tile"><div class="label">แผงชุด 1 · อินเวอร์เตอร์</div><div class="v num sun" id="pv1">–</div><div class="sub">8 แผง</div></div>
@@ -212,7 +231,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.8';
+const APP_VERSION = 'v2.9';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -334,16 +353,70 @@ function packHTML(p) {
   const col = p.a > 0.3 ? 'var(--charge)' : p.a < -0.3 ? 'var(--drain)' : 'var(--muted)';
   const chips = (p.protNames || []).map((k) => '<span class="chip">⚠ ' + (PROT_TH[k] || k) + '</span>').join('') +
     (p.fet != null && !(p.fet & 1) ? '<span class="chip">ปิดชาร์จ (MOS)</span>' : '') + (p.fet != null && !(p.fet & 2) ? '<span class="chip">ปิดจ่าย (MOS)</span>' : '');
-  return '<div class="pk' + (stale ? ' stale' : '') + '"><div class="pk-h"><b>' + p.label + '</b><span class="label">' + (stale ? 'ไม่ได้อัปเดต ' + ago(p.ts) : 'ล่าสุด ' + hhmm(p.ts)) + '</span></div>' +
+  return '<div class="pk' + (stale ? ' stale' : '') + '" onclick="openPack(\\'' + p.mac + '\\')"><div class="pk-h"><b>' + p.label + '</b><span class="label">' + (stale ? 'ไม่ได้อัปเดต ' + ago(p.ts) : 'ล่าสุด ' + hhmm(p.ts)) + '</span></div>' +
     '<div class="pk-m"><div class="soc num">' + fmt(p.soc) + '<small>%</small></div><div><div class="num">' + fmt(p.v, 2) + ' V</div>' +
     '<div class="num" style="color:' + col + '">' + (p.a > 0 ? '+' : '') + fmt(p.a, 2) + ' A · ' + fmt(Math.abs(p.w)) + ' W</div></div></div>' +
     '<div class="label">เหลือ <b class="num">' + fmt(p.remAh, 1) + '</b> จาก ' + fmt(p.nomAh, 0) + ' Ah · ' + fmt(p.cycles) + ' รอบ' + (p.tMax != null ? ' · ' + fmt(p.tMax, 0) + '°C' : '') + '</div>' +
     cellBars(p) +
     (p.cMin != null ? '<div class="label">เซลล์ ' + fmt(p.cMin, 3) + '–' + fmt(p.cMax, 3) + ' V · ต่างกัน ' + fmt(p.cDelta * 1000) + ' mV</div>' : '') +
-    chips + '</div>';
+    chips + '<div class="more">แตะดูรายละเอียดแต่ละเซลล์ ›</div></div>';
+}
+let bmsData = null, openMac = null;
+function openPack(mac) { openMac = mac; renderSheet(); const sh = $('sheet'); sh.classList.remove('hide'); sh.scrollTop = 0; document.body.style.overflow = 'hidden'; }
+function closePack() { openMac = null; $('sheet').classList.add('hide'); document.body.style.overflow = ''; }
+document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePack(); });
+const CELL_LO = 2.8, CELL_HI = 3.65; // LiFePO4 working range → the bar
+function renderSheet() {
+  const p = bmsData && bmsData.packs && bmsData.packs.find((x) => x.mac === openMac);
+  const el = $('sheet-in');
+  if (!p) { el.innerHTML = '<div class="sheet-top"><b>ไม่พบข้อมูลแบต</b><button class="xbtn" onclick="closePack()">✕</button></div>'; return; }
+  const stale = Date.now() - p.ts > 180000;
+  const col = p.a > 0.3 ? 'var(--charge)' : p.a < -0.3 ? 'var(--drain)' : 'var(--muted)';
+  const cells = (p.cells || []).map((x) => x / 1000);
+  const avg = cells.length ? cells.reduce((a, b) => a + b, 0) / cells.length : null;
+  const hi = cells.length ? Math.max(...cells) : null, lo = cells.length ? Math.min(...cells) : null;
+  const uneven = hi != null && hi - lo > 0.004;
+  const rows = cells.map((v, i) => {
+    const pct = Math.max(2, Math.min(100, ((v - CELL_LO) / (CELL_HI - CELL_LO)) * 100));
+    const isHi = uneven && v === hi, isLo = uneven && v === lo;
+    const warn = v >= 3.6 || v <= 3.0;
+    const c = warn ? css('--drain') : isHi ? css('--sun') : isLo ? css('--drain') : css('--charge');
+    const dv = Math.round((v - avg) * 1000);
+    const bal = p.balancing && (p.balancing >>> i) & 1 ? '<span class="bal">สมดุล</span>' : '';
+    return '<div class="cellrow' + (isHi ? ' hi' : '') + (isLo ? ' lo' : '') + '"><span class="n">' + (i + 1) + '</span><span class="vv">' + v.toFixed(3) + '</span>' +
+      '<span class="bar"><i style="width:' + pct.toFixed(1) + '%;background:' + c + '"></i></span><span class="dv">' + (dv > 0 ? '+' : '') + dv + ' mV' + '</span></div>' + (bal ? '<div style="margin:-4px 0 2px 38px">' + bal + '</div>' : '');
+  }).join('');
+  const chips = (p.protNames || []).map((k) => '<span class="chip">⚠ ' + (PROT_TH[k] || k) + '</span>').join('') +
+    (p.fet != null && !(p.fet & 1) ? '<span class="chip">ปิดชาร์จ (MOS)</span>' : '') + (p.fet != null && !(p.fet & 2) ? '<span class="chip">ปิดจ่าย (MOS)</span>' : '');
+  const made = p.made && p.made.y > 2000 ? p.made.d + '/' + p.made.m + '/' + (p.made.y + 543) : '–';
+  el.innerHTML = '<div class="sheet-top"><b>' + p.label + '</b><button class="xbtn" onclick="closePack()">✕</button></div>' +
+    '<div class="label">' + (stale ? 'ไม่ได้อัปเดต ' + ago(p.ts) : 'อัปเดตล่าสุด ' + hhmm(p.ts)) + (p.mac ? ' · ' + p.mac : '') + '</div>' +
+    '<div class="grid2">' +
+      '<div><div class="label">แรงดันแพ็ก</div><div class="big num">' + fmt(p.v, 2) + ' V</div></div>' +
+      '<div><div class="label">กระแส · กำลัง</div><div class="big num" style="color:' + col + '">' + (p.a > 0 ? '+' : '') + fmt(p.a, 2) + ' A</div><div class="label num">' + fmt(Math.abs(p.w)) + ' W</div></div>' +
+      '<div><div class="label">เหลือ (BMS บอก)</div><div class="big num">' + fmt(p.remAh, 1) + ' Ah</div><div class="label">จาก ' + fmt(p.nomAh, 0) + ' Ah</div></div>' +
+      '<div><div class="label">รอบชาร์จ</div><div class="big num">' + fmt(p.cycles) + '</div><div class="label">ผลิต ' + made + '</div></div>' +
+    '</div>' + (chips ? '<div>' + chips + '</div>' : '') +
+    '<section class="card" style="margin-top:10px"><h2>แรงดันแต่ละเซลล์ <span class="label">· ' + cells.length + ' เซลล์</span></h2>' +
+      (cells.length ? '<div class="rows" style="margin:0 0 6px">' +
+        '<div class="row"><span>สูงสุด / ต่ำสุด</span><span class="num">' + hi.toFixed(3) + ' / ' + lo.toFixed(3) + ' V</span></div>' +
+        '<div class="row"><span>ต่างกัน</span><span class="num" style="color:' + (hi - lo > 0.05 ? 'var(--drain)' : hi - lo > 0.02 ? 'var(--sun)' : 'var(--charge)') + '">' + Math.round((hi - lo) * 1000) + ' mV</span></div>' +
+        '<div class="row"><span>เฉลี่ย</span><span class="num">' + avg.toFixed(3) + ' V</span></div></div>' + rows +
+        '<div class="label" style="margin-top:8px">แถบวัดช่วง ' + CELL_LO + '–' + CELL_HI.toFixed(2) + ' V · <span style="color:var(--sun)">เหลือง</span> สูงสุด · <span style="color:var(--drain)">แดง</span> ต่ำสุดหรือเกินช่วงปลอดภัย (≥3.60 / ≤3.00 V)</div>'
+        : '<p class="muted">ยังไม่ได้รับค่าแรงดันเซลล์</p>') + '</section>' +
+    '<section class="card"><h2>อุณหภูมิ <span class="label">· เซนเซอร์ใน BMS</span></h2><div class="rows">' +
+      ((p.temps || []).length ? p.temps.map((t, i) => '<div class="row"><span>จุดที่ ' + (i + 1) + '</span><span class="num">' + fmt(t, 1) + ' °C</span></div>').join('') : '<div class="row"><span>ไม่มีข้อมูล</span><span>–</span></div>') +
+      '</div></section>' +
+    '<section class="card"><h2>สถานะ</h2><div class="rows">' +
+      '<div class="row"><span>MOS ชาร์จ</span><span>' + (p.fet == null ? '–' : p.fet & 1 ? 'เปิด' : 'ปิด') + '</span></div>' +
+      '<div class="row"><span>MOS จ่าย</span><span>' + (p.fet == null ? '–' : p.fet & 2 ? 'เปิด' : 'ปิด') + '</span></div>' +
+      '<div class="row"><span>การป้องกันที่ทำงานอยู่</span><span>' + ((p.protNames || []).length ? (p.protNames || []).map((k) => PROT_TH[k] || k).join(', ') : 'ไม่มี') + '</span></div>' +
+    '</div></section>';
 }
 function renderBms(b, L) {
   const el = $('bmscard');
+  bmsData = b;
+  if (openMac) renderSheet();
   if (!b || !b.packs || !b.packs.length) { el.classList.add('hide'); return; }
   el.classList.remove('hide');
   const t = b.total, appSoc = L ? (L.soc_calc ?? L.soc) : null;
