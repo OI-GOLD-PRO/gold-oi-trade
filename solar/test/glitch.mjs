@@ -35,5 +35,5 @@ assert.equal(sql.prepare('SELECT COUNT(*) n FROM samples WHERE batt_v < 40').get
 const now2 = await (await worker.fetch(new Request('https://x/api/now', { headers: { 'x-key': 'demo' } }), env)).json();
 const soc = now2.latest.soc_calc;
 console.log('soc after repair', soc);
-assert.ok(soc > 55 && soc < 62, 'expected ≈ 10 + 216/434*100 = 59.8 %, got ' + soc);
+assert.ok(soc > 54 && soc < 59, 'expected ≈ 10 + 216/464*100 = 56.6 % (capacity 464 = 371.2 usable / 0.8), got ' + soc);
 console.log('glitch OK');

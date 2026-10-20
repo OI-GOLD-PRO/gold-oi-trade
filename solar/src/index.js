@@ -9,10 +9,18 @@ import { FLASH_PAGE, FLASH_MANIFEST } from './flash.js';
 import { ICON_180, ICON_512 } from './icon.js';
 
 function cfg(env) {
+  const cutoffSoc = Number(env.CUTOFF_SOC || 10);
+  const fullSoc = Number(env.FULL_SOC || 90);
+  // Usable capacity between "empty" (50 V) and "full" (our charge ceiling): 120 Ah (used 200 Ah pack, all of it)
+  // + 314 Ah × 80 % (10 % → 90 %) = 371.2 Ah. The % counter runs on a 10 → 90 scale, so one Ah moves it
+  // 100 / capacityAh points, where capacityAh = usableAh / ((full − empty) / 100).
+  const usableAh = Number(env.USABLE_AH || 371.2);
   return {
-    capacityAh: Number(env.CAPACITY_AH || 434),
+    usableAh,
+    capacityAh: Math.round((usableAh / ((fullSoc - cutoffSoc) / 100)) * 100) / 100,
     cutoffV: Number(env.CUTOFF_V || 50),
-    cutoffSoc: Number(env.CUTOFF_SOC || 10),
+    cutoffSoc,
+    fullSoc,
     nominalV: Number(env.NOMINAL_V || 51.2),
   };
 }

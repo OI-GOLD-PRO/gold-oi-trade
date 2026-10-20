@@ -231,13 +231,13 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.10';
+const APP_VERSION = 'v2.11';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
 let DAY_START = 5, CFG = { cutoffV: 50 };
 // Usable % shown to the user: 0 % = cut-off (50 V, the 10 % reserve), 100 % = full.
-const usable = (soc) => (soc == null ? null : Math.max(0, Math.min(100, ((soc - (CFG.cutoffSoc ?? 10)) / (100 - (CFG.cutoffSoc ?? 10))) * 100)));
+const usable = (soc) => (soc == null ? null : Math.max(0, Math.min(100, ((soc - (CFG.cutoffSoc ?? 10)) / ((CFG.fullSoc ?? 90) - (CFG.cutoffSoc ?? 10))) * 100)));
 
 function saveKey() {
   KEY = $('keyin').value.trim();
@@ -424,6 +424,7 @@ function renderBms(b, L) {
   el.innerHTML = '<h2>แบตรายลูก <span class="label">· อ่านจาก BMS</span></h2>' + b.packs.map(packHTML).join('') +
     '<div class="rows" style="margin-top:6px">' +
       '<div class="row"><span>รวม ' + b.packs.length + ' ลูก · BMS บอกเหลือ</span><span>' + fmt(t.remAh, 1) + ' / ' + fmt(t.nomAh, 0) + ' Ah</span></div>' +
+      (CFG && CFG.usableAh ? '<div class="row"><span>ความจุใช้งานจริงที่แอปนับ <span class="label">(120 + 314×80%)</span></span><span>' + fmt(CFG.usableAh, 0) + ' Ah</span></div>' : '') +
       '<div class="row"><span>กระแสรวม</span><span style="color:' + (t.a > 0.3 ? 'var(--charge)' : t.a < -0.3 ? 'var(--drain)' : 'var(--muted)') + '">' + (t.a > 0 ? '+' : '') + fmt(t.a, 2) + ' A · ' + fmt(Math.abs(t.w)) + ' W</span></div>' +
     '</div>' +
     '<button class="rbtn" onclick="pauseBms(' + (paused ? 0 : 10) + ')">' + (paused ? 'พักบลูทูธอยู่ถึง ' + hhmm(b.pausedUntil) + ' · กดเพื่อกลับมาอ่านต่อ' : 'พักบลูทูธ 10 นาที (เพื่อเปิดแอป XiaoxiangBMS)') + '</button>';
@@ -607,7 +608,7 @@ function renderNow(d) {
   $('upd').textContent = 'อัปเดต ' + hhmm(L.ts) + ' · ' + ago(L.ts);
   if (L.err) { $('err').style.display = 'block'; $('err').textContent = 'ดึงข้อมูลบางส่วนไม่ได้: ' + L.err; } else $('err').style.display = 'none';
 
-  $('cap').textContent = '· ' + CFG.capacityAh + ' Ah';
+  $('cap').textContent = '· ใช้งานจริง ' + fmt(CFG.usableAh, 0) + ' Ah';
   const socRaw = L.soc_calc ?? L.soc;
   const socMain = usable(socRaw);
   $('soc').textContent = fmt(socMain);

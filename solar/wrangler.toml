@@ -13,7 +13,8 @@ database_name = "solar-monitor-db"
 database_id = "__D1_ID__"   # GitHub Actions ใส่ให้อัตโนมัติตอนขึ้นระบบ
 
 [vars]
-CAPACITY_AH = "434"     # 314 Ah + ลูกมือสอง ~120 Ah
+USABLE_AH = "371.2"    # ความจุใช้งานจริง = 120 Ah (ลูก 200 Ah มือสอง ใช้ได้ทั้งหมด) + 314 Ah x 80% (10%→90%)
+FULL_SOC = "90"         # % ที่ถือว่าเต็ม (ชาร์จสูงสุดของเรา ~54.5V)
 CUTOFF_V = "50"         # แรงดันตัด
 CUTOFF_SOC = "10"       # % ที่ถือว่าหมด (LiFePO4 50V ≈ 10%)
 NOMINAL_V = "51.2"
