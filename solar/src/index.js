@@ -1,7 +1,7 @@
 import { readInverter } from './dess.js';
 import { readMppt } from './tuya.js';
 import { summarizeDay, timeToCutoff, netBatteryA, gridW } from './calc.js';
-import { localDate, dayRange, kvGet, kvSet, DAY_START_H } from './util.js';
+import { localDate, dayRange, kvGet, kvSet, DAY_START_H, validBattV, BATT_V_MIN, BATT_V_MAX } from './util.js';
 import { PAGE } from './page.js';
 import { stepSoc } from './soc.js';
 import { parseBms, parseLabels } from './bms.js';
@@ -56,7 +56,7 @@ export async function poll(env, { force = false } = {}) {
 
   const row = {
     ts: Date.now(),
-    batt_v: r2(i.battV ?? m.battV),
+    batt_v: r2(validBattV(i.battV) ?? validBattV(m.battV)),
     soc: i.soc ?? null,
     inv_chg_a: r2(i.chgA),
     inv_dis_a: r2(i.disA),
@@ -76,6 +76,15 @@ export async function poll(env, { force = false } = {}) {
     await rebaseSoc(env, row.ts);
     await kvSet(env.DB, 'soc_rebase_v1', { at: row.ts });
   }
+  // One-time repair: drop garbage battery-voltage readings (e.g. 1.4 V) that were stored and had reset the
+  // % counter to "empty"; replay the counter from the last real cut-off and rebuild the recent daily rows.
+  if (!(await kvGet(env.DB, 'bad_v_repair_v1'))) {
+    const res = await env.DB.prepare('UPDATE samples SET batt_v = NULL WHERE batt_v IS NOT NULL AND (batt_v < ? OR batt_v > ?)')
+      .bind(BATT_V_MIN, BATT_V_MAX).run();
+    await rebaseSoc(env, row.ts);
+    for (let d = 0; d < 3; d++) await saveDay(env, localDate(row.ts - d * 86400000));
+    await kvSet(env.DB, 'bad_v_repair_v1', { at: row.ts, cleared: res?.meta?.changes ?? null });
+  }
   // One-time: rebuild stored daily summaries so past days get the grid numbers.
   if (!(await kvGet(env.DB, 'daily_recalc_grid_v1'))) {
     const { results } = await env.DB.prepare('SELECT date FROM daily').all();
@@ -85,7 +94,7 @@ export async function poll(env, { force = false } = {}) {
   // Battery current measured by the BMS (both packs, fresh) — stored for reference only, not used for the % .
   row.bms_a = await bmsCurrentNow(env, row.ts);
   // App-side battery % (Ah counting + voltage calibration at rest).
-  if (row.batt_v != null) {
+  if (row.batt_v != null || (await kvGet(env.DB, 'soc_state'))) {
     const st = stepSoc(await kvGet(env.DB, 'soc_state'), { ts: row.ts, v: row.batt_v, net: netBatteryA(row) }, cfg(env).capacityAh);
     await kvSet(env.DB, 'soc_state', st);
     row.soc_calc = st.soc == null ? null : Math.round(st.soc * 10) / 10;
@@ -122,8 +131,8 @@ export async function poll(env, { force = false } = {}) {
  */
 export async function rebaseSoc(env, now) {
   const c = cfg(env);
-  const hit = await env.DB.prepare('SELECT ts FROM samples WHERE ts >= ? AND batt_v <= ? ORDER BY ts DESC LIMIT 1')
-    .bind(now - 86400000, c.cutoffV + 0.2).first();
+  const hit = await env.DB.prepare('SELECT ts FROM samples WHERE ts >= ? AND batt_v >= ? AND batt_v <= ? ORDER BY ts DESC LIMIT 1')
+    .bind(now - 86400000, BATT_V_MIN, c.cutoffV + 0.2).first();
   const from = hit ? hit.ts : dayRange(localDate(now))[0];
   const list = await samplesBetween(env, from, now + 1);
   if (!list.length) return null;
@@ -131,7 +140,7 @@ export async function rebaseSoc(env, now) {
   const upd = [];
   for (let i = 0; i < list.length; i++) {
     const s = list[i];
-    if (i > 0 && s.batt_v != null) st = stepSoc(st, { ts: s.ts, v: s.batt_v, net: netBatteryA(s) }, c.capacityAh);
+    if (i > 0) st = stepSoc(st, { ts: s.ts, v: validBattV(s.batt_v), net: netBatteryA(s) }, c.capacityAh);
     upd.push(env.DB.prepare('UPDATE samples SET soc_calc = ? WHERE ts = ?').bind(Math.round(st.soc * 10) / 10, s.ts));
   }
   for (let i = 0; i < upd.length; i += 200) await env.DB.batch(upd.slice(i, i + 200));

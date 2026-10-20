@@ -1,5 +1,7 @@
 // Battery bookkeeping: integrate current over time into Ah / kWh per day.
 
+import { validBattV } from './util.js';
+
 const MAX_GAP_MS = 15 * 60 * 1000; // ignore gaps longer than this (outages, missing polls)
 const SUN_MIN_W = 30;                // inverter PV above this = panels producing
 
@@ -26,7 +28,7 @@ export function gridW(s, nominalV = 51.2) {
   if (!s.grid_v) return 0;
   if (s.load_w == null) return null;
   if (s.inv_mode && /invert|battery/i.test(s.inv_mode)) return 0;
-  const v = s.batt_v ?? nominalV;
+  const v = validBattV(s.batt_v) ?? nominalV;
   const g = s.load_w + ((s.inv_chg_a ?? 0) - (s.inv_dis_a ?? 0)) * v - (s.inv_pv_w ?? 0);
   return g >= GRID_MIN_W ? Math.round(g) : 0;
 }
@@ -59,7 +61,7 @@ export function summarizeDay(samples, cfg) {
   }
   for (let i = 0; i < samples.length; i++) {
     const s = samples[i];
-    const v = s.batt_v;
+    const v = validBattV(s.batt_v);
     if (v != null) {
       if (r.minV == null || v < r.minV) { r.minV = v; r.minVAt = s.ts; }
       if (r.maxV == null || v > r.maxV) r.maxV = v;

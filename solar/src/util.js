@@ -36,6 +36,15 @@ export function dayRange(dateStr) {
   return [start, start + 86400000];
 }
 
+/**
+ * Battery voltage sanity check (16s LiFePO4: ~40–58.4 V). A one-off garbage reading (e.g. 1.4 V) must never
+ * be taken as "battery empty", so anything outside 40–62 V is treated as missing.
+ */
+export const BATT_V_MIN = 40, BATT_V_MAX = 62;
+export function validBattV(v) {
+  return typeof v === 'number' && Number.isFinite(v) && v >= BATT_V_MIN && v <= BATT_V_MAX ? v : null;
+}
+
 /** Simple key/value cache stored in D1 (tokens, discovered device ids). */
 export async function kvGet(db, key) {
   const row = await db.prepare('SELECT v FROM kv WHERE k = ?').bind(key).first();
