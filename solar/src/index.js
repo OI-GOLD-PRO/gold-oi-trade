@@ -93,6 +93,11 @@ export async function poll(env, { force = false } = {}) {
     for (let d = 0; d < 3; d++) await saveDay(env, localDate(row.ts - d * 86400000));
     await kvSet(env.DB, 'bad_v_repair_v1', { at: row.ts, cleared: res?.meta?.changes ?? null });
   }
+  // One-time (v2.12): the counter is now pure Ah counting — replay it from the last cut-off so today's number matches.
+  if (!(await kvGet(env.DB, 'soc_pure_v1'))) {
+    await rebaseSoc(env, row.ts);
+    await kvSet(env.DB, 'soc_pure_v1', { at: row.ts });
+  }
   // One-time: rebuild stored daily summaries so past days get the grid numbers.
   if (!(await kvGet(env.DB, 'daily_recalc_grid_v1'))) {
     const { results } = await env.DB.prepare('SELECT date FROM daily').all();
@@ -281,6 +286,32 @@ async function apiMonth(env, month) {
   return out;
 }
 
+/**
+ * Where "เหลือใช้ได้" comes from: carry-over from yesterday (0 when the bank hit the 50 V cut-off — counting then
+ * restarts from 0 at that moment) + Ah charged in − Ah used since then.
+ */
+async function remainBreakdown(env, latest, c) {
+  if (!latest) return null;
+  const soc = latest.soc_calc ?? latest.soc;
+  const [a] = dayRange(localDate(latest.ts));
+  const list = await samplesBetween(env, a, latest.ts + 1);
+  if (!list.length || soc == null) return null;
+  let k = 0, reset = false;
+  for (let i = 0; i < list.length; i++) {
+    const v = validBattV(list[i].batt_v);
+    if (v != null && v <= c.cutoffV) { k = i; reset = true; }   // last time today it touched the cut-off
+  }
+  const first = list[0].soc_calc ?? list[0].soc;
+  const carry = reset ? 0 : Math.max(0, (((first ?? c.cutoffSoc) - c.cutoffSoc) / 100) * c.capacityAh);
+  const sum = summarizeDay(list.slice(k), c);
+  const remain = Math.max(0, ((soc - c.cutoffSoc) / 100) * c.capacityAh);
+  const wasted = carry + sum.ahIn - sum.ahOut - remain;
+  return {
+    carryAh: Math.round(carry), inAh: r2(sum.ahIn), outAh: r2(sum.ahOut), remainAh: Math.round(remain),
+    resetAt: reset ? list[k].ts : null, fullAh: wasted > 2 ? Math.round(wasted) : 0,
+  };
+}
+
 async function apiNow(env) {
   const c = cfg(env);
   const latest = await env.DB.prepare('SELECT * FROM samples ORDER BY ts DESC LIMIT 1').first();
@@ -294,6 +325,7 @@ async function apiNow(env) {
     config: { ...c, dayStartH: DAY_START_H },
     latest: latest && { ...latest, net_a: r2(netBatteryA(latest)), grid_w: gridW(latest, c.nominalV) },
     eta: latest ? timeToCutoff(latest, c) : null,
+    remain: await remainBreakdown(env, latest, c),
     today: { date: today, ...summarizeDay(day, c) },
     series: toSeries(day),
   };

@@ -190,6 +190,7 @@ svg{display:block;width:100%;height:auto}
         <div class="state" id="state">–</div>
       </div>
       <div class="eta" id="eta" style="grid-column:1/-1">–</div>
+      <div class="label" id="remainbox" style="grid-column:1/-1;margin-top:-4px;line-height:1.5"></div>
     </section>
 
     <section class="card flow"><h2>การไหลของพลังงาน <span class="label">· ตอนนี้</span></h2><div id="flow"></div></section>
@@ -231,7 +232,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.11';
+const APP_VERSION = 'v2.12';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -622,6 +623,10 @@ function renderNow(d) {
   else if (net < -0.5) { st.className = 'state d'; st.innerHTML = '▼ กำลังจ่ายออก <span class="num">' + fmt(net, 1) + ' A</span>'; }
   else { st.className = 'state'; st.textContent = 'นิ่ง (ไม่ชาร์จ/ไม่จ่าย)'; }
 
+  const rb = d.remain;
+  $('remainbox').innerHTML = rb ? 'ที่มา: ' + (rb.resetAt ? 'แตะ ' + CFG.cutoffV + 'V ตอน ' + hhmm(rb.resetAt) + ' (นับใหม่จาก 0)' : 'ยกมาจากเมื่อวาน <b class="num">' + fmt(rb.carryAh) + '</b> Ah') +
+    ' + ชาร์จเข้า <b class="num">' + fmt(rb.inAh, 1) + '</b> − ใช้ไป <b class="num">' + fmt(rb.outAh, 1) + '</b> = เหลือ <b class="num">' + fmt(rb.remainAh) + '</b> Ah' +
+    (rb.fullAh ? ' <span class="muted">(เต็มแล้ว ส่วนเกิน ' + fmt(rb.fullAh) + ' Ah ไม่นับ)</span>' : '') : '';
   const e = d.eta;
   if (e && e.hours != null) {
     const until = new Date(Date.now() + e.hours * 3600000);

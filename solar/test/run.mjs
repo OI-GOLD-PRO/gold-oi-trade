@@ -49,9 +49,13 @@ assert.equal(Math.round(st.soc), 50);
 // discharge 43.4 A for 1 h → −10 %, and a voltage sag must NOT pull it down while under load
 for (let i = 1; i <= 60; i++) st = stepSoc(st, { ts: i * 60000, v: 51.0, net: -43.4 }, 434);
 assert.equal(Math.round(st.soc), 40);
-// rest 30 min at 52.8 V (≈ 59.8 %) → eases toward the voltage scale
+// rest 30 min at 52.8 V (≈ 59.8 %) → NOT pulled toward the voltage any more (pure Ah counting)
 for (let i = 61; i <= 90; i++) st = stepSoc(st, { ts: i * 60000, v: 52.8, net: 0.5 }, 434);
-assert.ok(st.soc > 55 && st.soc < 60, 'rest calibration ' + st.soc);
+assert.ok(Math.abs(st.soc - 40.05) < 0.1, 'pure Ah counting ' + st.soc);
+// charging past full is not stored: ceiling at 90 %
+{ let f = { soc: 88, ts: 0, restSince: null, fullSince: null };
+  for (let i = 1; i <= 120; i++) f = stepSoc(f, { ts: i * 60000, v: 53.0, net: 30 }, 464);
+  assert.equal(f.soc, 90); }
 // hitting 50 V caps at 10 %
 st = stepSoc(st, { ts: 91 * 60000, v: 49.9, net: -40 }, 434);
 assert.equal(st.soc, 10);

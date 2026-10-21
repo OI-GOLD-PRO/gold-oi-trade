@@ -36,4 +36,6 @@ const now2 = await (await worker.fetch(new Request('https://x/api/now', { header
 const soc = now2.latest.soc_calc;
 console.log('soc after repair', soc);
 assert.ok(soc > 54 && soc < 59, 'expected ≈ 10 + 216/464*100 = 56.6 % (capacity 464 = 371.2 usable / 0.8), got ' + soc);
+console.log('remain', JSON.stringify(now2.remain));
+assert.ok(now2.remain && now2.remain.inAh > 200 && now2.remain.outAh === 0 && Math.abs(now2.remain.remainAh - (soc - 10) * 4.64) < 2 && now2.remain.fullAh === 0);
 console.log('glitch OK');
