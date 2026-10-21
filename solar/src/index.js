@@ -4,6 +4,7 @@ import { summarizeDay, timeToCutoff, netBatteryA, gridW } from './calc.js';
 import { localDate, dayRange, kvGet, kvSet, DAY_START_H, validBattV, BATT_V_MIN, BATT_V_MAX } from './util.js';
 import { PAGE } from './page.js';
 import { stepSoc } from './soc.js';
+import { sanitizeLive, despike, cleanHistory, FIELDS } from './clean.js';
 import { parseBms, parseLabels } from './bms.js';
 import { FLASH_PAGE, FLASH_MANIFEST } from './flash.js';
 import { ICON_180, ICON_512 } from './icon.js';
@@ -84,6 +85,23 @@ export async function poll(env, { force = false } = {}) {
     await rebaseSoc(env, row.ts);
     await kvSet(env.DB, 'soc_rebase_v1', { at: row.ts });
   }
+  // Garbage from the inverter (1,900 A, a minute of zeros) never reaches the counter, charts or grid estimate.
+  {
+    const prev = await env.DB.prepare('SELECT * FROM samples ORDER BY ts DESC LIMIT 1').first();
+    const san = sanitizeLive(row, prev, !!(await kvGet(env.DB, 'zero_pending')));
+    await kvSet(env.DB, 'zero_pending', san.pending ? { ts: row.ts } : false);
+    if (san.fixed.length) await kvSet(env.DB, 'clean_last', { ts: row.ts, fixed: san.fixed });
+  }
+  // One-time repair (v2.13): spikes already stored in the last 3 days → clean, replay the counter, rebuild the days.
+  if (!(await kvGet(env.DB, 'spike_repair_v1'))) {
+    const from = dayRange(localDate(row.ts - 2 * 86400000))[0];
+    const list = await samplesBetween(env, from, row.ts + 1);
+    const touched = cleanHistory(list);
+    await writeFields(env, touched);
+    await rebaseSoc(env, row.ts);
+    for (let d = 0; d < 3; d++) await saveDay(env, localDate(row.ts - d * 86400000));
+    await kvSet(env.DB, 'spike_repair_v1', { at: row.ts, samples: list.length, fixed: touched.length });
+  }
   // One-time repair: drop garbage battery-voltage readings (e.g. 1.4 V) that were stored and had reset the
   // % counter to "empty"; replay the counter from the last real cut-off and rebuild the recent daily rows.
   if (!(await kvGet(env.DB, 'bad_v_repair_v1'))) {
@@ -117,6 +135,16 @@ export async function poll(env, { force = false } = {}) {
     .bind(...cols.map((c) => row[c]))
     .run();
 
+  // A spike needs the next minute to be recognised: look at the last few samples now that this one is in.
+  {
+    const { results } = await env.DB.prepare('SELECT * FROM samples ORDER BY ts DESC LIMIT 6').all();
+    const changed = despike(results.reverse());
+    if (changed.length) {                                   // the counter already used the raw values → replay it
+      await writeFields(env, changed);
+      await rebaseSoc(env, row.ts);
+    }
+  }
+
   await kvSet(env.DB, 'last_raw', {
     ts: row.ts,
     inverter: inv.status === 'fulfilled' ? inv.value : String(inv.reason),
@@ -135,6 +163,12 @@ export async function poll(env, { force = false } = {}) {
     await env.DB.prepare('DELETE FROM bms WHERE ts < ?').bind(Date.now() - 120 * 86400000).run();
   }
   return row;
+}
+
+async function writeFields(env, rows) {
+  const sets = FIELDS.map((f) => `${f} = ?`).join(', ');
+  const stmts = rows.map((s) => env.DB.prepare(`UPDATE samples SET ${sets} WHERE ts = ?`).bind(...FIELDS.map((f) => s[f] ?? null), s.ts));
+  for (let i = 0; i < stmts.length; i += 100) await env.DB.batch(stmts.slice(i, i + 100));
 }
 
 /**
