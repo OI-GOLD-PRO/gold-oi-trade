@@ -1,0 +1,23 @@
+# Deploys the GC=F Yahoo proxy Worker (gcw/) to Cloudflare — separate Worker from the OI hub, no secrets of its own.
+# Uses the same CLOUDFLARE_API_TOKEN / CLOUDFLARE_ACCOUNT_ID as deploy-hub.yml.
+name: Deploy gc-yahoo worker
+on:
+  push:
+    branches: [main]
+    paths: ["gcw/**", ".github/workflows/deploy-gcw.yml"]
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Unit tests
+        run: node gcw/test.mjs
+      - uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          workingDirectory: gcw
