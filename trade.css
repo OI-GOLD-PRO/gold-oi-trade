@@ -198,3 +198,12 @@ body.oit-max #ticket { border-top: 0; }
 #indMenu .gsbox .gsb { padding: 5px 8px; font: 600 11px var(--sans); }
 #indMenu .gsbox .gsinfo { font: 10px var(--sans); color: var(--muted); }
 #indMenu .gsbox select { padding: 3px 2px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: 600 11px var(--mono); }
+
+/* v0.7.00: OI Gold Pro V1.11 wraps the header on phones; the trade app keeps one row (chart height matters more) */
+@media (max-width: 440px) {
+  header { flex-wrap: nowrap !important; gap: 5px !important; }
+  header > .sym { flex: 1 1 0 !important; min-width: 0; overflow: hidden; }
+  .sym span { max-width: 100% !important; }
+  .siren { margin: 0 2px !important; }
+  button.icon { width: 28px !important; height: 28px !important; }
+}

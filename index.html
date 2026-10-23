@@ -10,7 +10,7 @@
 <meta name="apple-mobile-web-app-title" content="OI Trade">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-status-bar-style" content="black">
 <meta name="theme-color" content="#0b1020">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
@@ -28,7 +28,6 @@
     --call: #2fbf8f;      /* Call = แนวต้าน (โทนเขียว) */
     --live: #2fbf8f;
     --mp: #ff3fb4;        /* Max Pain สีบานเย็น */      /* จุดสถานะเชื่อมต่อสด */
-    --chg: #9aa3b8;       /* OI change สีเทา */
     --volc: #8ccaff;      /* Volume Call ฟ้าอ่อน */
     --volp: #ffb98a;      /* Volume Put ส้มอ่อน */
     --up: #26a69a;
@@ -41,8 +40,15 @@
   [hidden] { display: none !important; }
   html, body { height: 100%; height: 100dvh; margin: 0; background: var(--bg); color: var(--fg); font-family: var(--sans); -webkit-tap-highlight-color: transparent; }
   body { display: flex; flex-direction: column; padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); overflow: hidden; }
+  /* iOS 26: ขอบบนจอ (ใต้แถบสถานะ) ถูกเบลอโดยระบบ ดันหัวแอปลงมาพ้นโซนเบลอ */
+  @supports (-webkit-touch-callout: none) { body { padding-top: calc(env(safe-area-inset-top, 0px) + 28px); } }
   header { display: flex; align-items: center; gap: 12px; padding: 10px 14px 6px; }
-  .sym { display: flex; flex-direction: column; min-width: 0; }
+  .sym { display: flex; flex-direction: row; align-items: baseline; gap: 6px; min-width: 0; flex: 0 1 auto; }
+  .sym b { white-space: nowrap; }
+  #src { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  header > * { flex: none; }
+  header > .sym { flex: 0 1 auto; min-width: 0; }
+  @media (max-width: 440px) { header { flex-wrap: wrap; gap: 6px !important; row-gap: 6px; } header > .sym { flex: 1 1 auto; } header > .px { margin-left: auto; } button.icon { width: 32px; height: 32px; font-size: 14px; } .siren .new { display: none; } }
   .sym b { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
   .symbtn { background: none; border: 0; color: inherit; padding: 0; display: flex; align-items: center; gap: 4px; font: inherit; text-align: left; }
   .symbtn i { font-style: normal; font-size: 10px; color: var(--gold); }
@@ -56,7 +62,7 @@
   .px #price { font-size: 22px; font-weight: 600; color: var(--gold); }
   .px #chg { font-size: 11px; color: var(--muted); }
   /* ไซเรนข่าวแดง: กระพริบเมื่อข่าวจะออกภายใน 30 นาที */
-  .siren { margin: 0 auto; display: flex; flex-direction: column; align-items: center; background: none; border: 0; padding: 0; color: inherit; font: inherit; line-height: 1; }
+  .siren { margin: 0 6px; flex: none; display: flex; flex-direction: column; align-items: center; background: none; border: 0; padding: 0; color: inherit; font: inherit; line-height: 1; }
   .siren .bulb { font-size: 22px; filter: grayscale(.85) brightness(.75); }
   .siren .new { margin-top: 2px; font: 700 9px var(--mono); color: #3ddc84; letter-spacing: .03em; }
   .siren.on .bulb { filter: none; animation: sirenBlink .6s steps(2, start) infinite; }
@@ -85,8 +91,8 @@
   .tfs { display: flex; gap: 3px; padding: 0 14px 6px; }
   .tfs button { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 3px 0; font: 600 10.5px var(--mono); }
   .tfs button.on { background: var(--gold); border-color: var(--gold); color: #1a1405; }
-  .tfs button#indBtn, .tfs button#drawBtn { flex: none; padding: 3px 9px; font-style: italic; }
-  .tfs button#indBtn.has, .tfs button#drawBtn.has { border-color: var(--gold); color: var(--gold); }
+  .tfs button#oiBtn, .tfs button#indBtn, .tfs button#drawBtn { flex: none; padding: 3px 9px; font-style: italic; }
+  .tfs button#oiBtn.has, .tfs button#indBtn.has, .tfs button#drawBtn.has { border-color: var(--gold); color: var(--gold); }
   #drawBar { position: absolute; left: 8px; right: 8px; top: 6px; z-index: 6; display: flex; flex-wrap: wrap; gap: 5px; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 6px; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
   #drawBar button { background: transparent; border: 1px solid var(--line); color: var(--fg); border-radius: 7px; padding: 6px 8px; font: 600 11.5px var(--sans); }
   #drawBar button.on { background: var(--gold); border-color: var(--gold); color: #1a1405; }
@@ -116,8 +122,39 @@
   #indMenu button { display: flex; align-items: center; gap: 8px; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 7px; padding: 6px 9px; font: 600 12px var(--mono); text-align: left; }
   #indMenu button i { width: 14px; height: 3px; border-radius: 2px; flex: none; }
   #indMenu button.on { color: var(--fg); border-color: var(--gold); background: rgba(224,180,76,.12); }
+  /* เลย์เอาต์ 2 กราฟ */
+  #main { position: relative; display: flex; flex-direction: column; flex: 1 1 0; min-height: 0; min-width: 0; }
+  #paneB { flex: 1 1 0; min-height: 0; min-width: 0; border: 0; background: var(--bg); }
+  body.lay-h { flex-direction: row; }
+  .embed .chips, .embed .legend { display: none !important; }
+  /* โหมด 2 กราฟ: ซ่อนคำอธิบายสีด้านล่าง ให้กราฟได้พื้นที่มากขึ้น */
+  body.lay-v .legend, body.lay-h .legend, body.lay-v .chips, body.lay-h .chips { display: none !important; }
+  .embed header { padding: 6px 10px 2px; gap: 8px; }
+  .embed header .siren, .embed header button.icon, .embed .sym span { display: none !important; }
+  .embed .px #price { font-size: 17px; } .embed .px #chg { font-size: 10px; }
+  .embed .px { margin-left: auto; }
+  /* แถบลากปรับขนาดสองกราฟ */
+  #splitter { flex: none; position: relative; background: var(--panel); touch-action: none; z-index: 5; }
+  #splitter::after { content: ''; position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%); background: var(--gold); border-radius: 3px; opacity: .85; }
+  body.lay-v #splitter { height: 14px; cursor: row-resize; border-top: 1px solid var(--gold); border-bottom: 1px solid var(--line); }
+  body.lay-v #splitter::after { width: 44px; height: 4px; }
+  body.lay-h #splitter { width: 14px; cursor: col-resize; border-left: 1px solid var(--gold); border-right: 1px solid var(--line); }
+  body.lay-h #splitter::after { width: 4px; height: 44px; }
+  .embed body { padding-top: 0; padding-bottom: 0; }
+  .embed .tfs { padding-top: 4px; }
+  body.half .tfs, body.half .chips { overflow-x: auto; scrollbar-width: none; }
+  body.half .tfs button { flex: none; padding: 3px 8px; }
+  body.half header { gap: 5px !important; padding: 8px 8px 4px; }
+  body.half header { flex-wrap: wrap; row-gap: 4px; }
+  body.half button.icon { width: 28px; height: 28px; font-size: 13px; border-radius: 8px; }
+  body.half .px { margin-left: auto; }
+  body.half .siren, body.half .sym span { display: none; }
+  body.half .px #price { font-size: 16px; }
+  body.half .px #chg { font-size: 9px; }
+  body.half .chips, body.half .tfs, body.half #gsTbl { padding-left: 8px; padding-right: 8px; }
   #wrap { position: relative; flex: 1; min-height: 0; border-top: 1px solid var(--line); }
   #chart, #ov { position: absolute; inset: 0; }
+  #chart { z-index: 1; }
   #ov { pointer-events: none; z-index: 2; }
   #tip { position: absolute; left: 10px; top: 8px; z-index: 3; font-size: 12px; background: rgba(18,26,48,.92); border: 1px solid var(--line); border-radius: 8px; padding: 6px 9px; font-family: var(--mono); pointer-events: none; }
   #tip .p { color: var(--put); } #tip .c { color: var(--call); }
@@ -143,6 +180,7 @@
       <div class="ver" id="loginVer"></div>
     </form>
   </div>
+  <div id="main">
   <header>
     <span class="dot" id="dot"></span>
     <div class="sym"><b id="symName">XAUUSD</b><span id="src">OI</span></div>
@@ -161,6 +199,7 @@
     <button data-tf="1h">H1</button>
     <button data-tf="4h">H4</button>
     <button data-tf="1d">D1</button>
+    <button id="oiBtn" class="has" aria-label="เปิด/ปิดข้อมูล OI บนกราฟ">OI</button>
     <button id="indBtn" aria-label="เลือกอินดิเคเตอร์">ƒx</button>
     <button id="drawBtn" aria-label="เครื่องมือวาดกราฟ">✏️</button>
   </div>
@@ -177,7 +216,6 @@
   <div class="legend">
     <span><i style="background:var(--put)"></i>Put แนวรับ</span>
     <span><i style="background:var(--call)"></i>Call แนวต้าน</span>
-    <span><i style="background:linear-gradient(90deg,var(--call) 50%,var(--put) 50%);opacity:.5"></i>OI เปลี่ยน</span>
     <span><i style="background:linear-gradient(90deg,var(--volc) 50%,var(--volp) 50%);opacity:.8"></i>Vol วันนี้</span>
     <span><i style="background:repeating-linear-gradient(90deg,var(--mp) 0 4px,transparent 4px 6px)"></i>Max Pain</span>
     <span class="rt"><span id="mmpl"></span> <span id="clock"></span></span>
@@ -185,22 +223,23 @@
   <div id="acct"></div>
   <div id="ticket"></div>
   <div id="sheet" hidden></div>
+  </div>
 
 <script>
 (function () {
   // สัญลักษณ์ที่เลือกได้: แต่ละตัวมีแท็บ OI/offset ในชีตของตัวเอง (ทอง = แท็บเดิม)
   // tol/rearm = ระยะเตือนโซน (หน่วยราคา), mult = ตัวคูณสัญญาออปชันสำหรับ MM P/L (US30: ใช้ออปชัน DIA 1 สัญญา = $1 ต่อ 1 จุด Dow), tick = 1 จุด
   const SYMS = {
-    gold: { name: 'XAUUSD', label: 'ทองคำ', ico: '🥇', perp: 'XAUUSDT', dec: 2, tick: 0.01, tol: 1.5, rearm: 8, mult: 100, carry: true, note: 'GC' },
-    oil: { name: 'WTI', label: 'น้ำมัน', ico: '🛢️', perp: 'CLUSDT', dec: 2, tick: 0.01, tol: 0.15, rearm: 0.8, mult: 1000, carry: false, note: 'CL' },
-    us30: { name: 'US30', label: 'US30', ico: '📈', perp: null, yahoo: 'YM', dec: 0, tick: 1, tol: 15, rearm: 80, mult: 1, carry: false, note: 'YM' },
+    gold: { name: 'XAUUSD', label: 'ทองคำ', ico: '🥇', perp: 'XAUUSDT', dec: 2, tick: 0.01, tol: 1.5, rearm: 8, mult: 100, carry: true, zone: 2.5, note: 'GC' },
+    oil: { name: 'WTI', label: 'น้ำมัน', ico: '🛢️', perp: 'CLUSDT', dec: 2, tick: 0.01, tol: 0.15, rearm: 0.8, mult: 1000, carry: false, zone: 0.15, note: 'CL' },
   };
+  const EMBED = false, PSFX = '', LAY = '';
   let SYM = 'gold';
   const SC = SYMS[SYM], SYMSFX = SYM === 'gold' ? '' : '_' + SYM;
   const SYMBOL = SC.perp;
   // เวอร์ชันแอป: แก้เล็กเพิ่มเลขท้าย (2 หลัก), เพิ่มฟีเจอร์ใหญ่เพิ่มเลขกลาง
-  const APP_VER = '0.6.00'; // based on OI Gold Pro V1.9.00
-  const ZONE_HALF = 2.5; // ครึ่งความกว้างโซนกำแพง OI ($) รวมเป็นโซน $5
+  const APP_VER = '0.7.00'; // based on OI Gold Pro V1.12.04
+  const ZONE_HALF = SC.zone; // ครึ่งความกว้างโซนกำแพง OI ต่อสัญลักษณ์ (ทอง ±2.5 = $5, น้ำมัน ±0.15 = $0.3)
   const TZ_SHIFT = 7 * 3600; // แสดงเวลาไทยบนแกนเวลา
 
   const $ = id => document.getElementById(id);
@@ -208,7 +247,7 @@
   const C = k => css.getPropertyValue(k).trim();
 
   let tf = '5m';
-  try { tf = localStorage.getItem('oit_tf') || '5m'; } catch (e) { /* ใช้ค่าเริ่มต้น */ }
+  try { tf = localStorage.getItem('oit_tf' + PSFX) || '5m'; } catch (e) { /* ใช้ค่าเริ่มต้น */ }
   let ws = null, wsTimer = null, lastClose = null, dayOpen = null;
   // ปรับราคากราฟ perpetual ให้เท่าราคา GC (ทองฟิวเจอร์): ราคาที่แสดง = ราคา perp − adj
   // adj = (perp − spot) − carry  โดย carry = GC − spot จากชีต (วัดตอนอัพเดท) และรีเฟรชทุก 1 ชม.
@@ -219,7 +258,7 @@
   // ---------- กราฟ ----------
   const chartEl = $('chart');
   const chart = LightweightCharts.createChart(chartEl, {
-    layout: { background: { color: C('--bg') }, textColor: C('--muted'), fontFamily: C('--mono'), fontSize: 11 },
+    layout: { background: { color: 'rgba(0,0,0,0)' }, textColor: C('--muted'), fontFamily: C('--mono'), fontSize: 11 },
     grid: { vertLines: { visible: false }, horzLines: { visible: false } },
     rightPriceScale: { borderColor: C('--line'), scaleMargins: { top: .08, bottom: .08 } },
     timeScale: { borderColor: C('--line'), timeVisible: true, secondsVisible: false, rightOffset: 8 },
@@ -239,10 +278,9 @@
     const off = Number(d.cfg && d.cfg.offset);
     const map = new Map();
     (d.levels || []).forEach(l => {
-      const r = map.get(l.strike) || { strike: l.strike, p: 0, c: 0, dp: null, dc: null };
-      const chg = (l.chg === null || l.chg === undefined || !isFinite(l.chg)) ? null : Number(l.chg);
-      if (l.type === 'P') { r.p += l.oi; if (chg !== null) r.dp = chg; }
-      else { r.c += l.oi; if (chg !== null) r.dc = chg; }
+      const r = map.get(l.strike) || { strike: l.strike, p: 0, c: 0 };
+      if (l.type === 'P') { r.p += l.oi; }
+      else { r.c += l.oi; }
       map.set(l.strike, r);
     });
     const rows = [...map.values()].sort((a, b) => a.strike - b.strike);
@@ -251,8 +289,6 @@
     carry = (d.cfg && d.cfg.carry !== undefined && d.cfg.carry !== '' && isFinite(cr)) ? cr : null;
     rows.forEach(r => { r.price = ok ? r.strike : null; });
     const maxOI = Math.max(1, ...rows.map(r => Math.max(r.p, r.c)));
-    const maxChg = Math.max(1, ...rows.map(r => Math.max(Math.abs(r.dp || 0), Math.abs(r.dc || 0))));
-    const hasChg = rows.some(r => r.dp !== null || r.dc !== null);
     // volume ระหว่างวัน: แท็บ webapp key "volume" = {"strike":[call,put]}
     let vol = {};
     try { vol = d.cfg && d.cfg.volume ? JSON.parse(d.cfg.volume) : {}; } catch (e) { vol = {}; }
@@ -265,6 +301,9 @@
       .sort((a, b) => ((b.vc || 0) + (b.vp || 0)) - ((a.vc || 0) + (a.vp || 0))).slice(0, 5).map(r => r.strike);
     const top5P = [...rows].filter(r => r.p > 0).sort((a, b) => b.p - a.p).slice(0, 5).map(r => r.strike);
     const top5C = [...rows].filter(r => r.c > 0).sort((a, b) => b.c - a.c).slice(0, 5).map(r => r.strike);
+    // โซนกำแพง: อันดับ 1-5 ต่อฝั่ง = กว้างเต็ม, อันดับ 6-10 = กว้างครึ่งหนึ่ง
+    const rankMap = k => { const m = new Map(); [...rows].filter(r => r[k] > 0).sort((a, b) => b[k] - a[k]).slice(0, 10).forEach((r, i) => m.set(r.strike, i + 1)); return m; };
+    const rankP = rankMap('p'), rankC = rankMap('c');
     offRaw = ok ? off : null;
     // Max Pain: ราคาหมดอายุที่ผู้ถือ Call+Put ได้มูลค่ารวมน้อยที่สุด
     let maxPain = null, best = Infinity;
@@ -272,10 +311,11 @@
       const pay = rows.reduce((a, r) => a + r.c * Math.max(0, s.strike - r.strike) + r.p * Math.max(0, r.strike - s.strike), 0);
       if (pay < best) { best = pay; maxPain = s.strike; }
     });
-    oi = { top5P, top5C, rows, offset: ok ? off : null, maxOI, maxChg, hasChg, maxVol, hasVol, topP, topC, topV, maxPain, mpPrice: null };
+    oi = { top5P, top5C, rows, offset: ok ? off : null, maxOI, maxVol, hasVol, topP, topC, topV, maxPain, rankP, rankC, mpPrice: null };
     rebaseOI();
 
     const cfg = d.cfg || {};
+    dirty = true;
     const chips = [];
     chips.push(`<span class="chip">สัญญา <b>${esc(cfg.contract || '–')}</b></span>`);
     chips.push(ok ? `<span class="chip" id="offchip"></span>` : `<span class="chip warn">ยังไม่มี offset ในแท็บ webapp</span>`);
@@ -284,8 +324,8 @@
     if (authExpire) chips.push(`<span class="chip">${expLabel(authExpire)} <b>${esc(fmtExpire(authExpire))}</b></span>`);
     $('chips').innerHTML = chips.join('');
     paintRaw(); paintNextNews();
-    if (ok && (carry === null || !adjSet)) applyAdj(-off); else paintOff();
-    if (ok) refreshAdj(true);
+    // offset ล็อก: ใช้ค่าจากชีตตรง ๆ (คำนวณจาก Low ฟิวเจอร์ของวัน เทียบ Low ของกราฟเรา) ไม่ลอยตามราคา spot อีกต่อไป
+    if (ok && (liveAt === null || SYM !== 'gold')) applyAdj(-off); else paintOff();
     dirty = true;
     if (typeof resetArming === 'function') resetArming(lastClose);
   }
@@ -331,6 +371,39 @@
   let dirty = true, lastKey = '';
   const overlayHooks = []; // ส่วนเสริม (เช่น goldscalp.js) วาดทับกราฟได้
 
+  // ---------- กรอบเหลืองคลอบเลขราคาบนแกนขวา (เฉพาะกราฟทอง) ----------
+  // ไฮไลต์ราคาเต็มที่ลงท้ายด้วย 00, 25, 50, 75 โดยวาดทับป้ายแกนของ lightweight-charts
+  const GOLD_HL = ['00', '25', '50', '75'];
+  function drawGoldLevels(w, h) {
+    if (SYM !== "gold" || lastClose === null) return;
+    const plotH = h - chart.timeScale().height();
+    const top = series.coordinateToPrice(0), bot = series.coordinateToPrice(plotH);
+    if (top === null || bot === null) return;
+    const axW = chart.priceScale('right').width();
+    if (!axW) return;
+    const x0 = w - axW + 2, bw = axW - 4, bh = 16;
+    ctx.font = `11px ${C('--mono')}`;
+    ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+    let n = 0;
+    for (let v = Math.ceil(bot); v <= Math.floor(top) && n < 60; v++) {
+      const tail = String(((v % 100) + 100) % 100).padStart(2, '0');
+      if (!GOLD_HL.includes(tail)) continue;
+      const y = series.priceToCoordinate(v);
+      if (y === null || y < bh / 2 || y > plotH - bh / 2) continue;
+      n++;
+      ctx.fillStyle = C('--bg');
+      ctx.fillRect(x0, y - bh / 2, bw, bh);
+      ctx.strokeStyle = '#ffd60a'; ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(x0 + .5, y - bh / 2 + .5, bw - 1, bh - 1, 3);
+      else ctx.rect(x0 + .5, y - bh / 2 + .5, bw - 1, bh - 1);
+      ctx.stroke();
+      ctx.fillStyle = '#ffd60a';
+      ctx.fillText(v.toFixed(SC.dec), x0 + bw / 2, y + .5);
+    }
+    ctx.textAlign = 'left';
+  }
+
   function drawOverlay() {
     const w = chartEl.clientWidth, h = chartEl.clientHeight, dpr = window.devicePixelRatio || 1;
     if (ov.width !== Math.round(w * dpr) || ov.height !== Math.round(h * dpr)) {
@@ -343,6 +416,7 @@
     drawNews(w, h);
     drawOIBars(w, h);
     drawSpotAxis(w, h);
+    drawGoldLevels(w, h);
     drawDrawings(w, h);
     drawMeasure(w, h);
     overlayHooks.forEach(f => { try { f(ctx, w, h); } catch (e) { console.error(e); } });
@@ -351,7 +425,7 @@
   // ---------- แกนราคา spot (ปัดแกนราคาขวาไปทางซ้ายเพื่อเปิด ปัดกลับเพื่อปิด) ----------
   // ราคา spot = ราคา XAUUSD ของแหล่งกราฟก่อนบวก offset = ราคาบนกราฟ + adj
   let spotAxisOn = false, spotW = 80;
-  try { spotAxisOn = localStorage.getItem('oit_spotaxis') === '1'; } catch (e) {}
+  try { spotAxisOn = localStorage.getItem('oit_spotaxis' + PSFX) === '1'; } catch (e) {}
   function niceStep(range, n) {
     const raw = range / n, p = Math.pow(10, Math.floor(Math.log10(raw)));
     for (const m of [1, 2, 2.5, 5, 10]) if (raw <= m * p) return m * p;
@@ -392,7 +466,7 @@
   function setSpotAxis(on) {
     if (spotAxisOn === on) return;
     spotAxisOn = on; dirty = true;
-    try { localStorage.setItem('oit_spotaxis', on ? '1' : '0'); } catch (e) {}
+    try { localStorage.setItem('oit_spotaxis' + PSFX, on ? '1' : '0'); } catch (e) {}
   }
 
   // ---------- วัดระยะ: นิ้วแรกแตะค้าง แล้วนิ้วที่สองแตะค้าง/ลากเพื่อวัด ----------
@@ -443,7 +517,10 @@
     return (a !== null && b !== null) ? b - a : 6;
   }
 
+  let oiOn = true;
+  try { oiOn = localStorage.getItem('oit_show' + PSFX) !== '0'; } catch (e) {}
   function drawOIBars(w, h) {
+    if (!oiOn) return;
     if (!oi || oi.offset === null || !oi.rows.length) return;
 
     const plotW = chart.timeScale().width();
@@ -455,8 +532,7 @@
     let gap = Infinity;
     for (let i = 1; i < pts.length; i++) gap = Math.min(gap, Math.abs(pts[i].y - pts[i - 1].y));
     const thick = Math.max(2, Math.min(6, gap / 2 - 1));
-    const putC = C('--put'), callC = C('--call'), chgC = C('--chg');
-    const chgMax = Math.min(plotW * 0.18, 80);
+    const putC = C('--put'), callC = C('--call');
     const volMax = Math.min(plotW * 0.14, 60);
     const volC = C('--gold');
     ctx.font = `10px ${C('--mono')}`;
@@ -478,50 +554,33 @@
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 3]); hline(0, plotW); ctx.setLineDash([]);
       }
-      // กำแพง OI ใหญ่ 3 อันดับ (Call เขียว / Put แดง): เส้นทึบจากขอบขวาถึงกลางกราฟ
-      const isTopC = oi.topC.includes(r.strike) && r.c > 0, isTopP = oi.topP.includes(r.strike) && r.p > 0;
-      if (isTopC || isTopP) {
-        const wallC = (isTopC && (!isTopP || r.c >= r.p)) ? callC : putC;
-        // โซนราคา ±ZONE_HALF รอบเส้นกำแพง (สีเดียวกันแต่อ่อน) จากกลางกราฟถึงขอบขวา
-        const yTop = series.priceToCoordinate(r.price + ZONE_HALF), yBot = series.priceToCoordinate(r.price - ZONE_HALF);
+      // กำแพง OI 10 อันดับต่อฝั่ง (Call เขียว / Put แดง): อันดับ 1-5 โซนเต็ม + เส้นทึบ, อันดับ 6-10 โซนครึ่งความกว้าง (ไม่มีเส้นทึบ)
+      const rC = r.c > 0 ? (oi.rankC.get(r.strike) || 0) : 0, rP = r.p > 0 ? (oi.rankP.get(r.strike) || 0) : 0;
+      if (rC || rP) {
+        const useC = rC && (!rP || r.c >= r.p);
+        const rk = useC ? rC : rP, wallC = useC ? callC : putC;
+        const half = rk <= 5 ? ZONE_HALF : ZONE_HALF / 2;
+        const yTop = series.priceToCoordinate(r.price + half), yBot = series.priceToCoordinate(r.price - half);
         if (yTop !== null && yBot !== null) {
           ctx.globalAlpha = 0.16; ctx.fillStyle = wallC;
           ctx.fillRect(mid, Math.min(yTop, yBot), plotW - mid, Math.abs(yBot - yTop));
         }
-        ctx.globalAlpha = 0.95; ctx.lineWidth = 2;
-        ctx.strokeStyle = wallC;
-        hline(mid, plotW);
+        if (rk <= 5) { ctx.globalAlpha = 0.95; ctx.lineWidth = 2; ctx.strokeStyle = wallC; hline(mid, plotW); }
       }
-      // Volume วันนี้ 5 อันดับ: เส้นทึบสีเหลืองจากขอบซ้ายถึงกลางกราฟ
+      // Volume วันนี้ 5 อันดับ: เส้นทึบสีเหลืองจากขอบซ้ายถึงขอบขวาของกราฟ (เต็มจอ)
       if (oi.topV && oi.topV.includes(r.strike)) {
         ctx.globalAlpha = 0.95; ctx.lineWidth = 2; ctx.strokeStyle = volC;
-        hline(0, mid);
+        hline(0, plotW);
       }
       // แท่ง Call (บนเส้น) และ Put (ใต้เส้น) ยื่นจากขอบขวา
       ctx.globalAlpha = 0.9;
       if (r.c > 0) { const L = Math.max(2, barMax * r.c / oi.maxOI); ctx.fillStyle = callC; ctx.fillRect(plotW - L, y - thick, L, thick); }
       if (r.p > 0) { const L = Math.max(2, barMax * r.p / oi.maxOI); ctx.fillStyle = putC; ctx.fillRect(plotW - L, y, L, thick); }
 
-      // OI change: แท่งเทาจากขอบซ้าย (Call บนเส้น / Put ใต้เส้น) ทึบ = เพิ่ม, กรอบโปร่ง = ลด
-      let chgEnd = padL;
-      if (oi.hasChg) {
-        const chgBar = (v, top, col) => {
-          if (v === null || v === 0) return;
-          const L = Math.max(2, chgMax * Math.abs(v) / oi.maxChg);
-          const yy = top ? y - thick : y;
-          if (v > 0) { ctx.fillStyle = col; ctx.fillRect(padL, yy, L, thick); }
-          else { ctx.strokeStyle = col; ctx.lineWidth = 1; ctx.strokeRect(padL + 0.5, yy + 0.5, L - 1, Math.max(1, thick - 1)); }
-          chgEnd = Math.max(chgEnd, padL + L);
-        };
-        ctx.globalAlpha = 0.9;
-        ctx.globalAlpha = 0.45; chgBar(r.dc, true, callC);
-        chgBar(r.dp, false, putC);
-      }
-
-      // Volume ระหว่างวัน: แท่งสีทอง คอลัมน์ถัดจาก OI change (Call บนเส้น / Put ใต้เส้น)
-      let leftEnd = chgEnd;
+      // Volume ระหว่างวัน: แท่งจากขอบซ้าย (Call บนเส้น / Put ใต้เส้น)
+      let leftEnd = padL;
       if (oi.hasVol) {
-        const volX = padL + (oi.hasChg ? chgMax + 6 : 0);
+        const volX = padL;
         ctx.globalAlpha = 0.6;
         if (r.vc) { const L = Math.max(2, volMax * r.vc / oi.maxVol); ctx.fillStyle = C('--volc'); ctx.fillRect(volX, y - thick, L, thick); }
         if (r.vp) { const L = Math.max(2, volMax * r.vp / oi.maxVol); ctx.fillStyle = C('--volp'); ctx.fillRect(volX, y, L, thick); }
@@ -542,14 +601,12 @@
         const lab = `${r.c ? 'C' + r.c : ''}${r.c && r.p ? ' ' : ''}${r.p ? 'P' + r.p : ''}`;
         const L = barMax * Math.max(r.p, r.c) / oi.maxOI;
         ctx.textAlign = 'right';
-        ctx.fillText(lab, plotW - L - 4, y);
+        ctx.fillText(lab, plotW - L - 4, y - 7); // ขยับขึ้นให้พ้นเส้นกำแพง
       }
-      // OI change + Volume: ใต้เลข strike ฝั่งซ้าย (ต้องมีที่ว่างระหว่างเส้นพอ)
+      // Volume: ใต้เลข strike ฝั่งซ้าย (ต้องมีที่ว่างระหว่างเส้นพอ)
       if (gap >= 24) {
-        const sgn = v => (v > 0 ? '+' : '') + v;
-        const dl = [r.dc ? 'C' + sgn(r.dc) : '', r.dp ? 'P' + sgn(r.dp) : ''].filter(Boolean).join(' ');
         const vl = (r.vc || r.vp) ? `V ${r.vc || 0}/${r.vp || 0}` : '';
-        const txt = [dl ? 'Δ ' + dl : '', vl].filter(Boolean).join('  ');
+        const txt = vl;
         if (txt) {
           ctx.font = `9px ${C('--mono')}`;
           ctx.textAlign = 'left'; ctx.fillStyle = C('--muted');
@@ -584,7 +641,8 @@
   // ---------- ข่าวแดง (High impact) จาก Forex Factory ----------
   // GitHub Actions ดึงปฏิทินทุกชั่วโมงเก็บเป็น news.json ในรีโป แอปอ่านไฟล์นั้น
   // ที่อยู่ไฟล์ news.json: อ่านชื่อบัญชี/รีโปจากลิงก์ของหน้าเว็บเอง (เปลี่ยนชื่อรีโปภายหลังก็ยังใช้ได้)
-  const NEWS_URL = 'https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-pro/main/news.json';
+  const GH_OWNER = 'OI-GOLD-PRO', GH_REPO = 'gold-oi-pro';
+  const NEWS_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/news.json`;
   // หมายเหตุ: raw.githubusercontent แคชไฟล์ราว 5 นาที
   let news = [];
   async function loadNews() {
@@ -763,33 +821,35 @@
     oi.rows.forEach(r => { const d = Math.abs(r.price - price); if (!best || d < best.d) best = { r, d }; });
     if (!best || best.d > 3) { tip.hidden = true; return; }
     const r = best.r;
-    const sg = v => v === null ? '–' : (v > 0 ? '+' : '') + v;
-    tip.innerHTML = `strike <b>${r.strike}</b> → โบรก ${r.price.toFixed(2)}<br><span class="c">Call ${r.c}</span> (${sg(r.dc)}) · <span class="p">Put ${r.p}</span> (${sg(r.dp)})${(r.vc !== null || r.vp !== null) ? `<br>Vol วันนี้ C${r.vc || 0} / P${r.vp || 0}` : ''}`;
+    tip.innerHTML = `strike <b>${r.strike}</b> → โบรก ${r.price.toFixed(2)}<br><span class="c">Call ${r.c}</span> · <span class="p">Put ${r.p}</span>${(r.vc !== null || r.vp !== null) ? `<br>Vol วันนี้ C${r.vc || 0} / P${r.vp || 0}` : ''}`;
     tip.hidden = false;
   });
 
   // ---------- แจ้งเตือนเมื่อราคาเข้าใกล้โซน OI ----------
   const ALERT_MIN_OI = 50;   // เฉพาะ strike ที่ Put หรือ Call มี OI ตั้งแต่ 50
-  const ALERT_TOL = SC.tol;     // ห่างจากเส้นไม่เกิน $1.5 ถือว่าเข้าโซน
-  const ALERT_ZONE_COOL = 10 * 60000; // โซนเดียวกันเตือนซ้ำได้หลัง 10 นาที
-  const ALERT_ANY_COOL = 60000;        // เว้นอย่างน้อย 60 วินาทีระหว่างการเตือน
-  const REARM = SC.rearm;          // ต้องออกห่างเส้น $8 (ถือว่าทะลุโซนจริง) ก่อนจึงเตือนโซนเดิมซ้ำ
+  // แจ้งเตือน 3 ขั้นต่อโซน: (1) ราคาถึงโซน -> คูลดาวน์ 1 ชม. (2) เบรกเอ้า = แท่ง M5 ปิดพ้นขอบบน/ล่างสุดของโซนเกิน $2 (ต้องผ่านขั้น 1 มาก่อน) -> คูลดาวน์ 30 นาที (3) หลังเบรก ถ้าราคากลับเข้าโซนเดิม เริ่มขั้น 1 ใหม่
+  const REACH_COOL = 60 * 60000, BREAK_COOL = 30 * 60000;
+  const BREAK_EXTRA = SYM === 'gold' ? 2 : SC.tol * (2 / 1.5); // เลยขอบโซน $2 (ทอง); น้ำมันสเกลตามสัดส่วนเดียวกับ tol
+  const M5_MS = 300000;
   let alertsOn = false;
-  try { alertsOn = localStorage.getItem('oit_alert') === '1'; } catch (e) {}
+  if (!EMBED) try { alertsOn = localStorage.getItem('oit_alert') === '1'; } catch (e) {}
   let actx = null, wakeLock = null, hit = null;
-  const armed = new Map();
+  const zst = new Map(); // strike -> { st: 'idle'|'reached'|'broken', inside, lastReach, lastBreak }
+  let m5Bucket = null, m5Last = null;
 
   const alertZones = () => (oi && oi.offset !== null) ? oi.rows.filter(r => Math.max(r.p, r.c) >= ALERT_MIN_OI) : [];
+  const zoneEdges = r => ({ lo: r.price - ZONE_HALF, hi: r.price + ZONE_HALF });
 
-  // จำสถานะโซนไว้ตลอด: ซิงก์ชีต/ปรับ offset ทุกนาทีจะไม่รีเซ็ตโซนที่เพิ่งเตือนไป
-  // force = true ใช้ตอนกดเปิดกระดิ่งใหม่เท่านั้น
-  const lastFire = new Map();
-  let lastAnyFire = 0;
+  // จำสถานะโซนไว้ตลอด: ซิงก์ชีต/ปรับ offset ทุกนาทีจะไม่รีเซ็ตสถานะ
+  // force = true ใช้ตอนกดเปิดกระดิ่งใหม่: โซนที่ราคาอยู่ข้างในตอนนั้นนับว่าแจ้งแล้ว (ไม่เตือนทันที)
   function resetArming(price, force) {
     const zones = alertZones(), keep = new Set(zones.map(r => r.strike));
-    [...armed.keys()].forEach(k => { if (!keep.has(k)) armed.delete(k); });
+    [...zst.keys()].forEach(k => { if (!keep.has(k)) zst.delete(k); });
     zones.forEach(r => {
-      if (force || !armed.has(r.strike)) armed.set(r.strike, price === null || Math.abs(price - r.price) > ALERT_TOL);
+      if (force || !zst.has(r.strike)) {
+        const { lo, hi } = zoneEdges(r), inside = price !== null && price >= lo && price <= hi;
+        zst.set(r.strike, { st: inside ? 'reached' : 'idle', inside, lastReach: inside ? Date.now() : 0, lastBreak: 0 });
+      }
     });
   }
 
@@ -892,29 +952,38 @@
   chartEl.addEventListener('touchend', touchEnd, { capture: true });
   chartEl.addEventListener('touchcancel', touchEnd, { capture: true });
 
-  function fire(r, price) {
+  function fire(r, price, kind) {
     hit = { strike: r.strike, until: Date.now() + 60000 }; dirty = true;
     beep();
     try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {}
     const side = r.c >= r.p ? 'แนวต้าน' : 'แนวรับ';
-    showToast(`🔔 ราคา <b>${price.toFixed(2)}</b> เข้าโซน ${side} strike <b>${r.strike}</b> (${r.price.toFixed(2)}) · Call ${r.c} · Put ${r.p}`);
+    const info = `strike <b>${r.strike}</b> (${r.price.toFixed(2)}) · Call ${r.c} · Put ${r.p}`;
+    if (kind === 'up' || kind === 'down') showToast(`🚀 <b>เบรกเอ้า${kind === 'up' ? 'ขึ้น' : 'ลง'}</b> M5 ปิด <b>${price.toFixed(SC.dec === 0 ? 0 : 2)}</b> พ้นโซน ${side} ${info}`);
+    else showToast(`🔔 ราคา <b>${price.toFixed(SC.dec === 0 ? 0 : 2)}</b> เข้าโซน ${side} ${info}`);
   }
 
   function checkAlerts(price) {
     if (!alertsOn || price === null) return;
+    const now = Date.now(), bucket = Math.floor(now / M5_MS);
+    // แท่ง M5 ปิดเมื่อข้ามช่วง 5 นาที: ใช้ราคาล่าสุดของช่วงก่อนหน้าเป็นราคาปิด
+    let m5Close = null;
+    if (m5Bucket !== null && bucket !== m5Bucket) m5Close = m5Last;
+    m5Bucket = bucket; m5Last = price;
     alertZones().forEach(r => {
-      const d = Math.abs(price - r.price);
-      if (d <= ALERT_TOL) {
-        if (armed.get(r.strike) !== false) {
-          armed.set(r.strike, false);
-          const now = Date.now();
-          // โซนเดิมเตือนซ้ำได้หลัง 10 นาที และเว้นอย่างน้อย 60 วินาทีระหว่างการเตือนใด ๆ
-          if (now - (lastFire.get(r.strike) || 0) >= ALERT_ZONE_COOL && now - lastAnyFire >= ALERT_ANY_COOL) {
-            lastFire.set(r.strike, now); lastAnyFire = now; fire(r, price);
-          }
-        }
-      } else if (d >= REARM) {
-        armed.set(r.strike, true);
+      let z = zst.get(r.strike);
+      if (!z) { resetArming(price); z = zst.get(r.strike); if (!z) return; }
+      const { lo, hi } = zoneEdges(r), inside = price >= lo && price <= hi;
+      // ขั้น 3: เบรกแล้วราคากลับเข้าโซนเดิม -> เริ่มขั้น 1 ใหม่ (ล้างคูลดาวน์)
+      if (z.st === 'broken' && inside) { z.st = 'idle'; z.lastReach = 0; z.inside = false; }
+      // ขั้น 1: ราคาถึงโซน (ตอนเข้ามาใหม่) และพ้นคูลดาวน์ 1 ชม.
+      if (inside && !z.inside && now - z.lastReach >= REACH_COOL) {
+        z.lastReach = now; z.st = 'reached'; fire(r, price, 'reach');
+      }
+      z.inside = inside;
+      // ขั้น 2: ผ่านขั้น 1 แล้ว + M5 ปิดเลยขอบบน/ล่างเกิน $2 + พ้นคูลดาวน์ 30 นาที
+      if (z.st === 'reached' && m5Close !== null && now - z.lastBreak >= BREAK_COOL) {
+        const up = m5Close > hi + BREAK_EXTRA, down = m5Close < lo - BREAK_EXTRA;
+        if (up || down) { z.st = 'broken'; z.lastBreak = now; fire(r, m5Close, up ? 'up' : 'down'); }
       }
     });
   }
@@ -935,7 +1004,7 @@
       resetArming(lastClose, true);
       beep();
       keepAwake();
-      showToast(`🔔 เปิดแจ้งเตือนแล้ว: ${alertZones().length} โซน (OI ≥ ${ALERT_MIN_OI}) ห่างเส้นไม่เกิน ${ALERT_TOL} · เปิดแอปค้างไว้เพื่อให้เตือนได้`);
+      showToast(`🔔 เปิดแจ้งเตือนแล้ว: ${alertZones().length} โซน (OI ≥ ${ALERT_MIN_OI}) เตือนเมื่อราคาถึงโซน (ซ้ำได้ทุก 1 ชม.) และเมื่อ M5 ปิดพ้นโซนเกิน $2 (ซ้ำได้ทุก 30 นาที) · เปิดแอปค้างไว้เพื่อให้เตือนได้`);
     } else {
       try { wakeLock && wakeLock.release(); } catch (e) {}
       wakeLock = null;
@@ -1002,8 +1071,7 @@
   function paintOff() {
     const el = $('offchip'); if (!el) return;
     const t = adjAt ? adjAt.toLocaleTimeString('th-TH', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }) : '';
-    const g = gcOff();
-    el.innerHTML = `GC−โบรก <b>${g >= 0 ? '+' : ''}${g.toFixed(2)}</b>`;
+    el.innerHTML = `GC−โบรก <b>${gcOff() >= 0 ? '+' : ''}${gcOff().toFixed(2)}</b>` + (liveAt !== null && SYM === 'gold' ? ` <small>· Yahoo ${new Date(liveAt * 1000).toLocaleTimeString('th-TH', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</small>` : '');
   }
   // gAdj = perp − GC (ใช้แปลง strike ของ OI), adj = perp − ราคาโบรก (ใช้เลื่อนกราฟ)
   function applyAdj(next) {
@@ -1029,8 +1097,35 @@
     if (rawClose !== null) lastClose = rawClose - adj;
     rebaseOI(); showPrice(); paintOff();
   }
-  // คำนวณ offset ใหม่: GC ประมาณ = spot ล่าสุด + carry → offset = GC − perp
+  // offset สด: ทุก 1 นาที เอาแท่ง 1 นาทีล่าสุดของ Yahoo GC=F (gcm.json จาก GitHub Actions) จับคู่กับแท่ง perp นาทีเดียวกัน
+  // offset = GC ปิดแท่งนั้น − perp ปิดแท่งนั้น (ค่าของอดีตราว 10-20 นาที แต่แม่นเพราะเทียบเวลาเดียวกัน) แล้วใช้กับราคาปัจจุบัน
+  let liveAt = null, liveBusy = false;
+  const GCM_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/gcm.json`;
+  async function pairYahoo() {
+    if (SYM !== 'gold' || liveBusy || !prov || !oi) return;
+    liveBusy = true;
+    try {
+      const r = await fetch(GCM_URL + '?t=' + Date.now(), { cache: 'no-store' });
+      const bars = (await r.json()).bars || [];
+      const rows = await fetchBars(prov, '1m', 400);
+      const pm = new Map(rows.map(k => [Math.floor(k[0] / 1000), k[4]]));
+      // แท่ง Yahoo ล่าสุดที่ perp มีแท่งนาทีเดียวกัน
+      for (let i = bars.length - 1; i >= 0 && i >= bars.length - 30; i--) {
+        const t = Math.floor(bars[i][0] / 60) * 60;
+        if (!pm.has(t)) continue;
+        if (Date.now() / 1000 - t > 90 * 60) return; // ข้อมูลเก่าเกิน 90 นาที ไม่ใช้
+        const off = Math.round((bars[i][1] - pm.get(t)) * 100) / 100;
+        if (!isFinite(off) || Math.abs(off) > 30) return;
+        if (liveAt === null || Math.abs(-off - gAdj) >= 0.01) { liveAt = t; applyAdj(-off); } else { liveAt = t; paintOff(); }
+        return;
+      }
+    } catch (e) {}
+    finally { liveBusy = false; }
+  }
+  setInterval(pairYahoo, 60000); setTimeout(pairYahoo, 5000);
+  // (เดิม) คำนวณ offset ใหม่: GC ประมาณ = spot ล่าสุด + carry → offset = GC − perp (ปิดใช้งาน)
   function refreshAdj(force) {
+    return; // ปิดการลอยตาม spot/carry: offset ล็อกตามชีต
     if (carry === null || basisEma === null) return;
     if (!force && adjAt && Date.now() - adjAt.getTime() < REFRESH_MS - 5000) return;
     applyAdj(basisEma - carry);
@@ -1092,7 +1187,7 @@
 
   async function loadTF(next) {
     tf = next;
-    try { localStorage.setItem('oit_tf', tf); } catch (e) {}
+    try { localStorage.setItem('oit_tf' + PSFX, tf); } catch (e) {}
     document.querySelectorAll('#tfs button').forEach(b => b.classList.toggle('on', b.dataset.tf === tf));
     $('msg').hidden = false; $('msg').textContent = 'กำลังโหลดกราฟ…';
     const order = prov ? [prov, ...PROVIDERS.filter(p => p !== prov)] : PROVIDERS;
@@ -1191,9 +1286,9 @@
   const PLABEL = { n: 'คาบ', k: 'ตัวคูณ', ob: 'บน', os: 'ล่าง', f: 'เร็ว', s: 'ช้า', g: 'สัญญาณ', sm: 'smooth' };
   const PLABEL_STOCH = { k: '%K', d: '%D', sm: 'smooth', ob: 'บน', os: 'ล่าง' };
   let indCfg = {};
-  try { indCfg = JSON.parse(localStorage.getItem('oit_ind2') || 'null') || {}; } catch (e) { indCfg = {}; }
+  try { indCfg = JSON.parse(localStorage.getItem('oit_ind2' + PSFX) || 'null') || {}; } catch (e) { indCfg = {}; }
   // ย้ายค่าจากรุ่นก่อน (V1.6.00)
-  try {
+  if (!EMBED) try {
     const old = JSON.parse(localStorage.getItem('oit_ind') || '{}') || {};
     const map = { ema20: 'ema1', ema50: 'ema2', ema200: 'ema3', bb: 'bb', rsi: 'rsi', macd: 'macd' };
     let moved = false;
@@ -1202,7 +1297,7 @@
     localStorage.removeItem('oit_ind');
   } catch (e) {}
   const cfgOf = d => { const c = indCfg[d.id] || {}; return { on: !!c.on, p: Object.assign({}, d.p, c.p || {}) }; };
-  const saveInd = () => { try { localStorage.setItem('oit_ind2', JSON.stringify(indCfg)); } catch (e) {} };
+  const saveInd = () => { try { localStorage.setItem('oit_ind2' + PSFX, JSON.stringify(indCfg)); } catch (e) {} };
   const indSeries = {};
   let oscFrac = 0; // สัดส่วนความสูงล่างที่ออสซิลเลเตอร์ใช้ (ไม่วาดแท่ง OI ทับ)
   const lineOpt = (col, extra) => Object.assign({ color: col, lineWidth: 1, priceLineVisible: false, lastValueVisible: false, crosshairMarkerVisible: false }, extra || {});
@@ -1354,8 +1449,8 @@
   ];
   const FIB = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
   let drawings = [];
-  try { drawings = JSON.parse(localStorage.getItem('oit_draw' + SYMSFX) || '[]') || []; } catch (e) { drawings = []; }
-  const saveDraw = () => { try { localStorage.setItem('oit_draw' + SYMSFX, JSON.stringify(drawings)); } catch (e) {} };
+  try { drawings = JSON.parse(localStorage.getItem('oit_draw' + SYMSFX + PSFX) || '[]') || []; } catch (e) { drawings = []; }
+  const saveDraw = () => { try { localStorage.setItem('oit_draw' + SYMSFX + PSFX, JSON.stringify(drawings)); } catch (e) {} };
   let drawTool = null, drawTmp = null;
   function barTimes() { return rawBars.map(k => Math.floor(k[0] / 1000) + TZ_SHIFT); }
   // x → เวลา (รองรับพื้นที่ว่างด้านขวาของแท่งล่าสุด)
@@ -1540,6 +1635,19 @@
     const f = v => `<span class="${v < 0 ? 'neg' : 'pos'}">${v < 0 ? '−' : '+'}$${(Math.abs(v) / 1e6).toFixed(2)}M</span>`;
     el.innerHTML = `MM vs MP · C ${f(dc)} P ${f(dp)} = ${f(net)}`;
   }
+  function applyOiToggle() {
+    const b = $('oiBtn'); b.classList.toggle('has', oiOn);
+    b.style.opacity = oiOn ? '' : '.55';
+    $('mmpl').style.visibility = oiOn ? '' : 'hidden';
+    document.querySelectorAll('.legend > span:not(.rt)').forEach(e => { e.style.display = oiOn ? '' : 'none'; });
+    dirty = true;
+  }
+  $('oiBtn').addEventListener('click', () => {
+    oiOn = !oiOn;
+    try { localStorage.setItem('oit_show' + PSFX, oiOn ? '1' : '0'); } catch (e) {}
+    applyOiToggle();
+  });
+  applyOiToggle();
   function showPrice() {
     paintRaw(); paintMM();
     if (lastClose === null) return;
@@ -1585,9 +1693,16 @@
     authCode = code; authExpire = expire || null;
     try { localStorage.setItem('oit_code', code); } catch (e) {}
     $('login').hidden = true;
-    if (!started) { started = true; loadTF(tf); loadNews(); scheduleNews(); }
+    if (!started) { started = true; loadTF(tf); if (!EMBED) { loadNews(); scheduleNews(); } }
     loadSheet();
-    if (expire) showToast(`สวัสดี <b>${esc(name || '')}</b> วันนี้คือวันที่ดีสำหรับคุณ<br>${expLabel(expire)} <b>${esc(fmtExpire(expire))}</b>`);
+    // กรอบต้อนรับแสดงวันละครั้ง (ตามวันที่ไทย) เปิดแอปรอบถัดไปในวันเดียวกันจะไม่ขึ้นอีก
+    let welcomeToday = null;
+    try { welcomeToday = localStorage.getItem('oit_welcome_day'); } catch (e) {}
+    const todayTH = new Date().toLocaleDateString('en-CA', { timeZone: 'Asia/Bangkok' });
+    if (expire && !EMBED && welcomeToday !== todayTH) {
+      try { localStorage.setItem('oit_welcome_day', todayTH); } catch (e) {}
+      showToast(`สวัสดี <b>${esc(name || '')}</b> วันนี้คือวันที่ดีสำหรับคุณ<br>${expLabel(expire)} <b>${esc(fmtExpire(expire))}</b>`);
+    }
   }
   // ตรวจรหัสกับเซิร์ฟเวอร์: คืน {ok, expire} / {ok:false, reason} / {legacy:true} ถ้าสคริปต์ยังเป็นรุ่นเก่า
   async function checkLogin(code) {
@@ -1628,7 +1743,6 @@
   $('loginVer').textContent = 'V' + APP_VER;
   let saved = null;
   try { saved = localStorage.getItem('oit_code'); } catch (e) {}
-  // ---------- เลือกสัญลักษณ์ (ทอง / น้ำมัน / US30) ----------
   $('symName').textContent = SC.name;
   window.OI = {
     fetchTF: async (t, n) => {
@@ -1636,7 +1750,7 @@
       for (const p of order) { try { return (await fetchBars(p, t, n)).filter(k => !cmeClosed(k[0])).map(toBar); } catch (e) {} }
       return null;
     },
-    get tf() { return tf; }, sym: SYM, cfg: SC, sfx: SYMSFX,
+    get tf() { return tf; }, sym: SYM, cfg: SC, sfx: SYMSFX, psfx: PSFX,
     chart, series, chartEl, hooks: overlayHooks,
     get oi() { return oi; }, get lastClose() { return lastClose; },
     showToast, hideToast, lockChart,

@@ -15,7 +15,7 @@
     ribbon: false, ribLen: 60, ribType: 'HMA',
   };
   if (O.cfg && O.cfg.tol) DEF.dist = Math.round(O.cfg.tol * 2 * 100) / 100; // ใกล้โซน = 2 เท่าของระยะเตือน (ทอง $3)
-  const KEY = 'oit_gs' + (O.sfx || '');
+  const KEY = 'oit_gs' + (O.sfx || '') + (O.psfx || '');
   let cfg = Object.assign({}, DEF);
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} };

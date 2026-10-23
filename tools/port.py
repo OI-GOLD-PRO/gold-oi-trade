@@ -40,41 +40,48 @@ rep_re(r"const APP_VER = '[^']*';", f"const APP_VER = '{APP_VER}'; // based on O
 s = re.sub(r"localStorage\.(getItem|setItem|removeItem)\('oi_", r"localStorage.\1('oit_", s)
 
 # --- trade UI containers + script ---
+# V1.10+: the page body is wrapped in #main and has a 2nd-chart iframe; the trade app is single chart only
 rep('''  </div>
+  </div>
+  <div id="splitter" hidden role="separator" aria-label="ลากเพื่อปรับขนาดกราฟ"></div>
+  <iframe id="paneB" title="กราฟที่ 2" hidden></iframe>
 
 <script>
 (function () {''', '''  </div>
   <div id="acct"></div>
   <div id="ticket"></div>
   <div id="sheet" hidden></div>
+  </div>
 
 <script>
 (function () {''')
-rep('''})();
-</script>
-<script src="goldscalp.js"></script>
-</body>''', '''})();
-</script>
-<script src="trade.js"></script>
+rep('''    <button class="icon" id="layBtn" aria-label="เลย์เอาต์กราฟ: 1 กราฟ / บนล่าง / ซ้ายขวา">▭</button>\n''', '')
+rep('''<script src="goldscalp.js"></script>
+<script src="dash.js"></script>
+</body>''', '''<script src="trade.js"></script>
 <script src="dash.js"></script>
 <script src="goldscalp.js"></script>
 </body>''')
+# single chart only: no 2nd-chart layout
+rep_re(r"  // ---- เลย์เอาต์ 2 กราฟ: กราฟที่ 2 = iframe.*?\n  let SYM = 'gold';", "  const EMBED = false, PSFX = '', LAY = '';\n  let SYM = 'gold';")
+rep_re(r"  // ---------- เลือกสัญลักษณ์ \(ทอง / น้ำมัน\) ----------\n  \$\('symName'\)\.textContent = SC\.name;\n.*?(?=  window\.OI = \{)", "  $('symName').textContent = SC.name;\n")
+rep_re(r"    // ดึงข้อมูลชีตของสัญลักษณ์ใดก็ได้ \(ใช้ในแดชบอร์ด dash\.js\)\n    async fetchData\(sym\) \{.*?\n    \},\n(?=    showToast)", "")
 
 # --- gold only (V1.9+ has a symbol switcher; the trade app trades the MT5 gold symbol only) ---
 rep('''<button id="symBtn" class="symbtn" aria-label="เลือกสัญลักษณ์"><b id="symName">XAUUSD</b><i>▾</i></button>''', '<b id="symName">XAUUSD</b>')
 rep('    <div id="symMenu" hidden></div>\n', '')
 rep_re(r"  try \{ const q = new URLSearchParams\(location\.search\)\.get\('sym'\)[^\n]*\n", "")
-rep_re(r"  \$\('symMenu'\)\.innerHTML = .*?\n  \}\);\n(?=  window\.OI = \{)", "")
 # no body-height hacks (they pushed the ticket off-screen on iPhone; trade.css lays the page out)
 rep_re(r"  /\* เต็มจอจริงบน iPhone[^\n]*\n  body \{ position: fixed;[^\n]*\n", "")
 rep_re(r"  // บางเครื่องความสูงจอไม่ตรงกับ CSS[^\n]*\n  const fitH = [^\n]*\n  fitH\(\);[^\n]*\n", "")
 
 # --- chart shift: adj = perp − broker (chart), gAdj = perp − GC (for OI strikes) ---
 rep("let adj = 0, basisEma = null,", "let adj = 0, gAdj = 0, brokerBasis = null, basisEma = null,")
-rep_re(r"(    oi = \{ top5P, top5C, rows, offset: ok \? off : null,[^\n]*?maxPain) \};",
-       r"\1, mpPrice: null };\n    rebaseOI();")
-rep("    el.innerHTML = `offset <b>${(-adj).toFixed(2)}</b>`;",
-    "    const g = gcOff();\n    el.innerHTML = `GC−โบรก <b>${g >= 0 ? '+' : ''}${g.toFixed(2)}</b>`;")
+rep_re(r"(    oi = \{ top5P, top5C, rows, offset: ok \? off : null,[^\n]*?maxPain)([^\n]*?) \};",
+       r"\1\2, mpPrice: null };\n    rebaseOI();")
+rep("`offset <b>${(-adj).toFixed(2)}</b>`", "`GC−โบรก <b>${gcOff() >= 0 ? '+' : ''}${gcOff().toFixed(2)}</b>`")
+# live Yahoo pairing compares against the GC offset (gAdj), not the broker shift (adj)
+rep("Math.abs(-off - adj) >= 0.01", "Math.abs(-off - gAdj) >= 0.01")
 rep_re(r"  function applyAdj\(next\) \{\n.*?\n  \}\n",
        '''  // gAdj = perp − GC (ใช้แปลง strike ของ OI), adj = perp − ราคาโบรก (ใช้เลื่อนกราฟ)
   function applyAdj(next) {
@@ -144,7 +151,7 @@ rep("      showLogin(res.reason === 'expired' ?",
     "      if (res.error === 'not found') { showLogin('hub ยังเป็นรุ่นเก่า — รัน npx wrangler deploy ในโฟลเดอร์ hub ก่อน'); return; }\n      showLogin(res.reason === 'expired' ?")
 # news from the OI Gold Pro repo (read-only)
 rep_re(r"  const GH_OWNER =.*?\n(?=  // หมายเหตุ: raw\.githubusercontent)",
-       "  const NEWS_URL = 'https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-pro/main/news.json';\n")
+       "  const GH_OWNER = 'OI-GOLD-PRO', GH_REPO = 'gold-oi-pro';\n  const NEWS_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/news.json`;\n")
 
 # --- expose an API for trade.js (extends the window.OI that OI Gold Pro already exports) ---
 rep("    markDirty() { dirty = true; },\n  };", '''    markDirty() { dirty = true; },
