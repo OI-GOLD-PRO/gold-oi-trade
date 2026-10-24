@@ -1,3 +1,14 @@
 name = "gc-yahoo"
 main = "src/index.js"
 compatibility_date = "2026-01-01"
+
+[[durable_objects.bindings]]
+name = "OPT"
+class_name = "OptState"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["OptState"]
+
+[triggers]
+crons = ["*/2 * * * *"]
