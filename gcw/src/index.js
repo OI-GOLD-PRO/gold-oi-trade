@@ -215,7 +215,7 @@ export default {
     const url = new URL(request.url);
     if (url.pathname === '/px') {
       try {
-        const [gf, pp] = await Promise.all([tvBars('BLACKBULL:GOLD.F'), tvBars('BYBIT:XAUUSDT.P')]);
+        const [gf, pp] = await Promise.all([tvBars('BLACKBULL:GOLD.F'), tvBars('BYBIT:XAUUSDT.P', '1', 3500)]);
         const lo = levelOffset(gf, pp), last = gf[gf.length - 1];
         const out = { gc_price: last[4], gc_time: bkk(last[0]), offset: lo ? lo.offset : null, ref_price: lo ? lo.ref : null, ref_symbol: 'Bybit XAUUSDT', level: lo ? lo.level : null, cross_time: lo ? bkk(lo.t) : null, offset_time: bkk(Math.floor(Date.now() / 1000)) };
         return new Response(JSON.stringify(out), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=60' } });
