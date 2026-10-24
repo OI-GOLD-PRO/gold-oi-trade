@@ -183,6 +183,12 @@ export class OptState {
       const sess = ymdOf(now + 2 * 3600e3);
       if (s.sess !== sess) { s.sess = sess; s.openF = s.F; s.openEM = em.em; s.openT = Math.floor(now / 1000); }
     }
+    // gmf itd (สัญญาวันนี้) ฝั่งเซิร์ฟเวอร์ ไว้ให้ชีตใช้ (แอปคำนวณเองทุกนาทีด้วยราคาสด)
+    if (s.F) {
+      const T = Math.max((s.expTs * 1000 - now) / (365 * 864e5), 60e3 / (365 * 864e5));
+      const opts = Object.values(s.rows).filter(r => r.oi > 0 && r.iv > 0).map(r => ({ k: r.k, c: r.t === 'C', oi: r.oi, iv: r.iv, T }));
+      const f = gammaFlip(opts, s.F); s.itd = f.flip; s.gexItd = f.gexAtF;
+    }
     s.updated = Math.floor(now / 1000); s.polls = (s.polls || 0) + 1;
     await this.state.storage.put('s', s);
     // gmf M ทุก 60 นาที (เก็บแยก key)
@@ -232,7 +238,7 @@ export default {
         .map(x => [x.k, x.t, x.iv == null ? null : +x.iv.toFixed(4), x.d == null ? null : +x.d.toFixed(4), x.g == null ? null : +x.g.toPrecision(4), x.bid ?? null, x.ask ?? null, x.lp ?? null, x.vol || 0, Math.round(x.buy || 0), Math.round(x.sell || 0), x.oi ?? null]) : [];
       const pick = k => s ? s[k] ?? null : null;
       const oiT = s ? Math.max(0, ...Object.values(s.rows).map(x => x.oiT || 0)) || null : null;
-      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), oiT, gmfM: s && s.m ? s.m : null, rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
+      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), itd: pick('itd'), gexItd: pick('gexItd'), oiT, gmfM: s && s.m ? s.m : null, rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
     }
     const tf = new URL(request.url).searchParams.get('tf') || '1m';
     const plan = PLAN[tf];
