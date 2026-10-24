@@ -41,7 +41,7 @@ export function agg4h(b1h) {
 // ---------- ออปชันทองสัญญาที่หมดอายุวันนั้น จาก TradingView (ช้า 10 นาที) ----------
 // cron ทุก 2 นาที → Durable Object "OptState" ดึง IV/greeks (scanner) + volume/ราคาล่าสุด/bid/ask (quote stream)
 // แล้วสะสม volume ที่เพิ่มขึ้นแต่ละรอบ: ราคาล่าสุดใกล้ ask = ซื้อ, ใกล้ bid = ขาย (ประมาณการ)
-// GET /opt → {root, exp, expTs, F, updated, polls, rows:[[k, 'C'|'P', iv, delta, gamma, bid, ask, last, vol, buy, sell], ...]}
+// GET /opt → {root, exp, expTs, F, updated, polls, oiT, rows:[[k, 'C'|'P', iv, delta, gamma, bid, ask, last, vol, buy, sell, oi], ...]}
 const TVH = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', origin: 'https://www.tradingview.com', referer: 'https://www.tradingview.com/' };
 const UNDER = ['COMEX:GCZ2026', 'COMEX:GCG2027', 'COMEX:GCJ2027', 'COMEX:GCM2027'];
 async function tvScanRaw(body) {
@@ -109,14 +109,15 @@ export class OptState {
     if (!s || s.root !== c.root || s.exp !== c.exp) s = { ...c, rows: {}, polls: 0 };
     const sc = await tvScanRaw({ columns: ['strike', 'option-type', 'iv', 'delta', 'gamma', 'bid', 'ask'], filter: [{ left: 'type', operation: 'equal', right: 'option' }, { left: 'expiration', operation: 'equal', right: c.exp }, { left: 'root', operation: 'equal', right: c.root }], ignore_unknown_fields: false, index_filters: [{ name: 'underlying_symbol', values: UNDER }] });
     const syms = (sc.symbols || []).map(x => x.s);
-    const q = await tvQuotes([...syms, 'COMEX:GC1!'], ['lp', 'volume', 'bid', 'ask']);
+    const q = await tvQuotes([...syms, 'COMEX:GC1!'], ['lp', 'volume', 'bid', 'ask', 'oi']);
     const F = q['COMEX:GC1!'] && Number(q['COMEX:GC1!'].lp);
     if (isFinite(F) && F > 0) s.F = F;
     (sc.symbols || []).forEach(x => {
       const [k, type, iv, d, g, bid, ask] = x.f, qq = q[x.s] || {};
       const prev = s.rows[x.s];
       const acc = qq.volume !== undefined ? accumulate(prev, { ...qq, bid: qq.bid ?? bid, ask: qq.ask ?? ask }) : (prev ? { vol: prev.vol, buy: prev.buy, sell: prev.sell } : { vol: 0, buy: 0, sell: 0 });
-      s.rows[x.s] = { k, t: type === 'call' ? 'C' : 'P', iv, d, g, bid: qq.bid ?? bid, ask: qq.ask ?? ask, lp: qq.lp ?? (prev && prev.lp), ...acc };
+      const oiv = qq.oi && qq.oi.value !== undefined ? Number(qq.oi.value) : (prev ? prev.oi : null), oiT = qq.oi && qq.oi.time ? qq.oi.time : (prev ? prev.oiT : null);
+      s.rows[x.s] = { k, t: type === 'call' ? 'C' : 'P', iv, d, g, bid: qq.bid ?? bid, ask: qq.ask ?? ask, lp: qq.lp ?? (prev && prev.lp), oi: oiv, oiT, ...acc };
     });
     // Expected Move = ราคา Straddle ของ strike ใกล้ราคาที่สุด (mid ของ Call + Put) · จำค่าแรกของแต่ละวันเทรด (เริ่ม 22:00 UTC)
     const em = straddle(Object.values(s.rows), s.F);
@@ -156,10 +157,11 @@ export default {
       let s = await r.json();
       if (url.pathname === '/opt' && (!s || !s.updated)) { await stub.fetch('https://do/poll'); s = await (await stub.fetch('https://do/get')).json(); }
       if (url.pathname === '/opt/poll') return new Response(JSON.stringify(s), { headers: { ...CORS, 'content-type': 'application/json' } });
-      const F = s && s.F, rows = s ? Object.values(s.rows).filter(x => !F || Math.abs(x.k - F) <= F * 0.06).sort((a, b) => a.k - b.k || (a.t < b.t ? -1 : 1))
-        .map(x => [x.k, x.t, x.iv == null ? null : +x.iv.toFixed(4), x.d == null ? null : +x.d.toFixed(4), x.g == null ? null : +x.g.toPrecision(4), x.bid ?? null, x.ask ?? null, x.lp ?? null, x.vol || 0, Math.round(x.buy || 0), Math.round(x.sell || 0)]) : [];
+      const F = s && s.F, rows = s ? Object.values(s.rows).filter(x => !F || Math.abs(x.k - F) <= F * 0.1).sort((a, b) => a.k - b.k || (a.t < b.t ? -1 : 1))
+        .map(x => [x.k, x.t, x.iv == null ? null : +x.iv.toFixed(4), x.d == null ? null : +x.d.toFixed(4), x.g == null ? null : +x.g.toPrecision(4), x.bid ?? null, x.ask ?? null, x.lp ?? null, x.vol || 0, Math.round(x.buy || 0), Math.round(x.sell || 0), x.oi ?? null]) : [];
       const pick = k => s ? s[k] ?? null : null;
-      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
+      const oiT = s ? Math.max(0, ...Object.values(s.rows).map(x => x.oiT || 0)) || null : null;
+      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), oiT, rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
     }
     const tf = new URL(request.url).searchParams.get('tf') || '1m';
     const plan = PLAN[tf];
