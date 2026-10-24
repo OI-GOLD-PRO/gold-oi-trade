@@ -149,13 +149,6 @@ export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
-    if (url.pathname === '/cme-test') {
-      const out = {};
-      for (const [k, u] of [['exp', 'https://www.cmegroup.com/CmeWS/mvc/Settlements/Options/TradeDateAndExpirations/437'], ['set', 'https://www.cmegroup.com/CmeWS/mvc/Settlements/Options/Settlements/10146/OOF?strategy=DEFAULT&optionProductId=10146&monthYear=G4MV26&optionExpiration=10146-V6&tradeDate=10/23/2026&pageSize=50']]) {
-        try { const r = await fetch(u, { headers: { 'user-agent': TVH['user-agent'], accept: 'application/json, text/plain, */*', referer: 'https://www.cmegroup.com/markets/metals/precious/gold.settlements.options.html', 'accept-language': 'en-US,en;q=0.9' } }); const t = await r.text(); out[k] = r.status + ' ' + t.slice(0, 200); } catch (e) { out[k] = String(e); }
-      }
-      return new Response(JSON.stringify(out), { headers: { ...CORS, 'content-type': 'application/json' } });
-    }
     if (url.pathname === '/opt' || url.pathname === '/opt/poll') {
       if (!env || !env.OPT) return new Response(JSON.stringify({ error: 'no OPT binding' }), { status: 500, headers: { ...CORS, 'content-type': 'application/json' } });
       const stub = env.OPT.get(env.OPT.idFromName('main'));
