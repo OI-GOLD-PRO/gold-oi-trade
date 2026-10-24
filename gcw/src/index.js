@@ -93,12 +93,69 @@ async function pickContract(now) {
   (j.symbols || []).forEach(x => { const [root, exp] = x.f; const k = root + '|' + exp; if (!seen.has(k)) seen.set(k, { root, exp, expTs: expiryTs(exp) }); });
   return [...seen.values()].filter(c => c.expTs * 1000 > now).sort((a, b) => a.expTs - b.expTs)[0] || null;
 }
+// ---------- ราคาฟิวเจอร์ Gold.F + offset (สำหรับชีต) ----------
+// แท่ง 1 นาทีจาก TradingView chart stream
+export async function tvBars(sym, res = '1', n = 600, ms = 12000) {
+  const resp = await fetch('https://widgetdata.tradingview.com/socket.io/websocket?from=symbols%2FCOMEX-GC1!%2F', { headers: { ...TVH, Upgrade: 'websocket' } });
+  const ws = resp.webSocket; if (!ws) throw new Error('ws upgrade failed ' + resp.status);
+  ws.accept();
+  const send = (m, p) => { const s = JSON.stringify({ m, p }); ws.send('~m~' + s.length + '~m~' + s); };
+  let out = null, done; const fin = new Promise(r => { done = r; });
+  ws.addEventListener('message', e => {
+    const d = String(e.data);
+    if (/^~m~\d+~m~~h~/.test(d)) { ws.send(d); return; }
+    d.split(/~m~\d+~m~/).filter(Boolean).forEach(x => { try { const o = JSON.parse(x); if (o.m === 'timescale_update' && o.p[1].s) { out = o.p[1].s.s.map(b => b.v); done(); } if (o.m === 'symbol_error' || o.m === 'series_error') done(); } catch (err) {} });
+  });
+  send('set_auth_token', ['unauthorized_user_token']); send('chart_create_session', ['cs', '']);
+  send('resolve_symbol', ['cs', 's1', '=' + JSON.stringify({ symbol: sym, adjustment: 'splits' })]);
+  send('create_series', ['cs', 's', 's1', 's1', res, n, '']);
+  await Promise.race([fin, new Promise(r => setTimeout(r, ms))]);
+  try { ws.close(); } catch (e) {}
+  if (!out) throw new Error('no bars ' + sym);
+  return out; // [t, o, h, l, c, v]
+}
+// offset = ระดับ 00/25/50/75 ล่าสุดที่ Gold.F วิ่งผ่าน − ราคา perp ณ จุดตัดในแท่งนาทีเดียวกัน (เทียบสัดส่วนในแท่ง)
+export function levelOffset(gf, pp, step = 25) {
+  const pm = new Map(pp.map(b => [b[0], b]));
+  for (let i = gf.length - 1; i >= 0; i--) {
+    const [t, , h, l, c] = gf[i]; const lo = Math.ceil(l / step) * step;
+    if (lo > h) continue;
+    const p = pm.get(t); if (!p) continue;
+    let L = lo; for (let x = lo; x <= h; x += step) if (Math.abs(x - c) < Math.abs(L - c)) L = x;
+    const frac = h > l ? (L - l) / (h - l) : 0.5, ref = p[3] + frac * (p[2] - p[3]);
+    return { level: L, t, ref: Math.round(ref * 100) / 100, offset: Math.round((L - ref) * 100) / 100 };
+  }
+  return null;
+}
+const bkk = sec => { const d = new Date(sec * 1000 + 7 * 3600e3); return d.toISOString().slice(0, 16).replace('T', ' '); };
+
+// ---------- Gamma Flip ----------
+const npdf = x => Math.exp(-x * x / 2) / Math.sqrt(2 * Math.PI);
+// opts: [{k, c(bool), oi, iv, T(ปี)}] → ราคาที่ Net GEX ตัดศูนย์ใกล้ F ที่สุด (สแกน ±6% ทีละ $1, Call +, Put −)
+export function gammaFlip(opts, F) {
+  const g = S => { let a = 0; for (const o of opts) { const v = o.iv * Math.sqrt(o.T); if (!(v > 0)) continue; const d1 = (Math.log(S / o.k) + v * v / 2) / v; a += (o.c ? 1 : -1) * npdf(d1) / (S * v) * o.oi * 100 * S * S * 0.01; } return a; };
+  let best = null, prev = null;
+  for (let S = Math.round(F * 0.94); S <= F * 1.06; S++) { const v = g(S); if (prev && prev[1] * v < 0) { const x = prev[0] + (S - prev[0]) * (prev[1] / (prev[1] - v)); if (best === null || Math.abs(x - F) < Math.abs(best - F)) best = x; } prev = [S, v]; }
+  return { flip: best === null ? null : Math.round(best * 10) / 10, gexAtF: Math.round(g(F) / 1e5) / 10 };
+}
+// gmf M: ทุกสัญญาที่หมดอายุภายใน 30 วัน (OI + IV จาก TradingView)
+async function computeM(now, F) {
+  const sc = await tvScanRaw({ columns: ['strike', 'option-type', 'iv', 'expiration', 'root'], filter: [{ left: 'type', operation: 'equal', right: 'option' }, { left: 'expiration', operation: 'in_range', right: [ymdOf(now - 864e5), ymdOf(now + 30 * 864e5)] }, { left: 'strike', operation: 'in_range', right: [Math.floor(F * 0.9), Math.ceil(F * 1.1)] }], ignore_unknown_fields: false, index_filters: [{ name: 'underlying_symbol', values: UNDER }] });
+  const list = (sc.symbols || []).map(x => ({ s: x.s, k: x.f[0], c: x.f[1] === 'call', iv: x.f[2], exp: x.f[3], root: x.f[4] })).filter(o => { const t = expiryTs(o.exp) * 1000; return t > now && t - now <= 30 * 864e5; });
+  const q = await tvQuotes(list.map(o => o.s), ['oi'], 25000);
+  const opts = [];
+  for (const o of list) { const v = q[o.s] && q[o.s].oi && Number(q[o.s].oi.value); if (v > 0 && o.iv > 0) opts.push({ k: o.k, c: o.c, oi: v, iv: Math.min(Math.max(o.iv, 0.03), 1.5), T: (expiryTs(o.exp) * 1000 - now) / (365 * 864e5) }); }
+  const f = gammaFlip(opts, F);
+  return { M: f.flip, gexM: f.gexAtF, n: opts.length, roots: [...new Set(list.map(o => o.root + o.exp))].length, at: Math.floor(now / 1000), F };
+}
+
 export class OptState {
   constructor(state, env) { this.state = state; this.env = env; }
   async fetch(req) {
     const u = new URL(req.url);
     if (u.pathname === '/poll') { const r = await this.poll(); return new Response(JSON.stringify(r)); }
     const s = await this.state.storage.get('s');
+    if (s) s.m = await this.state.storage.get('m') || null;
     return new Response(JSON.stringify(s || null));
   }
   async poll() {
@@ -128,6 +185,12 @@ export class OptState {
     }
     s.updated = Math.floor(now / 1000); s.polls = (s.polls || 0) + 1;
     await this.state.storage.put('s', s);
+    // gmf M ทุก 60 นาที (เก็บแยก key)
+    let m = await this.state.storage.get('m');
+    if (s.F && (!m || now / 1000 - m.at >= 3600 || m.err)) {
+      try { m = await computeM(now, s.F); } catch (e) { m = { err: String(e.message || e), at: Math.floor(now / 1000) }; }
+      await this.state.storage.put('m', m);
+    }
     return { ok: true, root: s.root, exp: s.exp, n: syms.length, F: s.F };
   }
 }
@@ -150,6 +213,14 @@ export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
+    if (url.pathname === '/px') {
+      try {
+        const [gf, pp] = await Promise.all([tvBars('BLACKBULL:GOLD.F'), tvBars('BYBIT:XAUUSDT.P')]);
+        const lo = levelOffset(gf, pp), last = gf[gf.length - 1];
+        const out = { gc_price: last[4], gc_time: bkk(last[0]), offset: lo ? lo.offset : null, ref_price: lo ? lo.ref : null, ref_symbol: 'Bybit XAUUSDT', level: lo ? lo.level : null, cross_time: lo ? bkk(lo.t) : null, offset_time: bkk(Math.floor(Date.now() / 1000)) };
+        return new Response(JSON.stringify(out), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=60' } });
+      } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
+    }
     if (url.pathname === '/opt' || url.pathname === '/opt/poll') {
       if (!env || !env.OPT) return new Response(JSON.stringify({ error: 'no OPT binding' }), { status: 500, headers: { ...CORS, 'content-type': 'application/json' } });
       const stub = env.OPT.get(env.OPT.idFromName('main'));
@@ -161,7 +232,7 @@ export default {
         .map(x => [x.k, x.t, x.iv == null ? null : +x.iv.toFixed(4), x.d == null ? null : +x.d.toFixed(4), x.g == null ? null : +x.g.toPrecision(4), x.bid ?? null, x.ask ?? null, x.lp ?? null, x.vol || 0, Math.round(x.buy || 0), Math.round(x.sell || 0), x.oi ?? null]) : [];
       const pick = k => s ? s[k] ?? null : null;
       const oiT = s ? Math.max(0, ...Object.values(s.rows).map(x => x.oiT || 0)) || null : null;
-      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), oiT, rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
+      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), oiT, gmfM: s && s.m ? s.m : null, rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
     }
     const tf = new URL(request.url).searchParams.get('tf') || '1m';
     const plan = PLAN[tf];

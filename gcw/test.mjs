@@ -1,4 +1,4 @@
-import worker, { agg4h, accumulate, expiryTs, straddle } from './src/index.js';
+import worker, { agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset } from './src/index.js';
 const arr = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const mk = (n, step) => ({ chart: { result: [{ timestamp: arr(n, i => 1792700000 + i * step), indicators: { quote: [{ open: arr(n, i => 4000 + i), high: arr(n, i => 4001 + i), low: arr(n, i => 3999 + i), close: arr(n, i => i === 3 ? null : 4000.5 + i) }] } }] } });
 let calls = [];
@@ -24,4 +24,10 @@ console.log('expiry ok');
 r = await worker.fetch(new Request('https://x/opt'), {}); if (r.status !== 500) throw new Error('opt without binding');
 const st = straddle([{ k: 4000, t: 'C', bid: 10, ask: 11 }, { k: 4000, t: 'P', bid: 8, ask: 9 }, { k: 4010, t: 'C', bid: 5, ask: 6 }, { k: 4010, t: 'P', bid: 13, ask: 14 }], 4003);
 if (!st || st.k !== 4000 || st.em !== 19) throw new Error('straddle'); console.log('straddle ok', st);
+// Put หนาด้านล่าง Call หนาด้านบน → flip อยู่ระหว่าง
+const gf = gammaFlip([{ k: 3950, c: false, oi: 1000, iv: 0.2, T: 0.02 }, { k: 4050, c: true, oi: 1000, iv: 0.2, T: 0.02 }], 4000);
+if (!gf.flip || gf.flip < 3980 || gf.flip > 4020) throw new Error('flip ' + gf.flip); console.log('flip ok', gf);
+// แท่ง 21:36 ของ Gold.F ผ่าน 4000 (3995.88–4004.33) · perp 3992.41–4000.96 → ref 3996.58, offset 3.42
+const lo = levelOffset([[100, 3997.23, 4004.33, 3995.88, 4003.53], [160, 4003.5, 4006.3, 4001.7, 4006.3]], [[100, 3994.06, 4000.96, 3992.41, 4000.09], [160, 0, 0, 0, 0]]);
+if (!lo || lo.level !== 4000 || lo.offset !== 3.42) throw new Error('levelOffset ' + JSON.stringify(lo)); console.log('offset ok', lo);
 console.log('ALL OK');
