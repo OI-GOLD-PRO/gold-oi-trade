@@ -1,4 +1,4 @@
-import worker, { agg4h, accumulate, expiryTs } from './src/index.js';
+import worker, { agg4h, accumulate, expiryTs, straddle } from './src/index.js';
 const arr = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const mk = (n, step) => ({ chart: { result: [{ timestamp: arr(n, i => 1792700000 + i * step), indicators: { quote: [{ open: arr(n, i => 4000 + i), high: arr(n, i => 4001 + i), low: arr(n, i => 3999 + i), close: arr(n, i => i === 3 ? null : 4000.5 + i) }] } }] } });
 let calls = [];
@@ -22,4 +22,6 @@ if (expiryTs(20261026) !== Date.UTC(2026, 9, 26, 17, 30) / 1000) throw new Error
 if (expiryTs(20261102) !== Date.UTC(2026, 10, 2, 18, 30) / 1000) throw new Error('exp cst');
 console.log('expiry ok');
 r = await worker.fetch(new Request('https://x/opt'), {}); if (r.status !== 500) throw new Error('opt without binding');
+const st = straddle([{ k: 4000, t: 'C', bid: 10, ask: 11 }, { k: 4000, t: 'P', bid: 8, ask: 9 }, { k: 4010, t: 'C', bid: 5, ask: 6 }, { k: 4010, t: 'P', bid: 13, ask: 14 }], 4003);
+if (!st || st.k !== 4000 || st.em !== 19) throw new Error('straddle'); console.log('straddle ok', st);
 console.log('ALL OK');

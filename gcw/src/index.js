@@ -118,10 +118,25 @@ export class OptState {
       const acc = qq.volume !== undefined ? accumulate(prev, { ...qq, bid: qq.bid ?? bid, ask: qq.ask ?? ask }) : (prev ? { vol: prev.vol, buy: prev.buy, sell: prev.sell } : { vol: 0, buy: 0, sell: 0 });
       s.rows[x.s] = { k, t: type === 'call' ? 'C' : 'P', iv, d, g, bid: qq.bid ?? bid, ask: qq.ask ?? ask, lp: qq.lp ?? (prev && prev.lp), ...acc };
     });
+    // Expected Move = ราคา Straddle ของ strike ใกล้ราคาที่สุด (mid ของ Call + Put) · จำค่าแรกของแต่ละวันเทรด (เริ่ม 22:00 UTC)
+    const em = straddle(Object.values(s.rows), s.F);
+    if (em) {
+      s.em = em.em; s.emK = em.k;
+      const sess = ymdOf(now + 2 * 3600e3);
+      if (s.sess !== sess) { s.sess = sess; s.openF = s.F; s.openEM = em.em; s.openT = Math.floor(now / 1000); }
+    }
     s.updated = Math.floor(now / 1000); s.polls = (s.polls || 0) + 1;
     await this.state.storage.put('s', s);
     return { ok: true, root: s.root, exp: s.exp, n: syms.length, F: s.F };
   }
+}
+export function straddle(rows, F) {
+  if (!F) return null;
+  const by = new Map(); rows.forEach(r => { const o = by.get(r.k) || {}; o[r.t] = r; by.set(r.k, o); });
+  const mid = r => { if (!r) return null; const b = Number(r.bid), a = Number(r.ask); if (isFinite(b) && isFinite(a) && a >= b && a > 0) return (a + b) / 2; const l = Number(r.lp); return isFinite(l) ? l : null; };
+  const ks = [...by.keys()].filter(k => by.get(k).C && by.get(k).P).sort((a, b) => Math.abs(a - F) - Math.abs(b - F));
+  for (const k of ks.slice(0, 3)) { const c = mid(by.get(k).C), p = mid(by.get(k).P); if (c !== null && p !== null) return { k, em: Math.round((c + p) * 100) / 100 }; }
+  return null;
 }
 const marketOpen = now => { const d = new Date(now), wd = d.getUTCDay(), h = d.getUTCHours(); if (wd === 6) return false; if (wd === 0 && h < 22) return false; if (wd === 5 && h >= 22) return false; return true; };
 
@@ -143,7 +158,8 @@ export default {
       if (url.pathname === '/opt/poll') return new Response(JSON.stringify(s), { headers: { ...CORS, 'content-type': 'application/json' } });
       const F = s && s.F, rows = s ? Object.values(s.rows).filter(x => !F || Math.abs(x.k - F) <= F * 0.06).sort((a, b) => a.k - b.k || (a.t < b.t ? -1 : 1))
         .map(x => [x.k, x.t, x.iv == null ? null : +x.iv.toFixed(4), x.d == null ? null : +x.d.toFixed(4), x.g == null ? null : +x.g.toPrecision(4), x.bid ?? null, x.ask ?? null, x.lp ?? null, x.vol || 0, Math.round(x.buy || 0), Math.round(x.sell || 0)]) : [];
-      return new Response(JSON.stringify({ root: s && s.root, exp: s && s.exp, expTs: s && s.expTs, F, updated: s && s.updated, polls: s && s.polls, rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
+      const pick = k => s ? s[k] ?? null : null;
+      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
     }
     const tf = new URL(request.url).searchParams.get('tf') || '1m';
     const plan = PLAN[tf];
