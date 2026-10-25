@@ -147,6 +147,10 @@ with sync_playwright() as p:
     page.click("#indBtn"); page.wait_for_timeout(200)
     page.wait_for_timeout(3500)
     print("live.js:", page.evaluate("() => { const L = window.OILive; return { rows: !!(L && L.d), err: L && L.err, gmf: L && L.calc && L.calc.gmf, match: L && L.calc && L.calc.match, gmfLines: (window.OI.oi.gmf || []).map(g => g.lab) }; }"))
+    page.click("[data-ivt=on]"); page.wait_for_timeout(2500)
+    iv = page.evaluate("() => { const r = window.OI_intraday.result; return r ? { cw: r.L.cw, pw: r.L.pw, flip: r.L.flip, em: r.L.em } : null; }")
+    print("intraday levels (broker scale):", iv)
+    page.screenshot(path=f"{OUT}/14-intraday-menu.png")
     print("goldscalp normal:", gs, " oi:", gs2, " menu inputs:", page.evaluate("() => document.querySelectorAll('#gsBox [data-gs]').length"))
     page.click("#indBtn") if page.is_visible("#indMenu") else None
     page.wait_for_timeout(200)

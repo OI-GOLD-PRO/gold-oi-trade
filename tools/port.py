@@ -57,11 +57,13 @@ rep('''  </div>
 (function () {''')
 rep('''    <button class="icon" id="layBtn" aria-label="เลย์เอาต์กราฟ: 1 กราฟ / บนล่าง / ซ้ายขวา">▭</button>\n''', '')
 # (source dash.js = market-analysis dashboard: not ported; the trade app's own dash.js is the P/L dashboard)
-rep_re(r'<script src="goldscalp\.js"></script>\n<script src="dash\.js[^"]*"></script>\n<script src="live\.js[^"]*"></script>\n</body>', '''<script src="trade.js"></script>
+rep_re(r'<script src="goldscalp\.js"></script>\n<script src="dash\.js[^"]*"></script>\n<script src="live\.js[^"]*"></script>\n<script src="intraday\.js[^"]*"></script>\n<script src="aitray\.js[^"]*"></script>\n</body>', '''<script src="trade.js"></script>
 <script src="dash.js"></script>
 <script src="goldscalp.js"></script>
 <script src="live.js"></script>
+<script src="intraday.js"></script>
 </body>''')
+# (source aitray.js = secret AI price-action tray via the owner's Apps Script: not ported)
 # single chart only: no 2nd-chart layout
 rep_re(r"  // ---- เลย์เอาต์ 2 กราฟ: กราฟที่ 2 = iframe.*?\n  let SYM = 'gold';", "  const EMBED = false, PSFX = '', LAY = '';\n  let SYM = 'gold';")
 rep_re(r"  // ---------- เลือกสัญลักษณ์ \(ทอง / น้ำมัน\) ----------\n  \$\('symName'\)\.textContent = SC\.name;\n.*?(?=  window\.OI = \{)", "  $('symName').textContent = SC.name;\n")
@@ -71,9 +73,7 @@ rep_re(r"    // ดึงข้อมูลชีตของสัญลัก�
 rep('''<button id="symBtn" class="symbtn" aria-label="เลือกสัญลักษณ์"><b id="symName">XAUUSD</b><i>▾</i></button>''', '<b id="symName">XAUUSD</b>')
 rep('    <div id="symMenu" hidden></div>\n', '')
 rep_re(r"  try \{ const q = new URLSearchParams\(location\.search\)\.get\('sym'\)[^\n]*\n", "")
-# no body-height hacks (they pushed the ticket off-screen on iPhone; trade.css lays the page out)
-rep_re(r"  /\* เต็มจอจริงบน iPhone[^\n]*\n  body \{ position: fixed;[^\n]*\n", "")
-rep_re(r"  // บางเครื่องความสูงจอไม่ตรงกับ CSS[^\n]*\n  const fitH = [^\n]*\n  fitH\(\);[^\n]*\n", "")
+# (V1.19.04+: OI Gold Pro fills the iPhone screen with a fixed body + translucent status bar; the trade app uses the same)
 
 # --- chart shift: adj = perp − broker (chart), gAdj = perp − GC (for OI strikes) ---
 rep("let adj = 0, basisEma = null,", "let adj = 0, gAdj = 0, brokerBasis = null, basisEma = null,")
@@ -82,7 +82,9 @@ rep("    oi = calcOI(d);\n    afterOI(d);", "    oi = calcOI(d); rebaseOI();\n  
 rep("    oi = calcOI({ levels, cfg: lastCfg });", "    oi = calcOI({ levels, cfg: lastCfg }); rebaseOI();")
 rep("`offset <b>${(-adj).toFixed(2)}</b>`", "`GC−โบรก <b>${gcOff() >= 0 ? '+' : ''}${gcOff().toFixed(2)}</b>`")
 # live Yahoo pairing compares against the GC offset (gAdj), not the broker shift (adj)
-rep("Math.abs(-off - adj) >= 0.01", "Math.abs(-off - gAdj) >= 0.01")
+if s.count("Math.abs(-off - adj) >= 0.01") != 2:
+    raise SystemExit("live offset anchors changed")
+s = s.replace("Math.abs(-off - adj) >= 0.01", "Math.abs(-off - gAdj) >= 0.01")
 rep_re(r"  function applyAdj\(next\) \{\n.*?\n  \}\n",
        '''  // gAdj = perp − GC (ใช้แปลง strike ของ OI), adj = perp − ราคาโบรก (ใช้เลื่อนกราฟ)
   function applyAdj(next) {
@@ -162,6 +164,12 @@ rep("    markDirty() { dirty = true; },\n  };", '''    markDirty() { dirty = tru
     clearBrokerBasis() { if (brokerBasis === null) return; brokerBasis = null; if (basisEma !== null) setChartAdj(basisEma); },
   };''')
 
+# Web Push stays in OI Gold Pro (a second subscription from the trade app would send every alert twice)
+rep("const pushOK = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;", "const pushOK = () => false; // push อยู่ที่แอป OI Gold Pro (กันเตือนซ้ำสองแอป)")
+rep("      if (!EMBED) enablePush();\n", "")
+rep('aria-label="OI Gold Pro กำลังเปิด"', 'aria-label="OI Trade กำลังเปิด"')
+rep('<div class="tag">OPTIONS · OPEN INTEREST · GAMMA</div>', '<div class="tag">OI TRADE · MT5</div>')
+
 # gamma-flip lines are GC-scale in the sheet/live data; the trade chart is in broker scale
 rep("      const yg = series.priceToCoordinate(g.p);", "      const gp = g.p - gcOff(), yg = series.priceToCoordinate(gp);")
 rep("ctx.fillText(g.p.toFixed(2), bx + (axW - 1) / 2, by + bh / 2 + .5);", "ctx.fillText(gp.toFixed(2), bx + (axW - 1) / 2, by + bh / 2 + .5);")
@@ -198,3 +206,22 @@ if os.path.exists(live_src):
     lrep("badges.push(O.lastClose >= gm.p ?", "badges.push(O.lastClose + G() >= gm.p ?")
     open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "live.js"), "w", encoding="utf-8").write(l)
     print("live.js copied from OI Gold Pro (scale-adjusted)")
+
+# intraday.js (OI Intraday: VWAP + Call/Put Wall + rejection signals with Entry/TP/SL): levels are GC scale, chart bars are broker scale
+id_src = os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), "intraday.js")
+if os.path.exists(id_src):
+    t = open(id_src, encoding="utf-8").read()
+    def trep(old, new):
+        global t
+        if t.count(old) != 1:
+            raise SystemExit(f"intraday.js anchor found {t.count(old)}x: {old[:80]!r}")
+        t = t.replace(old, new)
+    trep("  const O = window.OI;\n", "  const O = window.OI;\n  const G = () => (O && O.gcOff ? O.gcOff() : 0); // GC − โบรก\n")
+    trep("const KEY = 'oi_intra'", "const KEY = 'oit_intra'")
+    trep("const histLevels = h => ({ cw: h.cw, pw: h.pw, em: h.openEM ? { top: h.openF + h.openEM, bot: h.openF - h.openEM } : null, flip: h.M ?? null, past: true });",
+         "const histLevels = h => { const s = v => (v === null || v === undefined) ? v : v - G(); return { cw: s(h.cw), pw: s(h.pw), em: h.openEM ? { top: s(h.openF + h.openEM), bot: s(h.openF - h.openEM) } : null, flip: s(h.M ?? null), past: true }; };")
+    trep("  function levels(px) {\n", "  function levels(px) {\n    px = px + G(); // ราคากราฟโบรก → สเกล GC ของ strike\n")
+    trep("    return { cw, pw, em, flip: gm ? gm.p : null };",
+         "    const sh = v => (v === null || v === undefined) ? v : Math.round((v - G()) * 100) / 100; // กลับเป็นสเกลกราฟโบรก\n    return { cw: sh(cw), pw: sh(pw), em: em && { top: sh(em.top), bot: sh(em.bot) }, flip: gm ? sh(gm.p) : null };")
+    open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "intraday.js"), "w", encoding="utf-8").write(t)
+    print("intraday.js copied from OI Gold Pro (scale-adjusted)")
