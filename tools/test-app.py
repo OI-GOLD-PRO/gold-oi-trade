@@ -56,6 +56,15 @@ def route(rt):
         for l in levels:
             rows.append([l["strike"], l["type"], 0.2, 0.5 if l["type"] == "C" else -0.5, 0.002, 1, 1.2, 1.1, 60, 40, 20, l["oi"]])
         return rt.fulfill(json={"rows": rows, "root": "OGZ6", "expTs": now_ms / 1000 + 18000, "F": PERP_LAST + 34, "openF": PERP_LAST + 30, "openEM": 18, "em": 22, "updated": now_ms / 1000, "oiT": now_ms / 1000})
+    if "publicreporting.cftc.gov" in u:
+        import datetime
+        legacy = "6dca-aqww" in u
+        out = []
+        for i in range(170):
+            d = (datetime.date(2026, 10, 20) - datetime.timedelta(weeks=i)).isoformat() + "T00:00:00.000"
+            if legacy: out.append({"report_date_as_yyyy_mm_dd": d, "noncomm_positions_long_all": str(200000 + i * 300), "noncomm_positions_short_all": str(40000 + (i % 13) * 900)})
+            else: out.append({"report_date_as_yyyy_mm_dd": d, "open_interest_all": "480000", "m_money_positions_long_all": str(150000 - i * 200), "m_money_positions_short_all": str(30000 + (i % 11) * 700), "prod_merc_positions_long": "40000", "prod_merc_positions_short": str(90000 + i * 100), "swap_positions_long_all": "30000", "swap__positions_short_all": "60000", "nonrept_positions_long_all": str(25000 + i * 20), "nonrept_positions_short_all": "8000"})
+        return rt.fulfill(json=out)
     if "api.bybit.com" in u:
         n = 2 if "interval=D" in u else 800
         return rt.fulfill(json={"retCode": 0, "result": {"list": list(reversed(BARS[-n:]))}})
@@ -169,6 +178,10 @@ with sync_playwright() as p:
     page.screenshot(path=f"{OUT}/8-dash.png")
     page.evaluate("() => document.getElementById('dhBody').scrollTop = 620"); page.wait_for_timeout(300)
     page.screenshot(path=f"{OUT}/9-dash2.png")
+    page.wait_for_timeout(800)
+    print("COT groups rendered:", page.evaluate("() => document.querySelectorAll('#dhCot .cr').length"), page.evaluate("() => (document.querySelector('#dhCot')||{}).innerText.slice(0, 240)"))
+    page.evaluate("() => document.getElementById('dhCot').scrollIntoView()"); page.wait_for_timeout(300)
+    page.screenshot(path=f"{OUT}/15-cot.png")
     page.evaluate("() => document.getElementById('dhBody').scrollTop = 1400"); page.wait_for_timeout(300)
     page.screenshot(path=f"{OUT}/10-dash3.png")
     br.close()

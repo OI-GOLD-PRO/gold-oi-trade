@@ -57,11 +57,12 @@ rep('''  </div>
 (function () {''')
 rep('''    <button class="icon" id="layBtn" aria-label="เลย์เอาต์กราฟ: 1 กราฟ / บนล่าง / ซ้ายขวา">▭</button>\n''', '')
 # (source dash.js = market-analysis dashboard: not ported; the trade app's own dash.js is the P/L dashboard)
-rep_re(r'<script src="goldscalp\.js"></script>\n<script src="dash\.js[^"]*"></script>\n<script src="live\.js[^"]*"></script>\n<script src="intraday\.js[^"]*"></script>\n<script src="aitray\.js[^"]*"></script>\n</body>', '''<script src="trade.js"></script>
+rep_re(r'<script src="goldscalp\.js"></script>\n(?:<script src="cotgroups\.js[^"]*"></script>\n)?<script src="dash\.js[^"]*"></script>\n<script src="live\.js[^"]*"></script>\n<script src="intraday\.js[^"]*"></script>\n<script src="aitray\.js[^"]*"></script>\n</body>', '''<script src="trade.js"></script>
 <script src="dash.js"></script>
 <script src="goldscalp.js"></script>
 <script src="live.js"></script>
 <script src="intraday.js"></script>
+<script src="cotgroups.js"></script>
 </body>''')
 # (source aitray.js = secret AI price-action tray via the owner's Apps Script: not ported)
 # single chart only: no 2nd-chart layout
@@ -225,3 +226,10 @@ if os.path.exists(id_src):
          "    const sh = v => (v === null || v === undefined) ? v : Math.round((v - G()) * 100) / 100; // กลับเป็นสเกลกราฟโบรก\n    return { cw: sh(cw), pw: sh(pw), em: em && { top: sh(em.top), bot: sh(em.bot) }, flip: gm ? sh(gm.p) : null };")
     open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "intraday.js"), "w", encoding="utf-8").write(t)
     print("intraday.js copied from OI Gold Pro (scale-adjusted)")
+
+# cotgroups.js (COT per trader group) is shared as-is between both apps
+cg_src = os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), "cotgroups.js")
+if os.path.exists(cg_src):
+    import shutil
+    shutil.copyfile(cg_src, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cotgroups.js"))
+    print("cotgroups.js copied from OI Gold Pro")

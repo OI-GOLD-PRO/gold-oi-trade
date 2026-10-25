@@ -343,7 +343,7 @@
   const IS_GOLD = SYM === 'gold' || SYM === 'gcy';
   const SYMBOL = SC.perp || (SC.yahoo === 'GC' ? 'XAUTUSDT' : null); // GC(Yahoo): ใช้ perp ทองต่อปลายกราฟ
   // เวอร์ชันแอป: แก้เล็กเพิ่มเลขท้าย (2 หลัก), เพิ่มฟีเจอร์ใหญ่เพิ่มเลขกลาง
-  const APP_VER = '0.9.00'; // based on OI Gold Pro V2.0.6
+  const APP_VER = '0.9.01'; // based on OI Gold Pro V2.0.7
   const ZONE_HALF = SC.zone; // ครึ่งความกว้างโซนกำแพง OI ต่อสัญลักษณ์ (ทอง ±2.5 = $5, น้ำมัน ±0.15 = $0.3)
   const TZ_SHIFT = 7 * 3600; // แสดงเวลาไทยบนแกนเวลา
 
@@ -2057,5 +2057,6 @@
 <script src="goldscalp.js"></script>
 <script src="live.js"></script>
 <script src="intraday.js"></script>
+<script src="cotgroups.js"></script>
 </body>
 </html>
