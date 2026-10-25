@@ -230,7 +230,7 @@ export class OptState {
   constructor(state, env) { this.state = state; this.env = env; }
   async fetch(req) {
     const u = new URL(req.url);
-    if (u.pathname === '/tglink') return new Response(JSON.stringify(await this.tgLink(true)));
+    if (u.pathname === '/tglink') return new Response(JSON.stringify(await this.tgLink('diag')));
     if (u.pathname === '/tgtest') {
       const chats = await this.tgLink(false);
       const r = await this.tgSend('✅ ทดสอบแจ้งเตือน OI Gold Pro ทาง Telegram ใช้งานได้');
@@ -259,7 +259,8 @@ export class OptState {
       else if (cmd === '/stop' && tg.chats.includes(id)) { tg.chats = tg.chats.filter(x => x !== id); await tgCall(this.env, 'sendMessage', { chat_id: id, text: '🔕 หยุดแจ้งเตือนแล้ว พิมพ์ /start เพื่อเปิดใหม่' }); }
     }
     await this.state.storage.put('tg', tg);
-    return { chats: tg.chats.length };
+    const me = reply === 'diag' ? await tgCall(this.env, 'getMe', {}) : null;
+    return { chats: tg.chats.length, ...(up.ok ? { updates: (up.result || []).length } : { tg_error: up.description || 'unknown' }), ...(me ? { bot: me.ok ? '@' + me.result.username : me.description } : {}) };
   }
   async tgSend(html) {
     if (!this.env.TELEGRAM_BOT_TOKEN) return 0;
