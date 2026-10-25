@@ -232,7 +232,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.13';
+const APP_VERSION = 'v2.14';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -363,9 +363,28 @@ function packHTML(p) {
     chips + '<div class="more">แตะดูรายละเอียดแต่ละเซลล์ ›</div></div>';
 }
 let bmsData = null, openMac = null;
-function openPack(mac) { openMac = mac; renderSheet(); const sh = $('sheet'); sh.classList.remove('hide'); sh.scrollTop = 0; document.body.style.overflow = 'hidden'; }
-function closePack() { openMac = null; $('sheet').classList.add('hide'); document.body.style.overflow = ''; }
+function openPack(mac) { openMac = mac; renderSheet(); const sh = $('sheet'); sh.classList.remove('hide'); sh.scrollTop = 0; document.body.style.overflow = 'hidden'; try { history.pushState({ pack: 1 }, ''); } catch (e) {} }
+function closePack(fromPop) { if (openMac && !fromPop) { try { if (history.state && history.state.pack) history.back(); } catch (e) {} } openMac = null; $('sheet').classList.add('hide'); document.body.style.overflow = ''; }
 document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closePack(); });
+// Swipe right anywhere on the sheet (or the browser's back gesture) closes it.
+(function () {
+  const sh = $('sheet'); let x0 = 0, y0 = 0, dx = 0, on = false, lock = false;
+  sh.addEventListener('touchstart', (e) => { const t = e.touches[0]; x0 = t.clientX; y0 = t.clientY; dx = 0; on = true; lock = false; sh.style.transition = 'none'; }, { passive: true });
+  sh.addEventListener('touchmove', (e) => {
+    if (!on) return; const t = e.touches[0]; const mx = t.clientX - x0, my = t.clientY - y0;
+    if (!lock && Math.abs(mx) > 12 && Math.abs(mx) > Math.abs(my) * 1.5) lock = true;
+    if (lock) { dx = Math.max(0, mx); sh.style.transform = 'translateX(' + dx + 'px)'; }
+    else if (Math.abs(my) > 12) on = false;
+  }, { passive: true });
+  sh.addEventListener('touchend', () => {
+    if (!on) { sh.style.transform = ''; return; } on = false;
+    sh.style.transition = 'transform .18s ease-out';
+    if (lock && dx > 80) { sh.style.transform = 'translateX(100%)'; setTimeout(() => { closePack(); sh.style.transform = ''; sh.style.transition = ''; }, 170); }
+    else { sh.style.transform = ''; setTimeout(() => { sh.style.transition = ''; }, 200); }
+  });
+  sh.addEventListener('touchcancel', () => { on = false; sh.style.transform = ''; sh.style.transition = ''; });
+  window.addEventListener('popstate', () => { if (openMac) closePack(true); });
+})();
 const CELL_LO = 2.8, CELL_HI = 3.65; // LiFePO4 working range → the bar
 function renderSheet() {
   const p = bmsData && bmsData.packs && bmsData.packs.find((x) => x.mac === openMac);
