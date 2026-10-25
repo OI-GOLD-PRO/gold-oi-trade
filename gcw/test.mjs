@@ -1,4 +1,4 @@
-import worker, { agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset } from './src/index.js';
+import worker, { walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset } from './src/index.js';
 const arr = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const mk = (n, step) => ({ chart: { result: [{ timestamp: arr(n, i => 1792700000 + i * step), indicators: { quote: [{ open: arr(n, i => 4000 + i), high: arr(n, i => 4001 + i), low: arr(n, i => 3999 + i), close: arr(n, i => i === 3 ? null : 4000.5 + i) }] } }] } });
 let calls = [];
@@ -32,4 +32,7 @@ const lo = levelOffset([[100, 3997.23, 4004.33, 3995.88, 4003.53], [160, 4003.5,
 if (!lo || lo.level !== 4000 || lo.offset !== 3.42) throw new Error('levelOffset ' + JSON.stringify(lo)); console.log('offset ok', lo);
 const lvo = liveOffset([[0,0,0,0,4010],[60,0,0,0,4011],[120,0,0,0,4012],[180,0,0,0,4013]], [[0,0,0,0,4006],[60,0,0,0,4008],[120,0,0,0,4007.5],[180,0,0,0,4000]], 200, 5);
 if (!lvo || lvo.offset !== 4 || lvo.n !== 3) throw new Error('liveOffset ' + JSON.stringify(lvo)); console.log('liveOffset ok', lvo);
+const wl = walls([{ k: 4000, t: 'C', g: 0.01, oi: 500 }, { k: 4050, t: 'C', g: 0.008, oi: 900 }, { k: 3980, t: 'C', g: 0.02, oi: 900 }, { k: 3950, t: 'P', g: 0.007, oi: 1200 }, { k: 4005, t: 'P', g: 0.01, oi: 300 }], 4002);
+if (wl.cw !== 4050 || wl.pw !== 3950) throw new Error('walls ' + JSON.stringify(wl)); console.log('walls ok', wl);
+r = await worker.fetch(new Request('https://x/levels'), {}); if (r.status !== 500) throw new Error('levels without binding');
 console.log('ALL OK');

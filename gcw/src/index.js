@@ -167,17 +167,34 @@ export class OptState {
   constructor(state, env) { this.state = state; this.env = env; }
   async fetch(req) {
     const u = new URL(req.url);
+    if (u.pathname === '/hist') {
+      let h = await this.state.storage.get('hist');
+      if (!h || !h.length) { const s = await this.state.storage.get('s'); h = await this.saveHist(s, await this.state.storage.get('m'), true) || []; }
+      return new Response(JSON.stringify(h));
+    }
     if (u.pathname === '/poll') { const r = await this.poll(); return new Response(JSON.stringify(r)); }
     const s = await this.state.storage.get('s');
     if (s) s.m = await this.state.storage.get('m') || null;
     return new Response(JSON.stringify(s || null));
+  }
+  async saveHist(s, m, seed) {
+    if (!s || !s.sess || !s.openEM) return;
+    const h = await this.state.storage.get('hist') || [];
+    if (h.some(x => x.sess === s.sess)) return h;
+    const w = walls(Object.values(s.rows), s.openF || s.F);
+    h.push({ sess: s.sess, root: s.root, openF: s.openF, openEM: s.openEM, openT: s.openT, itd: s.itd ?? null, M: m && m.M != null ? m.M : null, cw: w.cw, pw: w.pw, ...(seed ? { seed: 1 } : {}) });
+    h.sort((a, b) => a.sess - b.sess);
+    while (h.length > 60) h.shift();
+    await this.state.storage.put('hist', h);
+    return h;
   }
   async poll() {
     const now = Date.now();
     let s = await this.state.storage.get('s');
     let c = s && s.expTs * 1000 > now ? { root: s.root, exp: s.exp, expTs: s.expTs } : await pickContract(now);
     if (!c) return { err: 'no contract' };
-    if (!s || s.root !== c.root || s.exp !== c.exp) s = { ...c, rows: {}, polls: 0 };
+    // เปลี่ยนสัญญา (หลังหมดอายุ ~01:30 น.) ให้คงค่าเปิดวันเทรดเดิมไว้ ไม่เริ่มกรอบ EM ใหม่กลางวัน
+    if (!s || s.root !== c.root || s.exp !== c.exp) s = { ...c, rows: {}, polls: 0, ...(s ? { sess: s.sess, openF: s.openF, openEM: s.openEM, openT: s.openT } : {}) };
     const sc = await tvScanRaw({ columns: ['strike', 'option-type', 'iv', 'delta', 'gamma', 'bid', 'ask'], filter: [{ left: 'type', operation: 'equal', right: 'option' }, { left: 'expiration', operation: 'equal', right: c.exp }, { left: 'root', operation: 'equal', right: c.root }], ignore_unknown_fields: false, index_filters: [{ name: 'underlying_symbol', values: UNDER }] });
     const syms = (sc.symbols || []).map(x => x.s);
     const q = await tvQuotes([...syms, 'COMEX:GC1!'], ['lp', 'volume', 'bid', 'ask', 'oi']);
@@ -195,7 +212,7 @@ export class OptState {
     if (em) {
       s.em = em.em; s.emK = em.k;
       const sess = ymdOf(now + 2 * 3600e3);
-      if (s.sess !== sess) { s.sess = sess; s.openF = s.F; s.openEM = em.em; s.openT = Math.floor(now / 1000); }
+      if (s.sess !== sess) { s.sess = sess; s.openF = s.F; s.openEM = em.em; s.openT = Math.floor(now / 1000); s.newSess = true; }
     }
     // gmf itd (สัญญาวันนี้) ฝั่งเซิร์ฟเวอร์ ไว้ให้ชีตใช้ (แอปคำนวณเองทุกนาทีด้วยราคาสด)
     if (s.F) {
@@ -204,6 +221,7 @@ export class OptState {
       const f = gammaFlip(opts, s.F); s.itd = f.flip; s.gexItd = f.gexAtF;
     }
     s.updated = Math.floor(now / 1000); s.polls = (s.polls || 0) + 1;
+    const newSess = s.newSess; delete s.newSess;
     await this.state.storage.put('s', s);
     // gmf M ทุก 60 นาที (เก็บแยก key)
     let m = await this.state.storage.get('m');
@@ -211,8 +229,22 @@ export class OptState {
       try { m = await computeM(now, s.F); } catch (e) { m = { err: String(e.message || e), at: Math.floor(now / 1000) }; }
       await this.state.storage.put('m', m);
     }
+    // บันทึกระดับประจำวันเทรด (ค่าตอนเปิดวัน) ให้สัญญาณย้อนหลังใช้ระดับของวันนั้นจริง
+    if (newSess) await this.saveHist(s, m, false);
     return { ok: true, root: s.root, exp: s.exp, n: syms.length, F: s.F };
   }
+}
+// Call Wall / Put Wall = strike ที่ gamma × OI มากสุด (Call ที่ ≥ F−10, Put ที่ ≤ F+10) แบบเดียวกับในแอป
+export function walls(rows, F) {
+  let cw = null, pw = null, bc = 0, bp = 0;
+  if (!F) return { cw, pw };
+  rows.forEach(r => {
+    if (!(r.oi > 0) || Math.abs(r.k - F) > F * 0.1) return;
+    const v = (r.g || 0) * r.oi;
+    if (r.t === 'C' && r.k >= F - 10 && v > bc) { bc = v; cw = r.k; }
+    if (r.t === 'P' && r.k <= F + 10 && v > bp) { bp = v; pw = r.k; }
+  });
+  return { cw, pw };
 }
 export function straddle(rows, F) {
   if (!F) return null;
@@ -253,6 +285,12 @@ export default {
           pair_time: lv ? bkk(lv.t) : null, offset_level: lo ? lo.offset : null, level: lo ? lo.level : null, cross_time: lo ? bkk(lo.t) : null, offset_time: bkk(Math.floor(Date.now() / 1000)) };
         return new Response(JSON.stringify(out), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=60' } });
       } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
+    }
+    if (url.pathname === '/levels') {
+      // ระดับประจำวันเทรดย้อนหลัง (sess = วันที่เริ่ม 05:00 น. ไทย)
+      if (!env || !env.OPT) return new Response(JSON.stringify({ error: 'no OPT binding' }), { status: 500, headers: { ...CORS, 'content-type': 'application/json' } });
+      const h = await (await env.OPT.get(env.OPT.idFromName('main')).fetch('https://do/hist')).json();
+      return new Response(JSON.stringify({ hist: h }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=300' } });
     }
     if (url.pathname === '/opt' || url.pathname === '/opt/poll') {
       if (!env || !env.OPT) return new Response(JSON.stringify({ error: 'no OPT binding' }), { status: 500, headers: { ...CORS, 'content-type': 'application/json' } });
