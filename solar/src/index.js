@@ -4,6 +4,7 @@ import { summarizeDay, timeToCutoff, netBatteryA, gridW } from './calc.js';
 import { localDate, dayRange, kvGet, kvSet, DAY_START_H, validBattV, BATT_V_MIN, BATT_V_MAX } from './util.js';
 import { PAGE } from './page.js';
 import { stepSoc } from './soc.js';
+import { vapidKeys, addSub, removeSub, pushAll, batteryEvent, notifyBattery, SW_JS } from './push.js';
 import { sanitizeLive, despike, cleanHistory, FIELDS } from './clean.js';
 import { parseBms, parseLabels } from './bms.js';
 import { FLASH_PAGE, FLASH_MANIFEST } from './flash.js';
@@ -126,8 +127,11 @@ export async function poll(env, { force = false } = {}) {
   row.bms_a = await bmsCurrentNow(env, row.ts);
   // App-side battery % (Ah counting + voltage calibration at rest).
   if (row.batt_v != null || (await kvGet(env.DB, 'soc_state'))) {
-    const st = stepSoc(await kvGet(env.DB, 'soc_state'), { ts: row.ts, v: row.batt_v, net: netBatteryA(row) }, cfg(env).capacityAh);
+    const prevSt = await kvGet(env.DB, 'soc_state');
+    const st = stepSoc(prevSt, { ts: row.ts, v: row.batt_v, net: netBatteryA(row) }, cfg(env).capacityAh);
     await kvSet(env.DB, 'soc_state', st);
+    // Phone notification: battery empty (touched 50 V) / full (app shows 100 %).
+    try { await notifyBattery(env, batteryEvent(prevSt?.soc ?? null, st, row.batt_v, row.ts), row.ts); } catch (e) { /* never block the poll */ }
     row.soc_calc = st.soc == null ? null : Math.round(st.soc * 10) / 10;
   }
   const cols = Object.keys(row);
@@ -451,12 +455,17 @@ export default {
       return new Response(bin, { headers: { 'content-type': 'image/png', 'cache-control': 'public, max-age=86400' } });
     }
 
+    if (path === '/sw.js') return new Response(SW_JS, { headers: { 'content-type': 'text/javascript; charset=utf-8', 'cache-control': 'no-cache' } });
     if (!path.startsWith('/api/')) return new Response('not found', { status: 404 });
     if (!authorized(req, env)) return json({ error: 'unauthorized' }, 401);
 
     try {
       if (path === '/api/bms' && req.method === 'POST') return json(await apiBmsPost(env, await req.json()));
       if (path === '/api/bms/pause') return json(await apiBmsPause(env, url.searchParams.get('min')));
+      if (path === '/api/push/key') return json({ key: (await vapidKeys(env.DB)).pub, devices: ((await kvGet(env.DB, 'push_subs')) || []).length });
+      if (path === '/api/push/sub' && req.method === 'POST') return json(await addSub(env.DB, await req.json()));
+      if (path === '/api/push/unsub' && req.method === 'POST') return json(await removeSub(env.DB, (await req.json()).endpoint));
+      if (path === '/api/push/test') return json(await pushAll(env, { title: '🔔 ทดสอบแจ้งเตือน', body: 'โซลาร์บ้านส่งแจ้งเตือนมาที่เครื่องนี้ได้แล้ว', tag: 'test' }));
       if (path === '/api/now') return json(await apiNow(env));
       if (path === '/api/day') return json(await apiDay(env, url.searchParams.get('date') || localDate(Date.now())));
       if (path === '/api/history') return json(await apiHistory(env, Math.min(3650, Number(url.searchParams.get('days') || 14))));

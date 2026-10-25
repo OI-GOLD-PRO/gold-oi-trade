@@ -208,6 +208,10 @@ svg{display:block;width:100%;height:auto}
     <div id="today-summary"></div>
     <section class="card"><h2>กราฟวันนี้ <span class="label">· แตะหรือลากบนกราฟเพื่อดูค่า</span></h2><div id="today-charts"></div></section>
 
+    <section class="card" id="pushcard"><h2>แจ้งเตือน <span class="label">· แบตหมด (50 V) · แบตเต็ม 100%</span></h2>
+      <div class="label" id="pushstate" style="line-height:1.5;margin:6px 0 10px">–</div>
+      <div style="display:flex;gap:8px"><button class="btn" id="pushbtn" style="margin:0;flex:1" onclick="pushToggle()">เปิดแจ้งเตือน</button><button class="btn" id="pushtest" style="margin:0;flex:1;display:none" onclick="pushTest(this)">ส่งทดสอบ</button></div>
+    </section>
     <button class="btn" onclick="pollNow(this)">ดึงค่าล่าสุดตอนนี้</button>
     <p class="muted" style="font-size:12px;margin-top:12px">อัปเดตทุก 1 นาที · 1 วัน = 05:00 ถึง 05:00 · ตัวเลข Ah คำนวณจากกระแส MPPT + อินเวอร์เตอร์ (ค่าประมาณ ±5–10%)</p>
   </div>
@@ -232,7 +236,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.14';
+const APP_VERSION = 'v2.15';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}
@@ -246,6 +250,52 @@ function saveKey() {
   $('keybox').style.display = 'none';
   load();
 }
+
+// ===== Web Push =====
+const pushOk = () => 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+const isIOS = () => /iPhone|iPad|iPod/.test(navigator.userAgent);
+const standalone = () => window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+function b64uToBytes(s) { const p = '='.repeat((4 - (s.length % 4)) % 4); const b = atob((s + p).split('-').join('+').split('_').join('/')); return Uint8Array.from(b, (c) => c.charCodeAt(0)); }
+async function pushSub() { if (!pushOk()) return null; const reg = await navigator.serviceWorker.register('/sw.js'); await navigator.serviceWorker.ready; return { reg, sub: await reg.pushManager.getSubscription() }; }
+async function pushRefresh() {
+  const st = $('pushstate'), btn = $('pushbtn'), test = $('pushtest');
+  test.style.display = 'none';
+  if (!pushOk()) {
+    btn.style.display = 'none';
+    st.innerHTML = isIOS() && !standalone() ? 'iPhone: กดปุ่มแชร์ <b>⎙</b> → <b>เพิ่มไปยังหน้าจอโฮม</b> แล้วเปิดแอปจากไอคอนบนหน้าโฮม จึงจะเปิดแจ้งเตือนได้ (iOS 16.4 ขึ้นไป)' : 'เบราว์เซอร์นี้ไม่รองรับการแจ้งเตือน';
+    return;
+  }
+  btn.style.display = '';
+  if (Notification.permission === 'denied') { st.textContent = 'ถูกปิดกั้นการแจ้งเตือนไว้ · เปิดได้ที่ การตั้งค่าเครื่อง → การแจ้งเตือน → โซลาร์บ้าน'; btn.style.display = 'none'; return; }
+  try {
+    const x = await pushSub();
+    if (x && x.sub) { st.textContent = '✅ เครื่องนี้รับแจ้งเตือนแล้ว'; btn.textContent = 'ปิดแจ้งเตือนเครื่องนี้'; test.style.display = ''; }
+    else { st.textContent = 'ยังไม่ได้เปิด · กดปุ่มเพื่ออนุญาตให้เด้งแจ้งเตือนบนเครื่องนี้'; btn.textContent = 'เปิดแจ้งเตือน'; }
+  } catch (e) { st.textContent = 'เปิดระบบแจ้งเตือนไม่ได้: ' + e.message; }
+}
+async function pushToggle() {
+  const btn = $('pushbtn'); btn.disabled = true;
+  try {
+    const x = await pushSub();
+    if (x.sub) {
+      await fetch('/api/push/unsub', { method: 'POST', headers: { 'x-key': KEY, 'content-type': 'application/json' }, body: JSON.stringify({ endpoint: x.sub.endpoint }) });
+      await x.sub.unsubscribe();
+    } else {
+      if ((await Notification.requestPermission()) !== 'granted') throw new Error('ไม่ได้อนุญาตการแจ้งเตือน');
+      const { key } = await api('/api/push/key');
+      const sub = await x.reg.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: b64uToBytes(key) });
+      const r = await fetch('/api/push/sub', { method: 'POST', headers: { 'x-key': KEY, 'content-type': 'application/json' }, body: JSON.stringify(sub.toJSON()) });
+      if (!r.ok) throw new Error('บันทึกไม่สำเร็จ (' + r.status + ')');
+    }
+  } catch (e) { alert(e.message); }
+  btn.disabled = false; pushRefresh();
+}
+async function pushTest(b) {
+  b.disabled = true;
+  try { const r = await api('/api/push/test'); b.textContent = r.sent ? 'ส่งแล้ว ✓' : 'ส่งไม่สำเร็จ'; } catch (e) { b.textContent = 'ส่งไม่สำเร็จ'; }
+  setTimeout(() => { b.textContent = 'ส่งทดสอบ'; b.disabled = false; }, 3000);
+}
+document.addEventListener('DOMContentLoaded', () => { try { pushRefresh(); } catch (e) {} });
 
 async function api(path) {
   const r = await fetch(path, { headers: { 'x-key': KEY } });
