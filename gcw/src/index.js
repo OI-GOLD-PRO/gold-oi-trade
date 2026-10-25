@@ -1,10 +1,11 @@
+import { newVapid, sendPush } from './push.js';
 // Worker: ดึงแท่งราคา GC=F (ทองฟิวเจอร์) จาก Yahoo ให้แอป OI Gold Pro เรียกตรง (เปิด CORS) ไม่ต้องรอ GitHub Actions
 // GET /?tf=1m|5m|15m|30m|1h|4h|1d   ->   {"symbol":"GC=F","updated":<วินาที>,"bars":{"<tf>":[[t,o,h,l,c],...]}}   (t = วินาที)
 const PLAN = {
   '1m': ['1m', '1d'], '5m': ['5m', '5d'], '15m': ['15m', '15d'], '30m': ['30m', '30d'],
   '1h': ['60m', '60d'], '4h': ['60m', '60d'], '1d': ['1d', '1y'],
 };
-const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, OPTIONS', 'cache-control': 'public, max-age=15' };
+const CORS = { 'access-control-allow-origin': '*', 'access-control-allow-methods': 'GET, POST, OPTIONS', 'access-control-allow-headers': 'content-type', 'cache-control': 'public, max-age=15' };
 
 async function yahoo(interval, range) {
   let lastErr = 'no response';
@@ -230,6 +231,14 @@ export class OptState {
   constructor(state, env) { this.state = state; this.env = env; }
   async fetch(req) {
     const u = new URL(req.url);
+    if (u.pathname === '/pushkey') return new Response(JSON.stringify({ key: (await this.vapid()).pub }));
+    if (u.pathname === '/pushsub') return new Response(JSON.stringify(await this.pushSub(await req.json().catch(() => null))));
+    if (u.pathname === '/pushtest') { // ส่งทดสอบเฉพาะเครื่องที่ขอ
+      const b = await req.json().catch(() => null), sub = b && b.sub;
+      if (!sub || !sub.endpoint || !sub.keys) return new Response(JSON.stringify({ error: 'bad subscription' }));
+      const st = await sendPush(sub, { title: '✅ OI Gold Pro', body: 'ทดสอบแจ้งเตือน Web Push ใช้งานได้', tag: 'test' }, await this.vapid());
+      return new Response(JSON.stringify({ status: st, subs: (await this.state.storage.get('push') || []).length }));
+    }
     if (u.pathname === '/tglink') return new Response(JSON.stringify(await this.tgLink('diag')));
     if (u.pathname === '/tgtest') {
       const chats = await this.tgLink(false);
@@ -269,10 +278,31 @@ export class OptState {
     for (const id of tg.chats) { try { const r = await tgCall(this.env, 'sendMessage', { chat_id: id, text: html, parse_mode: 'HTML', disable_web_page_preview: true }); if (r.ok) n++; } catch (e) {} }
     return n;
   }
+  // ---------- Web Push ----------
+  async vapid() { let v = await this.state.storage.get('vapid'); if (!v) { v = await newVapid(); await this.state.storage.put('vapid', v); } return v; }
+  async pushSub(body) {
+    const subs = await this.state.storage.get('push') || [];
+    const ep = body && body.sub && body.sub.endpoint;
+    if (!ep || !/^https:\/\//.test(ep) || !body.sub.keys || !body.sub.keys.p256dh || !body.sub.keys.auth) return { error: 'bad subscription' };
+    const rest = subs.filter(x => x.endpoint !== ep);
+    if (!body.off) rest.push({ endpoint: ep, keys: { p256dh: body.sub.keys.p256dh, auth: body.sub.keys.auth }, at: Date.now() });
+    while (rest.length > 500) rest.shift();
+    await this.state.storage.put('push', rest);
+    return { ok: true, subs: rest.length };
+  }
+  async pushSend(items) {
+    const subs = await this.state.storage.get('push') || []; if (!subs.length || !items.length) return 0;
+    const v = await this.vapid(), dead = new Set(); let n = 0;
+    for (const sub of subs) for (const it of items) {
+      try { const st = await sendPush(sub, it, v); if (st === 404 || st === 410) { dead.add(sub.endpoint); break; } if (st < 300) n++; } catch (e) {}
+    }
+    if (dead.size) await this.state.storage.put('push', subs.filter(x => !dead.has(x.endpoint)));
+    return n;
+  }
   async alerts(s, now) {
-    if (!this.env.TELEGRAM_BOT_TOKEN) return;
-    try { await this.tgLink(true); } catch (e) {}
-    const tg = await this.state.storage.get('tg'); if (!tg || !tg.chats.length) return;
+    if (this.env.TELEGRAM_BOT_TOKEN) { try { await this.tgLink(true); } catch (e) {} }
+    const tg = await this.state.storage.get('tg'), subs = await this.state.storage.get('push') || [];
+    if ((!this.env.TELEGRAM_BOT_TOKEN || !tg || !tg.chats.length) && !subs.length) return;
     const st = await this.state.storage.get('al') || { lastT: 0, warned: [] };
     const out = [];
     // โซน OI/Vol จากแท่ง 1 นาทีของ GC ที่ปิดแล้ว
@@ -295,7 +325,12 @@ export class OptState {
       }
     } catch (e) {}
     await this.state.storage.put('al', st);
-    if (out.length) await this.tgSend(out.join('\n\n'));
+    if (out.length) {
+      await this.tgSend(out.join('\n\n'));
+      // Push: บรรทัดแรก = หัวข้อ, ที่เหลือ = เนื้อหา (ตัดแท็ก HTML)
+      const plain = h => h.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
+      await this.pushSend(out.map((h, i) => { const [t, ...b] = plain(h).split('\n'); return { title: t, body: b.join('\n'), tag: 'oi' + now + i }; }));
+    }
   }
   async saveHist(s, m, seed) {
     if (!s || !s.sess || !s.openEM || !marketOpen(s.openT * 1000)) return;
@@ -406,6 +441,12 @@ export default {
           pair_time: lv ? bkk(lv.t) : null, offset_level: lo ? lo.offset : null, level: lo ? lo.level : null, cross_time: lo ? bkk(lo.t) : null, offset_time: bkk(Math.floor(Date.now() / 1000)) };
         return new Response(JSON.stringify(out), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=60' } });
       } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
+    }
+    if (url.pathname === '/push/key' || url.pathname === '/push/sub' || url.pathname === '/push/test') {
+      if (!env || !env.OPT) return new Response('{}', { status: 500, headers: CORS });
+      const stub = env.OPT.get(env.OPT.idFromName('main')), path = url.pathname.slice(6);
+      const r = request.method === 'POST' ? await stub.fetch('https://do/push' + path, { method: 'POST', body: await request.text() }) : await stub.fetch('https://do/pushkey');
+      return new Response(await r.text(), { headers: { ...CORS, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
     }
     if (url.pathname === '/tg/link' || url.pathname === '/tg/test') {
       if (!env || !env.OPT) return new Response('{}', { status: 500 });
