@@ -1,6 +1,8 @@
 name = "gc-yahoo"
 main = "src/index.js"
 compatibility_date = "2026-01-01"
+# เก็บตัวแปรที่ตั้งในหน้า Cloudflare ไว้ตอน deploy (เช่น TELEGRAM_BOT_TOKEN)
+keep_vars = true
 
 [[durable_objects.bindings]]
 name = "OPT"
