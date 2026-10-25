@@ -168,7 +168,7 @@ export class OptState {
   async fetch(req) {
     const u = new URL(req.url);
     if (u.pathname === '/hist') {
-      let h = await this.state.storage.get('hist');
+      let h = (await this.state.storage.get('hist') || []).filter(x => marketOpen(x.openT * 1000));
       if (!h || !h.length) { const s = await this.state.storage.get('s'); h = await this.saveHist(s, await this.state.storage.get('m'), true) || []; }
       return new Response(JSON.stringify(h));
     }
@@ -178,7 +178,7 @@ export class OptState {
     return new Response(JSON.stringify(s || null));
   }
   async saveHist(s, m, seed) {
-    if (!s || !s.sess || !s.openEM) return;
+    if (!s || !s.sess || !s.openEM || !marketOpen(s.openT * 1000)) return;
     const h = await this.state.storage.get('hist') || [];
     if (h.some(x => x.sess === s.sess)) return h;
     const w = walls(Object.values(s.rows), s.openF || s.F);
@@ -212,7 +212,7 @@ export class OptState {
     if (em) {
       s.em = em.em; s.emK = em.k;
       const sess = ymdOf(now + 2 * 3600e3);
-      if (s.sess !== sess) { s.sess = sess; s.openF = s.F; s.openEM = em.em; s.openT = Math.floor(now / 1000); s.newSess = true; }
+      if (s.sess !== sess && marketOpen(now)) { s.sess = sess; s.openF = s.F; s.openEM = em.em; s.openT = Math.floor(now / 1000); s.newSess = true; }
     }
     // gmf itd (สัญญาวันนี้) ฝั่งเซิร์ฟเวอร์ ไว้ให้ชีตใช้ (แอปคำนวณเองทุกนาทีด้วยราคาสด)
     if (s.F) {
