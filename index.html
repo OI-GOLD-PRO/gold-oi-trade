@@ -27,6 +27,8 @@
     --put: #e5576b;       /* Put = แนวรับ (โทนแดง) */
     --call: #2fbf8f;      /* Call = แนวต้าน (โทนเขียว) */
     --live: #2fbf8f;
+    --gmfi: #22d3ee;      /* gmf itd (Gamma Flip สัญญาวันนั้น) */
+    --gmfm: #f59e0b;      /* gmf M (Gamma Flip ทุกสัญญา ≤30 วัน) */
     --mp: #ff3fb4;        /* Max Pain สีบานเย็น */      /* จุดสถานะเชื่อมต่อสด */
     --volc: #8ccaff;      /* Volume Call ฟ้าอ่อน */
     --volp: #ffb98a;      /* Volume Put ส้มอ่อน */
@@ -48,7 +50,7 @@
   #src { display: block; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   header > * { flex: none; }
   header > .sym { flex: 0 1 auto; min-width: 0; }
-  @media (max-width: 440px) { header { flex-wrap: wrap; gap: 6px !important; row-gap: 6px; } header > .sym { flex: 1 1 auto; } header > .px { margin-left: auto; } button.icon { width: 32px; height: 32px; font-size: 14px; } .siren .new { display: none; } }
+  @media (max-width: 440px) { header { flex-wrap: wrap; gap: 6px !important; row-gap: 6px; } header > .sym { flex: 1 1 calc(100% - 64px); } header > .px { margin-left: auto; } button.icon { width: 32px; height: 32px; font-size: 14px; } .siren .new { display: none; } }
   .sym b { font-size: 15px; font-weight: 600; letter-spacing: .02em; }
   .symbtn { background: none; border: 0; color: inherit; padding: 0; display: flex; align-items: center; gap: 4px; font: inherit; text-align: left; }
   .symbtn i { font-style: normal; font-size: 10px; color: var(--gold); }
@@ -162,7 +164,6 @@
   .legend { display: flex; flex-wrap: wrap; gap: 4px 12px; padding: 6px 14px; font-size: 11px; color: var(--muted); border-top: 1px solid var(--line); }
   .legend i { display: inline-block; width: 10px; height: 4px; border-radius: 2px; vertical-align: middle; margin-right: 4px; }
   .legend .rt { margin-left: auto; font-family: var(--mono); }
-  #mmpl { margin-right: 8px; } #mmpl .neg { color: var(--put); } #mmpl .pos { color: var(--call); }
   button.icon.on { border-color: var(--gold); color: var(--gold); }
   #toast { position: absolute; left: 10px; right: 10px; top: 10px; z-index: 5; background: #2a2208; border: 1px solid var(--gold); color: var(--fg); border-radius: 10px; padding: 9px 12px; font-size: 13px; box-shadow: 0 6px 20px rgba(0,0,0,.45); }
   #toast b { color: var(--gold); font-family: var(--mono); }
@@ -218,7 +219,8 @@
     <span><i style="background:var(--call)"></i>Call แนวต้าน</span>
     <span><i style="background:linear-gradient(90deg,var(--volc) 50%,var(--volp) 50%);opacity:.8"></i>Vol วันนี้</span>
     <span><i style="background:repeating-linear-gradient(90deg,var(--mp) 0 4px,transparent 4px 6px)"></i>Max Pain</span>
-    <span class="rt"><span id="mmpl"></span> <span id="clock"></span></span>
+    <span id="gmflg" style="display:none"><i style="background:repeating-linear-gradient(90deg,var(--gmfi) 0 6px,transparent 6px 8px,var(--gmfm) 8px 14px,transparent 14px 16px)"></i>gmf</span>
+    <span class="rt"><span id="clock"></span></span>
   </div>
   <div id="acct"></div>
   <div id="ticket"></div>
@@ -231,14 +233,17 @@
   // tol/rearm = ระยะเตือนโซน (หน่วยราคา), mult = ตัวคูณสัญญาออปชันสำหรับ MM P/L (US30: ใช้ออปชัน DIA 1 สัญญา = $1 ต่อ 1 จุด Dow), tick = 1 จุด
   const SYMS = {
     gold: { name: 'XAUUSD', label: 'ทองคำ', ico: '🥇', perp: 'XAUUSDT', dec: 2, tick: 0.01, tol: 1.5, rearm: 8, mult: 100, carry: true, zone: 2.5, note: 'GC' },
+    gcy: { name: 'GC·Y', label: 'ทอง GC (Yahoo)', ico: '📉', perp: null, yahoo: 'GC', yfile: 'gcy.json', dataSym: 'gold', dec: 2, tick: 0.01, tol: 1.5, rearm: 8, mult: 100, carry: false, zone: 2.5, note: 'GC' },
     oil: { name: 'WTI', label: 'น้ำมัน', ico: '🛢️', perp: 'CLUSDT', dec: 2, tick: 0.01, tol: 0.15, rearm: 0.8, mult: 1000, carry: false, zone: 0.15, note: 'CL' },
   };
   const EMBED = false, PSFX = '', LAY = '';
   let SYM = 'gold';
   const SC = SYMS[SYM], SYMSFX = SYM === 'gold' ? '' : '_' + SYM;
-  const SYMBOL = SC.perp;
+  const DATA_SYM = SC.dataSym || SYM;         // gcy ใช้ OI/Volume ชุดเดียวกับทอง
+  const IS_GOLD = SYM === 'gold' || SYM === 'gcy';
+  const SYMBOL = SC.perp || (SC.yahoo === 'GC' ? 'XAUTUSDT' : null); // GC(Yahoo): ใช้ perp ทองต่อปลายกราฟ
   // เวอร์ชันแอป: แก้เล็กเพิ่มเลขท้าย (2 หลัก), เพิ่มฟีเจอร์ใหญ่เพิ่มเลขกลาง
-  const APP_VER = '0.7.00'; // based on OI Gold Pro V1.12.04
+  const APP_VER = '0.8.00'; // based on OI Gold Pro V1.17.04
   const ZONE_HALF = SC.zone; // ครึ่งความกว้างโซนกำแพง OI ต่อสัญลักษณ์ (ทอง ±2.5 = $5, น้ำมัน ±0.15 = $0.3)
   const TZ_SHIFT = 7 * 3600; // แสดงเวลาไทยบนแกนเวลา
 
@@ -274,7 +279,22 @@
   // ---------- ข้อมูล OI ----------
   let oi = null; // {rows:[{strike,p,c,price}], offset, maxOI}
 
+  let lastCfg = null;
   function buildOI(d) {
+    lastCfg = d.cfg || {};
+    oi = calcOI(d); rebaseOI();
+    afterOI(d);
+  }
+  // OI ใหม่จาก Worker (TradingView) ของสัญญาที่หมดอายุวันนั้น: คำนวณแนว/กำแพง/Max Pain ใหม่ ไม่แตะ offset
+  function setLevels(levels, contract, note) {
+    if (!lastCfg) return;
+    lastCfg = Object.assign({}, lastCfg, { contract });
+    oi = calcOI({ levels, cfg: lastCfg }); rebaseOI();
+    const ch = document.querySelector('#chips .chip');
+    if (ch && /สัญญา/.test(ch.textContent)) ch.innerHTML = `สัญญา <b>${esc(contract)}</b>${note ? ` <small>${esc(note)}</small>` : ''}`;
+    dirty = true;
+  }
+  function calcOI(d) {
     const off = Number(d.cfg && d.cfg.offset);
     const map = new Map();
     (d.levels || []).forEach(l => {
@@ -311,9 +331,18 @@
       const pay = rows.reduce((a, r) => a + r.c * Math.max(0, s.strike - r.strike) + r.p * Math.max(0, r.strike - s.strike), 0);
       if (pay < best) { best = pay; maxPain = s.strike; }
     });
-    oi = { top5P, top5C, rows, offset: ok ? off : null, maxOI, maxVol, hasVol, topP, topC, topV, maxPain, rankP, rankC, mpPrice: null };
-    rebaseOI();
-
+    // Gamma Flip: แท็บ webapp key "gmf" = {"itd":ราคา,"M":ราคา,...} (คำนวณตอนอัพเดทจาก OI CME + Black-76)
+    let gmf = [];
+    try {
+      const g = d.cfg && d.cfg.gmf ? JSON.parse(d.cfg.gmf) : null;
+      if (g && isFinite(+g.itd) && g.itd !== null) gmf.push({ p: +g.itd, lab: 'gmf itd', col: '--gmfi' });
+      if (g && isFinite(+g.M) && g.M !== null) gmf.push({ p: +g.M, lab: 'gmf M', col: '--gmfm' });
+    } catch (e) { gmf = []; }
+    { const lg = document.getElementById('gmflg'); if (lg) lg.style.display = gmf.length ? '' : 'none'; }
+    return { top5P, top5C, rows, offset: ok ? off : null, maxOI, maxVol, hasVol, topP, topC, topV, maxPain, rankP, rankC, gmf, mpPrice: null };
+  }
+  function afterOI(d) {
+    const ok = oi.offset !== null, off = oi.offset;
     const cfg = d.cfg || {};
     dirty = true;
     const chips = [];
@@ -325,7 +354,8 @@
     $('chips').innerHTML = chips.join('');
     paintRaw(); paintNextNews();
     // offset ล็อก: ใช้ค่าจากชีตตรง ๆ (คำนวณจาก Low ฟิวเจอร์ของวัน เทียบ Low ของกราฟเรา) ไม่ลอยตามราคา spot อีกต่อไป
-    if (ok && (liveAt === null || SYM !== 'gold')) applyAdj(-off); else paintOff();
+    if (SC.yahoo) paintOff(); // กราฟ Yahoo เป็นราคา GC อยู่แล้ว ไม่ต้องบวก offset
+    else if (ok && (liveAt === null || SYM !== 'gold')) applyAdj(-off); else paintOff();
     dirty = true;
     if (typeof resetArming === 'function') resetArming(lastClose);
   }
@@ -353,7 +383,7 @@
         const d = await r.json();
         if (d.error === 'auth') { syncing = false; showLogin(d.reason === 'expired' ? 'รหัสผ่านนี้หมดอายุแล้ว' : 'รหัสผ่านใช้ไม่ได้แล้ว กรุณาเข้าสู่ระบบใหม่'); return; }
         if (d.auth && d.auth.expire) authExpire = d.auth.expire;
-        if (SYM !== 'gold' && d.sym !== SYM) { $('chips').innerHTML = `<span class="chip warn">Apps Script ยังเป็นรุ่นเก่า ไม่รองรับ ${esc(SC.label)} (ต้องวางโค้ด Code.gs ใหม่แล้ว Deploy)</span>`; oi = null; dirty = true; err = null; break; }
+        if (DATA_SYM !== 'gold' && d.sym !== DATA_SYM) { $('chips').innerHTML = `<span class="chip warn">Apps Script ยังเป็นรุ่นเก่า ไม่รองรับ ${esc(SC.label)} (ต้องวางโค้ด Code.gs ใหม่แล้ว Deploy)</span>`; oi = null; dirty = true; err = null; break; }
         buildOI(d);
         err = null; break;
       } catch (e) {
@@ -375,7 +405,7 @@
   // ไฮไลต์ราคาเต็มที่ลงท้ายด้วย 00, 25, 50, 75 โดยวาดทับป้ายแกนของ lightweight-charts
   const GOLD_HL = ['00', '25', '50', '75'];
   function drawGoldLevels(w, h) {
-    if (SYM !== "gold" || lastClose === null) return;
+    if (!IS_GOLD || lastClose === null) return;
     const plotH = h - chart.timeScale().height();
     const top = series.coordinateToPrice(0), bot = series.coordinateToPrice(plotH);
     if (top === null || bot === null) return;
@@ -635,6 +665,25 @@
         ctx.font = `10px ${C('--mono')}`;
       }
     }
+    // เส้น Gamma Flip (gmf itd / gmf M): เส้นประยาว-สั้น เต็มความกว้าง ป้ายราคาที่แกนขวา + ชื่อใต้ป้าย
+    (oi.gmf || []).forEach(g => {
+      const gp = g.p - gcOff(), yg = series.priceToCoordinate(gp);
+      if (yg === null || yg <= 2 || yg >= plotH - 2) return;
+      const yy = Math.round(yg) + .5, gc = C(g.col);
+      ctx.globalAlpha = 0.95; ctx.strokeStyle = gc; ctx.lineWidth = 1.5; ctx.setLineDash([10, 3, 2, 3]);
+      ctx.beginPath(); ctx.moveTo(0, yy); ctx.lineTo(plotW, yy); ctx.stroke(); ctx.setLineDash([]);
+      ctx.font = `bold 10px ${C('--mono')}`;
+      const axW = w - plotW, bh = 14, bx = plotW + 1, by = Math.round(yg - bh / 2);
+      ctx.globalAlpha = 1; ctx.fillStyle = gc; ctx.fillRect(bx, by, axW - 1, bh);
+      ctx.fillStyle = '#000'; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.fillText(gp.toFixed(2), bx + (axW - 1) / 2, by + bh / 2 + .5);
+      ctx.font = `bold 8px ${C('--mono')}`;
+      ctx.fillStyle = C('--bg'); ctx.globalAlpha = 0.85; ctx.fillRect(bx, by + bh, axW - 1, 10);
+      ctx.globalAlpha = 1; ctx.fillStyle = gc; ctx.fillText(g.lab, bx + (axW - 1) / 2, by + bh + 5.5);
+      // ชื่อเส้นกลางกราฟ (เหนือเส้นเล็กน้อย)
+      ctx.font = `bold 9px ${C('--mono')}`; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText(`${g.lab} ${gp.toFixed(1)}`, Math.round(plotW * 0.42), yy - 2);
+      ctx.font = `10px ${C('--mono')}`;
+    });
     ctx.globalAlpha = 1;
   }
 
@@ -829,7 +878,7 @@
   const ALERT_MIN_OI = 50;   // เฉพาะ strike ที่ Put หรือ Call มี OI ตั้งแต่ 50
   // แจ้งเตือน 3 ขั้นต่อโซน: (1) ราคาถึงโซน -> คูลดาวน์ 1 ชม. (2) เบรกเอ้า = แท่ง M5 ปิดพ้นขอบบน/ล่างสุดของโซนเกิน $2 (ต้องผ่านขั้น 1 มาก่อน) -> คูลดาวน์ 30 นาที (3) หลังเบรก ถ้าราคากลับเข้าโซนเดิม เริ่มขั้น 1 ใหม่
   const REACH_COOL = 60 * 60000, BREAK_COOL = 30 * 60000;
-  const BREAK_EXTRA = SYM === 'gold' ? 2 : SC.tol * (2 / 1.5); // เลยขอบโซน $2 (ทอง); น้ำมันสเกลตามสัดส่วนเดียวกับ tol
+  const BREAK_EXTRA = IS_GOLD ? 2 : SC.tol * (2 / 1.5); // เลยขอบโซน $2 (ทอง); น้ำมันสเกลตามสัดส่วนเดียวกับ tol
   const M5_MS = 300000;
   let alertsOn = false;
   if (!EMBED) try { alertsOn = localStorage.getItem('oit_alert') === '1'; } catch (e) {}
@@ -1052,13 +1101,62 @@
       msg: (m, t) => (m.k && m.k.i === t) ? [[+m.k.t, +m.k.o, +m.k.h, +m.k.l, +m.k.c]] : null,
     },
   ];
-  // US30: ไม่มี perpetual ให้ดึง จึงใช้ราคา YM=F จาก Yahoo ที่ GitHub Actions เก็บไว้ใน ym.json (ช้าราว 5-10 นาที)
+  // กราฟ Yahoo (GC=F): ไฟล์จาก GitHub Actions ช้า ~10 นาที จึงผสม: แท่ง Yahoo จริงถึงแท่งล่าสุดที่ Yahoo มี
+  // แล้วต่อปลายกราฟด้วยแท่งสดของ perp (Bybit/Bitget/Binance) + offset (= เปิดแท่ง Yahoo ล่าสุด − เปิดแท่ง perp เวลาเดียวกัน)
+  let hybOff = null, hybAt = null;
   if (SC.yahoo) {
-    const YM_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/ym.json`;
+    const PERP = PROVIDERS.slice();
+    const Y_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/${SC.yfile || 'ym.json'}`;
+    const yc = {};
+    const withTimeout = (url, ms) => { const ac = new AbortController(); const t = setTimeout(() => ac.abort(), ms); return fetch(url, { cache: 'no-store', signal: ac.signal }).finally(() => clearTimeout(t)); };
+    async function yahooRows(t) {
+      const c = yc[t];
+      if (c && Date.now() - c.at < 20000) return c.rows;
+      let j = null;
+      try { const w = await withTimeout(`${GC_WORKER}/?tf=${t}`, 7000); if (w.ok) j = await w.json(); } catch (e) {}
+      if (!j || !j.bars || !j.bars[t]) { // Worker ไม่ตอบ: ใช้ไฟล์จาก GitHub Actions (ช้ากว่า)
+        const r = await withTimeout(`${Y_URL}?t=${Math.floor(Date.now() / 60000)}`, 7000);
+        if (!r.ok) throw new Error('Yahoo HTTP ' + r.status);
+        j = await r.json();
+      }
+      const b = j.bars && j.bars[t];
+      if (!b || !b.length) throw new Error('ไม่มีข้อมูล Yahoo ' + t);
+      const step = (tfSec[t] || 60) * 1000, rows = [];
+      b.forEach(k => { // แท่งสดของ Yahoo มีเวลาเป็นวินาทีที่ quote (ไม่ตรงต้นนาที) ปัดลงให้ตรงต้นแท่ง แล้วรวมแท่งซ้ำ
+        const T = Math.floor(k[0] * 1000 / step) * step, L = rows[rows.length - 1];
+        if (L && L[0] === T) { L[2] = Math.max(L[2], k[2]); L[3] = Math.min(L[3], k[3]); L[4] = k[4]; }
+        else if (!L || T > L[0]) rows.push([T, k[1], k[2], k[3], k[4]]);
+      });
+      yc[t] = { at: Date.now(), rows }; return rows;
+    }
+    let perpIdx = 0; // จำแหล่ง perp ที่ใช้ได้ล่าสุด (บางเครือข่ายในไทยเข้า Bybit ไม่ได้) ลองตัวนั้นก่อน
+    async function perpRows(t, n) {
+      let last = null;
+      for (let i = 0; i < PERP.length; i++) {
+        const q = PERP[(perpIdx + i) % PERP.length];
+        try { const r = await withTimeout(q.rest(t, Math.min(n, 1000)), 4000); if (!r.ok) throw new Error('HTTP ' + r.status); const rows = q.parse(await r.json(), t).sort((a, b) => a[0] - b[0]); perpIdx = (perpIdx + i) % PERP.length; return rows; } catch (e) { last = e; }
+      }
+      throw last || new Error('perp ไม่ตอบ');
+    }
     PROVIDERS.splice(0, PROVIDERS.length, {
-      id: 'yahoo', name: 'Yahoo YM (ช้า ~5-10 น.)',
-      rest: () => `${YM_URL}?t=${Math.floor(Date.now() / 60000)}`,
-      parse: (j, t) => { const b = j.bars && j.bars[t]; if (!b || !b.length) throw new Error('ไม่มีข้อมูล ' + t); return b.map(k => [k[0] * 1000, k[1], k[2], k[3], k[4]]); },
+      id: 'yahoo', name: `Yahoo ${SC.yahoo} + perp สด`,
+      pollMs: 5000,
+      fetchRows: async (t, n) => {
+        const ys = await yahooRows(t);
+        let ps = null; try { ps = await perpRows(t, n > 300 ? n : 300); } catch (e) {}
+        if (!ps || !ps.length) { hybOff = null; return ys; }
+        const pm = new Map(ps.map(k => [k[0], k]));
+        let i = ys.length - 1; while (i >= 0 && i >= ys.length - 5 && !pm.has(ys[i][0])) i--;
+        if (i < 0 || !pm.has(ys[i][0])) { hybOff = null; return ys; } // perp ไม่มีแท่งเวลานั้น (ช่วงปิดตลาด) ใช้ Yahoo ล้วน
+        const T = ys[i][0], pT = pm.get(T), yl = ys[i];
+        const off = Math.round((yl[1] - pT[1]) * 100) / 100;
+        if (!isFinite(off) || Math.abs(off) > 40) { hybOff = null; return ys; }
+        hybOff = off; hybAt = T / 1000;
+        const out = ys.slice(0, i);
+        out.push([T, yl[1], Math.max(yl[2], pT[2] + off), Math.min(yl[3], pT[3] + off), pT[4] + off]);
+        ps.filter(k => k[0] > T).forEach(k => out.push([k[0], k[1] + off, k[2] + off, k[3] + off, k[4] + off]));
+        return out;
+      },
       ws: null,
     });
   }
@@ -1071,6 +1169,7 @@
   function paintOff() {
     const el = $('offchip'); if (!el) return;
     const t = adjAt ? adjAt.toLocaleTimeString('th-TH', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' }) : '';
+    if (SC.yahoo) { el.innerHTML = hybOff === null ? 'กราฟ Yahoo' : `ปลายกราฟต่อด้วย perp <b>${hybOff >= 0 ? '+' : ''}${hybOff.toFixed(2)}</b> <small>· Yahoo ถึง ${new Date(hybAt * 1000).toLocaleTimeString('th-TH', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</small>`; return; }
     el.innerHTML = `GC−โบรก <b>${gcOff() >= 0 ? '+' : ''}${gcOff().toFixed(2)}</b>` + (liveAt !== null && SYM === 'gold' ? ` <small>· Yahoo ${new Date(liveAt * 1000).toLocaleTimeString('th-TH', { hour12: false, hour: '2-digit', minute: '2-digit', timeZone: 'Asia/Bangkok' })}</small>` : '');
   }
   // gAdj = perp − GC (ใช้แปลง strike ของ OI), adj = perp − ราคาโบรก (ใช้เลื่อนกราฟ)
@@ -1097,25 +1196,28 @@
     if (rawClose !== null) lastClose = rawClose - adj;
     rebaseOI(); showPrice(); paintOff();
   }
-  // offset สด: ทุก 1 นาที เอาแท่ง 1 นาทีล่าสุดของ Yahoo GC=F (gcm.json จาก GitHub Actions) จับคู่กับแท่ง perp นาทีเดียวกัน
-  // offset = GC ปิดแท่งนั้น − perp ปิดแท่งนั้น (ค่าของอดีตราว 10-20 นาที แต่แม่นเพราะเทียบเวลาเดียวกัน) แล้วใช้กับราคาปัจจุบัน
+  // offset สด: ทุก 1 นาที เอาแท่ง M1 ที่ "ปิดแล้ว" ล่าสุดของ Yahoo GC=F (gcy.json จาก GitHub Actions)
+  // จับคู่กับแท่ง M1 ของ perp เวลาเดียวกัน offset = GC ปิดแท่งนั้น − perp ปิดแท่งนั้น แล้วปรับกราฟ XAUUSD
+  // (ค่าของอดีตราว 10-20 นาทีตาม Yahoo แต่แม่นเพราะเทียบเวลาเดียวกัน แล้วใช้กับราคาปัจจุบัน)
   let liveAt = null, liveBusy = false;
-  const GCM_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/gcm.json`;
+  const GCY_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/gcy.json`;
   async function pairYahoo() {
     if (SYM !== 'gold' || liveBusy || !prov || !oi) return;
     liveBusy = true;
     try {
-      const r = await fetch(GCM_URL + '?t=' + Date.now(), { cache: 'no-store' });
-      const bars = (await r.json()).bars || [];
+      let bars = [];
+      try { const w = await fetch(`${GC_WORKER}/?tf=1m`, { cache: 'no-store' }); if (w.ok) bars = ((await w.json()).bars || {})['1m'] || []; } catch (e) {}
+      if (!bars.length) { const r = await fetch(GCY_URL + '?t=' + Math.floor(Date.now() / 60000), { cache: 'no-store' }); bars = ((await r.json()).bars || {})['1m'] || []; }   // [t(วินาที), o, h, l, c]
       const rows = await fetchBars(prov, '1m', 400);
-      const pm = new Map(rows.map(k => [Math.floor(k[0] / 1000), k[4]]));
-      // แท่ง Yahoo ล่าสุดที่ perp มีแท่งนาทีเดียวกัน
-      for (let i = bars.length - 1; i >= 0 && i >= bars.length - 30; i--) {
+      const pm = new Map(rows.map(k => [Math.floor(k[0] / 1000), k[4]])); // ราคาปิดแท่ง M1 ของ perp
+      const nowS = Date.now() / 1000;
+      for (let i = bars.length - 1; i >= 0 && i >= bars.length - 40; i--) {
         const t = Math.floor(bars[i][0] / 60) * 60;
+        if (t + 60 > nowS) continue;            // แท่งที่ยังไม่ปิด ข้าม
         if (!pm.has(t)) continue;
-        if (Date.now() / 1000 - t > 90 * 60) return; // ข้อมูลเก่าเกิน 90 นาที ไม่ใช้
-        const off = Math.round((bars[i][1] - pm.get(t)) * 100) / 100;
-        if (!isFinite(off) || Math.abs(off) > 30) return;
+        if (nowS - t > 90 * 60) return;         // ข้อมูลเก่าเกิน 90 นาที ไม่ใช้
+        const off = Math.round((bars[i][4] - pm.get(t)) * 100) / 100;
+        if (!isFinite(off) || Math.abs(off) > 40) return;
         if (liveAt === null || Math.abs(-off - gAdj) >= 0.01) { liveAt = t; applyAdj(-off); } else { liveAt = t; paintOff(); }
         return;
       }
@@ -1162,6 +1264,7 @@
   }
 
   async function fetchBars(p, t, n) {
+    if (p.fetchRows) return p.fetchRows(t, n);
     const ac = new AbortController(); const timer = setTimeout(() => ac.abort(), 7000);
     try {
       const r = await fetch(p.rest(t, n), { cache: 'no-store', signal: ac.signal });
@@ -1206,6 +1309,7 @@
         updateBasis();
         setSource(p);
         showPrice();
+        if (SC.yahoo) paintOff();
         chart.timeScale().scrollToRealTime();
         $('msg').hidden = true;
         dirty = true;
@@ -1221,10 +1325,12 @@
     if (ws) { ws.onclose = null; ws.close(); }
     if (!prov) return;
     const p = prov, t = tf;
-    if (!p.ws) { // ไม่มี websocket: ดึงไฟล์ซ้ำทุก 30 วินาที
+    if (!p.ws) { // ไม่มี websocket: ดึงซ้ำเป็นระยะ (ค่าเริ่ม 30 วินาที, กราฟ Yahoo ผสม 5 วินาที)
       $('dot').classList.add('live');
+      let polling = false;
       pollTimer = setInterval(async () => {
-        if (document.visibilityState === 'hidden' || tf !== t) return;
+        if (document.visibilityState === 'hidden' || tf !== t || polling) return;
+        polling = true;
         try {
           const rows = (await fetchBars(p, t, 800)).filter(k => !cmeClosed(k[0]));
           rows.forEach(k => {
@@ -1234,9 +1340,9 @@
             const lastRaw = rawBars[rawBars.length - 1];
             if (lastRaw && lastRaw[0] === k[0]) rawBars[rawBars.length - 1] = k; else rawBars.push(k);
           });
-          showPrice(); indTick(); checkAlerts(lastClose);
-        } catch (e) {}
-      }, 30000);
+          showPrice(); indTick(); checkAlerts(lastClose); if (SC.yahoo) paintOff();
+        } catch (e) {} finally { polling = false; }
+      }, p.pollMs || 30000);
       return;
     }
     ws = new WebSocket(p.ws(t));
@@ -1620,25 +1726,10 @@
     const el = $('rawchip'); if (!el) return;
     el.innerHTML = `${SC.name}${prov ? ' ' + esc(prov.name) : ''} <b>${rawClose !== null ? rawClose.toFixed(SC.dec) : '–'}</b>`;
   }
-  // ประมาณการกำไร/ขาดทุนของ MM (สมมติเป็นฝั่งขายออปชัน) ที่ราคาปัจจุบัน เทียบกับถ้าราคาอยู่ที่ Max Pain
-  // ใช้ OI ในชีต (±20 strike) 1 สัญญา = 100 ออนซ์ ค่าลบ = MM ขาดทุนเพิ่ม
-  function paintMM() {
-    const el = $('mmpl'); if (!el) return;
-    if (!oi || oi.maxPain === null || lastClose === null) { el.textContent = ''; return; }
-    const S = lastClose + gcOff(), M = oi.maxPain;
-    let cS = 0, pS = 0, cM = 0, pM = 0;
-    oi.rows.forEach(r => {
-      cS += r.c * Math.max(0, S - r.strike); pS += r.p * Math.max(0, r.strike - S);
-      cM += r.c * Math.max(0, M - r.strike); pM += r.p * Math.max(0, r.strike - M);
-    });
-    const dc = -(cS - cM) * SC.mult, dp = -(pS - pM) * SC.mult, net = dc + dp;
-    const f = v => `<span class="${v < 0 ? 'neg' : 'pos'}">${v < 0 ? '−' : '+'}$${(Math.abs(v) / 1e6).toFixed(2)}M</span>`;
-    el.innerHTML = `MM vs MP · C ${f(dc)} P ${f(dp)} = ${f(net)}`;
-  }
+  function paintMM() {} // ตัดการแสดง MM vs MP ออกแล้ว (v1.14.01)
   function applyOiToggle() {
     const b = $('oiBtn'); b.classList.toggle('has', oiOn);
     b.style.opacity = oiOn ? '' : '.55';
-    $('mmpl').style.visibility = oiOn ? '' : 'hidden';
     document.querySelectorAll('.legend > span:not(.rt)').forEach(e => { e.style.display = oiOn ? '' : 'none'; });
     dirty = true;
   }
@@ -1752,7 +1843,7 @@
     },
     get tf() { return tf; }, sym: SYM, cfg: SC, sfx: SYMSFX, psfx: PSFX,
     chart, series, chartEl, hooks: overlayHooks,
-    get oi() { return oi; }, get lastClose() { return lastClose; },
+    get oi() { return oi; }, get lastClose() { return lastClose; }, get cfgData() { return lastCfg; }, setLevels,
     showToast, hideToast, lockChart,
     markDirty() { dirty = true; },
     HUB, get rawClose() { return rawClose; }, get authCode() { return authCode; },
@@ -1767,5 +1858,6 @@
 <script src="trade.js"></script>
 <script src="dash.js"></script>
 <script src="goldscalp.js"></script>
+<script src="live.js"></script>
 </body>
 </html>

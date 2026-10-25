@@ -51,6 +51,11 @@ def route(rt):
         b = json.loads(rt.request.post_data); cmds.append(b)
         cid = f"c{len(cmds)}"; results.insert(0, {"id": cid, "ok": True, "status": "done", "ticket": 9000 + len(cmds), "at": now_ms})
         return rt.fulfill(json={"ok": True, "id": cid})
+    if "gc-yahoo" in u and "/opt" in u:
+        rows = []
+        for l in levels:
+            rows.append([l["strike"], l["type"], 0.2, 0.5 if l["type"] == "C" else -0.5, 0.002, 1, 1.2, 1.1, 60, 40, 20, l["oi"]])
+        return rt.fulfill(json={"rows": rows, "root": "OGZ6", "expTs": now_ms / 1000 + 18000, "F": PERP_LAST + 34, "openF": PERP_LAST + 30, "openEM": 18, "em": 22, "updated": now_ms / 1000, "oiT": now_ms / 1000})
     if "api.bybit.com" in u:
         n = 2 if "interval=D" in u else 800
         return rt.fulfill(json={"retCode": 0, "result": {"list": list(reversed(BARS[-n:]))}})
@@ -82,6 +87,7 @@ with sync_playwright() as p:
     info = page.evaluate("""() => ({ adjOK: Math.abs(OI.lastClose - %f) < 0.6, price: document.getElementById('price').textContent,
         gcoff: OI.gcOff(), wall: OI.oi.rows.find(r => r.strike === 4175).price })""" % BID)
     print("chart/broker:", info)
+    print("dbg offsets:", page.evaluate("() => ({ gc: OI.gcOff(), off: OI.oi.offset, last: OI.lastClose, raw: OI.rawClose })"))
 
     page.click("#tkSL"); page.click("#tkTP")
     page.wait_for_timeout(400)
@@ -139,6 +145,8 @@ with sync_playwright() as p:
     page.evaluate("() => document.getElementById('indMenu').hidden = true"); page.wait_for_timeout(500)
     page.screenshot(path=f"{OUT}/13-gs-oi.png")
     page.click("#indBtn"); page.wait_for_timeout(200)
+    page.wait_for_timeout(3500)
+    print("live.js:", page.evaluate("() => { const L = window.OILive; return { rows: !!(L && L.d), err: L && L.err, gmf: L && L.calc && L.calc.gmf, match: L && L.calc && L.calc.match, gmfLines: (window.OI.oi.gmf || []).map(g => g.lab) }; }"))
     print("goldscalp normal:", gs, " oi:", gs2, " menu inputs:", page.evaluate("() => document.querySelectorAll('#gsBox [data-gs]').length"))
     page.click("#indBtn") if page.is_visible("#indMenu") else None
     page.wait_for_timeout(200)

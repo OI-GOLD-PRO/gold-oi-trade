@@ -56,11 +56,11 @@ rep('''  </div>
 <script>
 (function () {''')
 rep('''    <button class="icon" id="layBtn" aria-label="เลย์เอาต์กราฟ: 1 กราฟ / บนล่าง / ซ้ายขวา">▭</button>\n''', '')
-rep('''<script src="goldscalp.js"></script>
-<script src="dash.js"></script>
-</body>''', '''<script src="trade.js"></script>
+# (source dash.js = market-analysis dashboard: not ported; the trade app's own dash.js is the P/L dashboard)
+rep_re(r'<script src="goldscalp\.js"></script>\n<script src="dash\.js[^"]*"></script>\n<script src="live\.js[^"]*"></script>\n</body>', '''<script src="trade.js"></script>
 <script src="dash.js"></script>
 <script src="goldscalp.js"></script>
+<script src="live.js"></script>
 </body>''')
 # single chart only: no 2nd-chart layout
 rep_re(r"  // ---- เลย์เอาต์ 2 กราฟ: กราฟที่ 2 = iframe.*?\n  let SYM = 'gold';", "  const EMBED = false, PSFX = '', LAY = '';\n  let SYM = 'gold';")
@@ -77,8 +77,9 @@ rep_re(r"  // บางเครื่องความสูงจอไม่
 
 # --- chart shift: adj = perp − broker (chart), gAdj = perp − GC (for OI strikes) ---
 rep("let adj = 0, basisEma = null,", "let adj = 0, gAdj = 0, brokerBasis = null, basisEma = null,")
-rep_re(r"(    oi = \{ top5P, top5C, rows, offset: ok \? off : null,[^\n]*?maxPain)([^\n]*?) \};",
-       r"\1\2, mpPrice: null };\n    rebaseOI();")
+rep_re(r"(    return \{ top5P, top5C, rows, offset: ok \? off : null,[^\n]*?) \};", r"\1, mpPrice: null };")
+rep("    oi = calcOI(d);\n    afterOI(d);", "    oi = calcOI(d); rebaseOI();\n    afterOI(d);")
+rep("    oi = calcOI({ levels, cfg: lastCfg });", "    oi = calcOI({ levels, cfg: lastCfg }); rebaseOI();")
 rep("`offset <b>${(-adj).toFixed(2)}</b>`", "`GC−โบรก <b>${gcOff() >= 0 ? '+' : ''}${gcOff().toFixed(2)}</b>`")
 # live Yahoo pairing compares against the GC offset (gAdj), not the broker shift (adj)
 rep("Math.abs(-off - adj) >= 0.01", "Math.abs(-off - gAdj) >= 0.01")
@@ -124,8 +125,7 @@ rep("const y = series.priceToCoordinate(v - adj);", "const y = series.priceToCoo
 rep("ctx.fillStyle = '#000'; ctx.fillText(rawClose.toFixed(2), x0 + 6, y + .5);",
     "ctx.fillStyle = '#000'; ctx.fillText((lastClose + gcOff()).toFixed(2), x0 + 6, y + .5);")
 rep("ctx.fillText('SPOT', x0 + aw / 2, 9);", "ctx.fillText('GC', x0 + aw / 2, 9);")
-# MM vs Max Pain uses GC-scale price
-rep("const S = lastClose, M = oi.maxPain;", "const S = lastClose + gcOff(), M = oi.maxPain;")
+# (MM vs Max Pain readout was removed in OI Gold Pro V1.14.01)
 # header price = broker bid when EA online
 rep("    $('price').textContent = lastClose.toFixed(SC.dec);",
     "    const bp = window.OIT_brokerPrice ? window.OIT_brokerPrice() : null;\n    $('price').textContent = (bp !== null && bp !== undefined ? bp : lastClose).toFixed(2);")
@@ -162,6 +162,11 @@ rep("    markDirty() { dirty = true; },\n  };", '''    markDirty() { dirty = tru
     clearBrokerBasis() { if (brokerBasis === null) return; brokerBasis = null; if (basisEma !== null) setChartAdj(basisEma); },
   };''')
 
+# gamma-flip lines are GC-scale in the sheet/live data; the trade chart is in broker scale
+rep("      const yg = series.priceToCoordinate(g.p);", "      const gp = g.p - gcOff(), yg = series.priceToCoordinate(gp);")
+rep("ctx.fillText(g.p.toFixed(2), bx + (axW - 1) / 2, by + bh / 2 + .5);", "ctx.fillText(gp.toFixed(2), bx + (axW - 1) / 2, by + bh / 2 + .5);")
+rep("ctx.fillText(`${g.lab} ${g.p.toFixed(1)}`,", "ctx.fillText(`${g.lab} ${gp.toFixed(1)}`,")
+
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "index.html")
 open(out, "w", encoding="utf-8").write(s)
 print(f"ported OI Gold Pro V{src_ver} → trade app V{APP_VER}")
@@ -173,3 +178,23 @@ if os.path.exists(gs_src):
         raise SystemExit("goldscalp.js: storage key anchor not found")
     open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "goldscalp.js"), "w", encoding="utf-8").write(g.replace("'oi_gs'", "'oit_gs'"))
     print("goldscalp.js copied from OI Gold Pro")
+
+# live.js (live day-contract options from the OI Gold Pro worker): same maths in GC scale, drawing shifted to the broker scale
+live_src = os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), "live.js")
+if os.path.exists(live_src):
+    l = open(live_src, encoding="utf-8").read()
+    def lrep(old, new):
+        global l
+        if l.count(old) != 1:
+            raise SystemExit(f"live.js anchor found {l.count(old)}x: {old[:80]!r}")
+        l = l.replace(old, new)
+    lrep("  const O = window.OI;\n", "  const O = window.OI;\n  const G = () => (O && O.gcOff ? O.gcOff() : 0); // GC − โบรก: ราคา GC → ราคาบนกราฟโบรก\n")
+    lrep("const S0 = O.lastClose !== null && isFinite(O.lastClose) ? O.lastClose : d.F;", "const S0 = O.lastClose !== null && isFinite(O.lastClose) ? O.lastClose + G() : d.F;")
+    lrep("series.priceToCoordinate(c.openF + c.openEM), bot = series.priceToCoordinate(c.openF - c.openEM);", "series.priceToCoordinate(c.openF + c.openEM - G()), bot = series.priceToCoordinate(c.openF - c.openEM - G());")
+    lrep("`EM บน ${(c.openF + c.openEM).toFixed(1)}`", "`EM บน ${(c.openF + c.openEM - G()).toFixed(1)}`")
+    lrep("`EM ล่าง ${(c.openF - c.openEM).toFixed(1)}`", "`EM ล่าง ${(c.openF - c.openEM - G()).toFixed(1)}`")
+    lrep("      const px = O.lastClose;\n", "      const px = O.lastClose + G();\n")
+    lrep("const y = series.priceToCoordinate(s.k);", "const y = series.priceToCoordinate(s.k - G());")
+    lrep("badges.push(O.lastClose >= gm.p ?", "badges.push(O.lastClose + G() >= gm.p ?")
+    open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "live.js"), "w", encoding="utf-8").write(l)
+    print("live.js copied from OI Gold Pro (scale-adjusted)")
