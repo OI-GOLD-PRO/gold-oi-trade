@@ -127,6 +127,20 @@ export function levelOffset(gf, pp, step = 25) {
   }
   return null;
 }
+// offset สด = ค่ากลาง (median) ของ (Gold.F − perp) ใน n แท่ง 1 นาทีล่าสุดที่ปิดแล้วและมีทั้งสองฝั่ง
+export function liveOffset(gf, pp, nowSec, n = 5) {
+  const pm = new Map(pp.map(b => [b[0], b[4]]));
+  const d = [];
+  for (let i = gf.length - 1; i >= 0 && d.length < n; i--) {
+    const [t, , , , c] = gf[i];
+    if (t + 60 > nowSec) continue; // แท่งที่ยังไม่ปิด
+    const p = pm.get(t); if (p === undefined) continue;
+    d.push({ t, off: c - p, gc: c, pp: p });
+  }
+  if (!d.length) return null;
+  const s = d.map(x => x.off).sort((a, b) => a - b), m = s.length % 2 ? s[(s.length - 1) / 2] : (s[s.length / 2 - 1] + s[s.length / 2]) / 2;
+  return { offset: Math.round(m * 100) / 100, t: d[0].t, gc: d[0].gc, pp: d[0].pp, n: d.length };
+}
 const bkk = sec => { const d = new Date(sec * 1000 + 7 * 3600e3); return d.toISOString().slice(0, 16).replace('T', ' '); };
 
 // ---------- Gamma Flip ----------
@@ -219,11 +233,24 @@ export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
+    if (url.pathname === '/gf') {
+      // แท่ง 1 นาทีล่าสุดของ Gold.F (BlackBull, เรียลไทม์) ให้แอปจับคู่กับ perp ของตัวเอง · แคช 20 วินาที
+      const ck = new Request(url.origin + '/gf'), cache = caches.default;
+      const hit = await cache.match(ck); if (hit) return hit;
+      try {
+        const gf = await tvBars('BLACKBULL:GOLD.F', '1', 40);
+        const res = new Response(JSON.stringify({ symbol: 'BLACKBULL:GOLD.F', updated: Math.floor(Date.now() / 1000), bars: gf.map(b => [b[0], b[1], b[2], b[3], b[4]]) }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=20' } });
+        await cache.put(ck, res.clone());
+        return res;
+      } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
+    }
     if (url.pathname === '/px') {
       try {
         const [gf, pp] = await Promise.all([tvBars('BLACKBULL:GOLD.F'), tvBars('BYBIT:XAUUSDT.P', '1', 3500)]);
-        const lo = levelOffset(gf, pp), last = gf[gf.length - 1];
-        const out = { gc_price: last[4], gc_time: bkk(last[0]), offset: lo ? lo.offset : null, ref_price: lo ? lo.ref : null, ref_symbol: 'Bybit XAUUSDT', level: lo ? lo.level : null, cross_time: lo ? bkk(lo.t) : null, offset_time: bkk(Math.floor(Date.now() / 1000)) };
+        const lo = levelOffset(gf, pp), last = gf[gf.length - 1], lv = liveOffset(gf, pp, Math.floor(Date.now() / 1000));
+        // offset หลัก = แบบสด (median 5 นาที Gold.F − Bybit) · แบบจุดตัด 00/25/50/75 เก็บไว้ใน offset_level
+        const out = { gc_price: last[4], gc_time: bkk(last[0]), offset: lv ? lv.offset : (lo ? lo.offset : null), ref_price: lv ? lv.pp : (lo ? lo.ref : null), ref_symbol: 'Bybit XAUUSDT', method: lv ? 'live median 5m Gold.F-Bybit' : 'level cross',
+          pair_time: lv ? bkk(lv.t) : null, offset_level: lo ? lo.offset : null, level: lo ? lo.level : null, cross_time: lo ? bkk(lo.t) : null, offset_time: bkk(Math.floor(Date.now() / 1000)) };
         return new Response(JSON.stringify(out), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=60' } });
       } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
     }

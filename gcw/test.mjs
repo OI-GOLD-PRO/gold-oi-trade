@@ -1,4 +1,4 @@
-import worker, { agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset } from './src/index.js';
+import worker, { agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset } from './src/index.js';
 const arr = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const mk = (n, step) => ({ chart: { result: [{ timestamp: arr(n, i => 1792700000 + i * step), indicators: { quote: [{ open: arr(n, i => 4000 + i), high: arr(n, i => 4001 + i), low: arr(n, i => 3999 + i), close: arr(n, i => i === 3 ? null : 4000.5 + i) }] } }] } });
 let calls = [];
@@ -30,4 +30,6 @@ if (!gf.flip || gf.flip < 3980 || gf.flip > 4020) throw new Error('flip ' + gf.f
 // แท่ง 21:36 ของ Gold.F ผ่าน 4000 (3995.88–4004.33) · perp 3992.41–4000.96 → ref 3996.58, offset 3.42
 const lo = levelOffset([[100, 3997.23, 4004.33, 3995.88, 4003.53], [160, 4003.5, 4006.3, 4001.7, 4006.3]], [[100, 3994.06, 4000.96, 3992.41, 4000.09], [160, 0, 0, 0, 0]]);
 if (!lo || lo.level !== 4000 || lo.offset !== 3.42) throw new Error('levelOffset ' + JSON.stringify(lo)); console.log('offset ok', lo);
+const lvo = liveOffset([[0,0,0,0,4010],[60,0,0,0,4011],[120,0,0,0,4012],[180,0,0,0,4013]], [[0,0,0,0,4006],[60,0,0,0,4008],[120,0,0,0,4007.5],[180,0,0,0,4000]], 200, 5);
+if (!lvo || lvo.offset !== 4 || lvo.n !== 3) throw new Error('liveOffset ' + JSON.stringify(lvo)); console.log('liveOffset ok', lvo);
 console.log('ALL OK');
