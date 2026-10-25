@@ -1,4 +1,4 @@
-import worker, { walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset } from './src/index.js';
+import worker, { alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset } from './src/index.js';
 const arr = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const mk = (n, step) => ({ chart: { result: [{ timestamp: arr(n, i => 1792700000 + i * step), indicators: { quote: [{ open: arr(n, i => 4000 + i), high: arr(n, i => 4001 + i), low: arr(n, i => 3999 + i), close: arr(n, i => i === 3 ? null : 4000.5 + i) }] } }] } });
 let calls = [];
@@ -35,4 +35,18 @@ if (!lvo || lvo.offset !== 4 || lvo.n !== 3) throw new Error('liveOffset ' + JSO
 const wl = walls([{ k: 4000, t: 'C', g: 0.01, oi: 500 }, { k: 4050, t: 'C', g: 0.008, oi: 900 }, { k: 3980, t: 'C', g: 0.02, oi: 900 }, { k: 3950, t: 'P', g: 0.007, oi: 1200 }, { k: 4005, t: 'P', g: 0.01, oi: 300 }], 4002);
 if (wl.cw !== 4050 || wl.pw !== 3950) throw new Error('walls ' + JSON.stringify(wl)); console.log('walls ok', wl);
 r = await worker.fetch(new Request('https://x/levels'), {}); if (r.status !== 500) throw new Error('levels without binding');
+// แจ้งเตือน: โซน OI 4000 (Put อันดับ 1) · ราคาเข้าโซน → เตือนถึง · M5 ปิดต่ำกว่า 3995.5 → เบรกลง ครั้งเดียว
+const zr = [{ k: 4000, t: 'P', oi: 500, vol: 10 }, { k: 4000, t: 'C', oi: 20, vol: 0 }, { k: 4050, t: 'C', oi: 300, vol: 0 }];
+const zs = alertZones(zr, 4010);
+if (zs.length !== 2 || zs[0].k !== 4000 || zs[0].lo !== 3997.5 || !/Put/.test(zs[0].side)) throw new Error('zones ' + JSON.stringify(zs));
+const ast = {}; let am = evalAlerts(ast, zs, [[600, 0, 4012, 4008, 4010]], 1);
+if (am.length) throw new Error('arm');
+am = evalAlerts(ast, zs, [[660, 0, 4006, 3999, 4001], [720, 0, 4001, 3998, 3999]], 1);
+if (am.length !== 1 || am[0].kind !== 'reach') throw new Error('reach ' + JSON.stringify(am));
+am = evalAlerts(ast, zs, [[780, 0, 3999, 3990, 3992], [840, 0, 3993, 3990, 3991], [900, 0, 3992, 3990, 3991]], 1);
+if (am.length !== 1 || am[0].kind !== 'down') throw new Error('break ' + JSON.stringify(am));
+am = evalAlerts(ast, zs, [[4500, 0, 4001, 3990, 3999], [4800, 0, 3994, 3990, 3991], [5100, 0, 3992, 3990, 3990]], 1);
+if (am.some(a => a.kind === 'down')) throw new Error('break twice'); console.log('alerts ok', alertText(am[0] || { kind: 'reach', z: zs[0], price: 3999 }));
+const nd = newsDue([{ c: 'USD', i: 'H', date: '2026-10-28T12:30:00Z', title: 'GDP' }, { c: 'USD', i: 'M', date: '2026-10-28T12:30:00Z', title: 'x' }], Date.parse('2026-10-28T12:21:00Z'), []);
+if (!nd || nd.list.length !== 1 || newsDue([{ c: 'USD', i: 'H', date: '2026-10-28T12:30:00Z' }], Date.parse('2026-10-28T12:21:00Z'), [nd.ms])) throw new Error('news'); console.log('news ok');
 console.log('ALL OK');

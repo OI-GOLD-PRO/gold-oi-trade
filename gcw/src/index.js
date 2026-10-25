@@ -163,10 +163,79 @@ async function computeM(now, F) {
   return { M: f.flip, gexM: f.gexAtF, n: opts.length, roots: [...new Set(list.map(o => o.root + o.exp))].length, at: Math.floor(now / 1000), F };
 }
 
+// ---------- แจ้งเตือน Telegram (ทำงานแม้ปิดแอป) ----------
+// โซน = กำแพง OI 10 อันดับต่อฝั่ง (อันดับ 1-5 กว้าง ±2.5, 6-10 ±1.25) + เส้น Volume วันนี้ 5 อันดับ (±1.25) แบบเดียวกับที่ไฮไลต์ในแอป
+const ZH = 2.5, BRK = 2, REACH_COOL = 3600;
+export function alertZones(rows, F) {
+  const by = new Map();
+  rows.forEach(r => { if (F && Math.abs(r.k - F) > F * 0.1) return; const o = by.get(r.k) || { k: r.k, c: 0, p: 0, v: 0 }; if (r.t === 'C') o.c = r.oi || 0; else o.p = r.oi || 0; o.v += r.vol || 0; by.set(r.k, o); });
+  const all = [...by.values()];
+  const rank = f => { const m = new Map(); all.filter(o => o[f] > 0).sort((a, b) => b[f] - a[f]).slice(0, 10).forEach((o, i) => m.set(o.k, i + 1)); return m; };
+  const rC = rank('c'), rP = rank('p');
+  const topV = new Set(all.filter(o => o.v > 0).sort((a, b) => b.v - a.v).slice(0, 5).map(o => o.k));
+  const out = [];
+  all.forEach(o => {
+    const c = rC.get(o.k) || 0, p = rP.get(o.k) || 0, useC = c && (!p || o.c >= o.p), rk = useC ? c : p, vol = topV.has(o.k);
+    if (!rk && !vol) return;
+    const h = rk && rk <= 5 ? ZH : ZH / 2;
+    out.push({ k: o.k, lo: o.k - h, hi: o.k + h, c: o.c, p: o.p, v: o.v, side: rk ? (useC ? 'แนวต้าน (Call)' : 'แนวรับ (Put)') + (vol ? ' + Vol' : '') : 'Vol วันนี้' });
+  });
+  return out.sort((a, b) => a.k - b.k);
+}
+// bars = แท่ง 1 นาที [t, o, h, l, c] ที่ปิดแล้วและยังไม่เคยตรวจ · st = { z: {k: {inside, lastReach, brokeDay}}, m5: {b, c} }
+export function evalAlerts(st, zones, bars, sess) {
+  const msgs = []; st.z = st.z || {};
+  const keep = new Set(zones.map(z => String(z.k)));
+  Object.keys(st.z).forEach(k => { if (!keep.has(k)) delete st.z[k]; });
+  for (const b of bars) {
+    const [t, , h, l, c] = b, bucket = Math.floor(t / 300);
+    // แท่ง M5 ปิดเมื่อข้ามช่วง 5 นาที (ใช้ราคาปิดแท่ง 1 นาทีสุดท้ายของช่วงก่อน)
+    let m5 = null;
+    if (st.m5 && st.m5.b !== bucket) m5 = st.m5.c;
+    st.m5 = { b: bucket, c };
+    for (const z of zones) {
+      let q = st.z[z.k];
+      if (!q) { const ins = c >= z.lo && c <= z.hi; q = st.z[z.k] = { inside: ins, lastReach: ins ? t : -1e12, reached: ins, brokeDay: null }; continue; }
+      const touch = l <= z.hi && h >= z.lo;
+      if (touch && !q.inside && t - q.lastReach >= REACH_COOL) { q.lastReach = t; q.reached = true; msgs.push({ kind: 'reach', z, price: c, t }); }
+      q.inside = c >= z.lo && c <= z.hi;
+      if (q.reached && m5 !== null && q.brokeDay !== sess) {
+        const up = m5 > z.hi + BRK, dn = m5 < z.lo - BRK;
+        if (up || dn) { q.brokeDay = sess; q.reached = false; msgs.push({ kind: up ? 'up' : 'down', z, price: m5, t }); }
+      }
+    }
+  }
+  return msgs;
+}
+// ข่าวแดง USD ที่จะออกภายใน 10 นาที (รวมข่าวเวลาเดียวกัน) · warned = รายการเวลาข่าวที่เตือนไปแล้ว
+export function newsDue(events, now, warned) {
+  const due = events.filter(e => e.c === 'USD' && (e.i || 'H') === 'H').map(e => ({ ...e, ms: Date.parse(e.date) })).filter(e => isFinite(e.ms) && e.ms > now && e.ms - now <= 10 * 60e3 && !warned.includes(e.ms));
+  if (!due.length) return null;
+  const t0 = Math.min(...due.map(e => e.ms));
+  return { ms: t0, list: due.filter(e => e.ms === t0) };
+}
+const escH = x => String(x ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[ch]));
+const thTime = ms => new Date(ms + 7 * 3600e3).toISOString().slice(11, 16);
+export function alertText(a) {
+  const z = a.z, info = `strike <b>${z.k}</b> · ${z.side}\nCall ${z.c} · Put ${z.p}${z.v ? ' · Vol ' + z.v : ''}`;
+  if (a.kind === 'reach') return `🔔 <b>ราคาถึงโซน</b> GC ${a.price.toFixed(1)}\n${info}`;
+  return `🚀 <b>เบรกเอ้า${a.kind === 'up' ? 'ขึ้น ▲' : 'ลง ▼'}</b> M5 ปิด GC ${a.price.toFixed(1)}\n${info}`;
+}
+async function tgCall(env, method, body) {
+  const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
+  return r.json();
+}
+
 export class OptState {
   constructor(state, env) { this.state = state; this.env = env; }
   async fetch(req) {
     const u = new URL(req.url);
+    if (u.pathname === '/tglink') return new Response(JSON.stringify(await this.tgLink(true)));
+    if (u.pathname === '/tgtest') {
+      const chats = await this.tgLink(false);
+      const r = await this.tgSend('✅ ทดสอบแจ้งเตือน OI Gold Pro ทาง Telegram ใช้งานได้');
+      return new Response(JSON.stringify({ chats: chats.chats, sent: r }));
+    }
     if (u.pathname === '/hist') {
       let h = (await this.state.storage.get('hist') || []).filter(x => marketOpen(x.openT * 1000));
       if (!h || !h.length) { const s = await this.state.storage.get('s'); h = await this.saveHist(s, await this.state.storage.get('m'), true) || []; }
@@ -176,6 +245,56 @@ export class OptState {
     const s = await this.state.storage.get('s');
     if (s) s.m = await this.state.storage.get('m') || null;
     return new Response(JSON.stringify(s || null));
+  }
+  // รับคำสั่งจากแชท: /start = รับแจ้งเตือน, /stop = หยุด
+  async tgLink(reply) {
+    if (!this.env.TELEGRAM_BOT_TOKEN) return { error: 'ยังไม่ได้ตั้ง TELEGRAM_BOT_TOKEN', chats: 0 };
+    const tg = await this.state.storage.get('tg') || { chats: [], off: 0 };
+    const up = await tgCall(this.env, 'getUpdates', { offset: tg.off, timeout: 0, allowed_updates: ['message'] });
+    for (const u of (up.result || [])) {
+      tg.off = u.update_id + 1;
+      const m = u.message; if (!m || !m.text) continue;
+      const id = m.chat.id, cmd = m.text.trim().split(/[\s@]/)[0].toLowerCase();
+      if (cmd === '/start' && !tg.chats.includes(id)) { tg.chats.push(id); await tgCall(this.env, 'sendMessage', { chat_id: id, text: '✅ เชื่อมต่อแจ้งเตือน OI Gold Pro แล้ว\nจะเตือน: ราคาถึงโซน OI/Vol · เบรกเอ้า M5 · ข่าวแดง USD ก่อน 10 นาที\nพิมพ์ /stop เพื่อหยุด' }); }
+      else if (cmd === '/stop' && tg.chats.includes(id)) { tg.chats = tg.chats.filter(x => x !== id); await tgCall(this.env, 'sendMessage', { chat_id: id, text: '🔕 หยุดแจ้งเตือนแล้ว พิมพ์ /start เพื่อเปิดใหม่' }); }
+    }
+    await this.state.storage.put('tg', tg);
+    return { chats: tg.chats.length };
+  }
+  async tgSend(html) {
+    if (!this.env.TELEGRAM_BOT_TOKEN) return 0;
+    const tg = await this.state.storage.get('tg'); if (!tg || !tg.chats.length) return 0;
+    let n = 0;
+    for (const id of tg.chats) { try { const r = await tgCall(this.env, 'sendMessage', { chat_id: id, text: html, parse_mode: 'HTML', disable_web_page_preview: true }); if (r.ok) n++; } catch (e) {} }
+    return n;
+  }
+  async alerts(s, now) {
+    if (!this.env.TELEGRAM_BOT_TOKEN) return;
+    try { await this.tgLink(true); } catch (e) {}
+    const tg = await this.state.storage.get('tg'); if (!tg || !tg.chats.length) return;
+    const st = await this.state.storage.get('al') || { lastT: 0, warned: [] };
+    const out = [];
+    // โซน OI/Vol จากแท่ง 1 นาทีของ GC ที่ปิดแล้ว
+    try {
+      const bars = (await tvBars('COMEX:GC1!', '1', 15)).filter(b => b[0] > st.lastT && b[0] + 60 <= now / 1000);
+      if (bars.length) {
+        const zones = alertZones(Object.values(s.rows), s.F);
+        evalAlerts(st, zones, bars, ymdOf(now + 2 * 3600e3)).forEach(a => out.push(alertText(a)));
+        st.lastT = bars[bars.length - 1][0];
+      }
+    } catch (e) {}
+    // ข่าวแดง USD ก่อนออก 10 นาที
+    try {
+      let nw = await this.state.storage.get('news');
+      if (!nw || now - nw.at > 10 * 60e3) { const j = await (await fetch('https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-pro/main/news.json?t=' + Math.floor(now / 600e3))).json(); nw = { at: now, ev: j.events || [] }; await this.state.storage.put('news', nw); }
+      const d = newsDue(nw.ev, now, st.warned);
+      if (d) {
+        st.warned = [...st.warned.filter(x => x > now - 864e5), d.ms];
+        out.push(`📰 <b>ข่าวแดง USD อีก ${Math.max(1, Math.round((d.ms - now) / 60e3))} นาที</b> (${thTime(d.ms)} น.)\n` + d.list.map(e => `● ${escH(e.title)}${e.forecast ? ' (คาด ' + escH(e.forecast) + (e.previous ? ' · ก่อน ' + escH(e.previous) : '') + ')' : ''}`).join('\n'));
+      }
+    } catch (e) {}
+    await this.state.storage.put('al', st);
+    if (out.length) await this.tgSend(out.join('\n\n'));
   }
   async saveHist(s, m, seed) {
     if (!s || !s.sess || !s.openEM || !marketOpen(s.openT * 1000)) return;
@@ -231,6 +350,7 @@ export class OptState {
     }
     // บันทึกระดับประจำวันเทรด (ค่าตอนเปิดวัน) ให้สัญญาณย้อนหลังใช้ระดับของวันนั้นจริง
     if (newSess) await this.saveHist(s, m, false);
+    await this.alerts(s, now);
     return { ok: true, root: s.root, exp: s.exp, n: syms.length, F: s.F };
   }
 }
@@ -285,6 +405,11 @@ export default {
           pair_time: lv ? bkk(lv.t) : null, offset_level: lo ? lo.offset : null, level: lo ? lo.level : null, cross_time: lo ? bkk(lo.t) : null, offset_time: bkk(Math.floor(Date.now() / 1000)) };
         return new Response(JSON.stringify(out), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=60' } });
       } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
+    }
+    if (url.pathname === '/tg/link' || url.pathname === '/tg/test') {
+      if (!env || !env.OPT) return new Response('{}', { status: 500 });
+      const r = await env.OPT.get(env.OPT.idFromName('main')).fetch('https://do/' + (url.pathname === '/tg/link' ? 'tglink' : 'tgtest'));
+      return new Response(await r.text(), { headers: { ...CORS, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
     }
     if (url.pathname === '/levels') {
       // ระดับประจำวันเทรดย้อนหลัง (sess = วันที่เริ่ม 05:00 น. ไทย)
