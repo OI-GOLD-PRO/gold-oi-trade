@@ -87,12 +87,27 @@ export function accumulate(prev, q) {
   }
   return { vol, buy, sell };
 }
-async function pickContract(now) {
+async function pickContract(now) { return (await listContracts(now))[0] || null; }
+// สัญญาที่ยังไม่หมดอายุ เรียงจากหมดอายุใกล้สุด
+async function listContracts(now) {
   const from = ymdOf(now - 864e5), to = ymdOf(now + 12 * 864e5);
   const j = await tvScanRaw({ columns: ['root', 'expiration'], filter: [{ left: 'type', operation: 'equal', right: 'option' }, { left: 'expiration', operation: 'in_range', right: [from, to] }], ignore_unknown_fields: false, index_filters: [{ name: 'underlying_symbol', values: UNDER }] });
   const seen = new Map();
   (j.symbols || []).forEach(x => { const [root, exp] = x.f; const k = root + '|' + exp; if (!seen.has(k)) seen.set(k, { root, exp, expTs: expiryTs(exp) }); });
-  return [...seen.values()].filter(c => c.expTs * 1000 > now).sort((a, b) => a.expTs - b.expTs)[0] || null;
+  return [...seen.values()].filter(c => c.expTs * 1000 > now).sort((a, b) => a.expTs - b.expTs);
+}
+// สัญญาปัจจุบันยังไม่มี OI (เพิ่งเปิดซื้อขาย): ยืม OI ของสัญญาถัดไปที่หมดอายุใกล้สุดและมี OI แล้ว
+async function borrowOI(now, cur, F) {
+  const list = (await listContracts(now)).filter(c => !(c.root === cur.root && c.exp === cur.exp)).slice(0, 3);
+  for (const c of list) {
+    const sc = await tvScanRaw({ columns: ['strike', 'option-type'], filter: [{ left: 'type', operation: 'equal', right: 'option' }, { left: 'expiration', operation: 'equal', right: c.exp }, { left: 'root', operation: 'equal', right: c.root }, { left: 'strike', operation: 'in_range', right: [Math.floor(F * 0.9), Math.ceil(F * 1.1)] }], ignore_unknown_fields: false, index_filters: [{ name: 'underlying_symbol', values: UNDER }] });
+    const sy = sc.symbols || []; if (!sy.length) continue;
+    const q = await tvQuotes(sy.map(x => x.s), ['oi'], 20000);
+    let oiT = 0; const rows = [];
+    sy.forEach(x => { const o = q[x.s] && q[x.s].oi; const v = o && Number(o.value); if (v > 0) { rows.push([x.f[0], x.f[1] === 'call' ? 'C' : 'P', v]); if (o.time > oiT) oiT = o.time; } });
+    if (rows.length) return { root: c.root, exp: c.exp, expTs: c.expTs, oiT: oiT || null, rows, forC: cur.root + cur.exp, at: Math.floor(now / 1000) };
+  }
+  return null;
 }
 // ---------- ราคาฟิวเจอร์ Gold.F + offset (สำหรับชีต) ----------
 // แท่ง 1 นาทีจาก TradingView chart stream
@@ -309,7 +324,9 @@ export class OptState {
     try {
       const bars = (await tvBars('COMEX:GC1!', '1', 15)).filter(b => b[0] > st.lastT && b[0] + 60 <= now / 1000);
       if (bars.length) {
-        const zones = alertZones(Object.values(s.rows), s.F);
+        let zr = Object.values(s.rows);
+        if (!zr.some(r => r.oi > 0) && s.fb) zr = zr.concat(s.fb.rows.map(([k, t, oi]) => ({ k, t, oi, vol: 0 }))); // ใช้ OI ที่ยืมมาระหว่างรอ
+        const zones = alertZones(zr, s.F);
         evalAlerts(st, zones, bars, ymdOf(now + 2 * 3600e3)).forEach(a => out.push(alertText(a)));
         st.lastT = bars[bars.length - 1][0];
       }
@@ -375,6 +392,10 @@ export class OptState {
       const opts = Object.values(s.rows).filter(r => r.oi > 0 && r.iv > 0).map(r => ({ k: r.k, c: r.t === 'C', oi: r.oi, iv: r.iv, T }));
       const f = gammaFlip(opts, s.F); s.itd = f.flip; s.gexItd = f.gexAtF;
     }
+    // OI ของสัญญาปัจจุบันว่างทั้งหมด → ยืมจากสัญญาถัดไป (ตรวจใหม่ทุก 30 นาที)
+    const hasOI = Object.values(s.rows).some(r => r.oi > 0);
+    if (hasOI) { if (s.fb) delete s.fb; }
+    else if (s.F && (!s.fb || s.fb.forC !== s.root + s.exp || now / 1000 - s.fb.at > 1800)) { try { s.fb = await borrowOI(now, s, s.F); } catch (e) {} }
     s.updated = Math.floor(now / 1000); s.polls = (s.polls || 0) + 1;
     const newSess = s.newSess; delete s.newSess;
     await this.state.storage.put('s', s);
@@ -470,7 +491,7 @@ export default {
         .map(x => [x.k, x.t, x.iv == null ? null : +x.iv.toFixed(4), x.d == null ? null : +x.d.toFixed(4), x.g == null ? null : +x.g.toPrecision(4), x.bid ?? null, x.ask ?? null, x.lp ?? null, x.vol || 0, Math.round(x.buy || 0), Math.round(x.sell || 0), x.oi ?? null]) : [];
       const pick = k => s ? s[k] ?? null : null;
       const oiT = s ? Math.max(0, ...Object.values(s.rows).map(x => x.oiT || 0)) || null : null;
-      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), itd: pick('itd'), gexItd: pick('gexItd'), oiT, gmfM: s && s.m ? s.m : null, rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
+      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), itd: pick('itd'), gexItd: pick('gexItd'), oiT, gmfM: s && s.m ? s.m : null, oiFb: s && s.fb ? s.fb : null, rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
     }
     const tf = new URL(request.url).searchParams.get('tf') || '1m';
     const plan = PLAN[tf];
