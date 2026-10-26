@@ -87,9 +87,10 @@ export function accumulate(prev, q) {
   }
   return { vol, buy, sell };
 }
-// ใช้เฉพาะสัญญารายวัน/รายสัปดาห์ ข้ามออปชันรายเดือน (root "OG") ที่ OI สะสมหลายเดือนจนแนวเพี้ยนจากเกมรายวัน
+// ใช้สัญญาที่หมดอายุใกล้สุดเสมอ (วันที่ตรงกับวันหมดอายุรายเดือน = ใช้ OG รายเดือน เพราะ CME ไม่ออกสัญญารายวันของวันนั้น)
 export const isMonthly = root => root === 'OG';
-async function pickContract(now) { const l = await listContracts(now); return l.find(c => !isMonthly(c.root)) || l[0] || null; }
+const PICK_V = 2; // เปลี่ยนเลขนี้เมื่อแก้กติกาเลือกสัญญา → เลือกใหม่ทันทีรอบถัดไป
+async function pickContract(now) { return (await listContracts(now))[0] || null; }
 // สัญญาที่ยังไม่หมดอายุ เรียงจากหมดอายุใกล้สุด
 async function listContracts(now) {
   const from = ymdOf(now - 864e5), to = ymdOf(now + 12 * 864e5);
@@ -365,10 +366,11 @@ export class OptState {
   async poll() {
     const now = Date.now();
     let s = await this.state.storage.get('s');
-    let c = s && s.expTs * 1000 > now && !isMonthly(s.root) ? { root: s.root, exp: s.exp, expTs: s.expTs } : await pickContract(now);
+    let c = s && s.expTs * 1000 > now && s.pickV === PICK_V ? { root: s.root, exp: s.exp, expTs: s.expTs } : await pickContract(now);
     if (!c) return { err: 'no contract' };
     // เปลี่ยนสัญญา (หลังหมดอายุ ~01:30 น.) ให้คงค่าเปิดวันเทรดเดิมไว้ ไม่เริ่มกรอบ EM ใหม่กลางวัน
     if (!s || s.root !== c.root || s.exp !== c.exp) s = { ...c, rows: {}, polls: 0, ...(s ? { sess: s.sess, openF: s.openF, openEM: s.openEM, openT: s.openT } : {}) };
+    s.pickV = PICK_V;
     const sc = await tvScanRaw({ columns: ['strike', 'option-type', 'iv', 'delta', 'gamma', 'bid', 'ask'], filter: [{ left: 'type', operation: 'equal', right: 'option' }, { left: 'expiration', operation: 'equal', right: c.exp }, { left: 'root', operation: 'equal', right: c.root }], ignore_unknown_fields: false, index_filters: [{ name: 'underlying_symbol', values: UNDER }] });
     const syms = (sc.symbols || []).map(x => x.s);
     const q = await tvQuotes([...syms, 'COMEX:GC1!'], ['lp', 'volume', 'bid', 'ask', 'oi']);
