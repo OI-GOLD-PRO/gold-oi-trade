@@ -87,7 +87,9 @@ export function accumulate(prev, q) {
   }
   return { vol, buy, sell };
 }
-async function pickContract(now) { return (await listContracts(now))[0] || null; }
+// ใช้เฉพาะสัญญารายวัน/รายสัปดาห์ ข้ามออปชันรายเดือน (root "OG") ที่ OI สะสมหลายเดือนจนแนวเพี้ยนจากเกมรายวัน
+export const isMonthly = root => root === 'OG';
+async function pickContract(now) { const l = await listContracts(now); return l.find(c => !isMonthly(c.root)) || l[0] || null; }
 // สัญญาที่ยังไม่หมดอายุ เรียงจากหมดอายุใกล้สุด
 async function listContracts(now) {
   const from = ymdOf(now - 864e5), to = ymdOf(now + 12 * 864e5);
@@ -363,7 +365,7 @@ export class OptState {
   async poll() {
     const now = Date.now();
     let s = await this.state.storage.get('s');
-    let c = s && s.expTs * 1000 > now ? { root: s.root, exp: s.exp, expTs: s.expTs } : await pickContract(now);
+    let c = s && s.expTs * 1000 > now && !isMonthly(s.root) ? { root: s.root, exp: s.exp, expTs: s.expTs } : await pickContract(now);
     if (!c) return { err: 'no contract' };
     // เปลี่ยนสัญญา (หลังหมดอายุ ~01:30 น.) ให้คงค่าเปิดวันเทรดเดิมไว้ ไม่เริ่มกรอบ EM ใหม่กลางวัน
     if (!s || s.root !== c.root || s.exp !== c.exp) s = { ...c, rows: {}, polls: 0, ...(s ? { sess: s.sess, openF: s.openF, openEM: s.openEM, openT: s.openT } : {}) };
@@ -473,6 +475,10 @@ export default {
       if (!env || !env.OPT) return new Response('{}', { status: 500 });
       const r = await env.OPT.get(env.OPT.idFromName('main')).fetch('https://do/' + (url.pathname === '/tg/link' ? 'tglink' : 'tgtest'));
       return new Response(await r.text(), { headers: { ...CORS, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+    }
+    if (url.pathname === '/contracts') {
+      const l = await listContracts(Date.now());
+      return new Response(JSON.stringify(l.map(c => ({ ...c, monthly: isMonthly(c.root), exp_th: bkk(c.expTs) }))), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=300' } });
     }
     if (url.pathname === '/levels') {
       // ระดับประจำวันเทรดย้อนหลัง (sess = วันที่เริ่ม 05:00 น. ไทย)
