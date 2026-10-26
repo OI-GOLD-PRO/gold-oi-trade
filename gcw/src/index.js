@@ -19,9 +19,9 @@ async function yahoo(interval, range) {
       const res = (await r.json()).chart.result[0];
       const q = res.indicators.quote[0], out = [];
       (res.timestamp || []).forEach((t, i) => {
-        const o = q.open[i], h = q.high[i], l = q.low[i], c = q.close[i];
+        const o = q.open[i], h = q.high[i], l = q.low[i], c = q.close[i], v = q.volume ? q.volume[i] : null;
         if (o == null || h == null || l == null || c == null) return;
-        out.push([t, +o.toFixed(2), +h.toFixed(2), +l.toFixed(2), +c.toFixed(2)]);
+        out.push([t, +o.toFixed(2), +h.toFixed(2), +l.toFixed(2), +c.toFixed(2), v == null ? 0 : v]); // volume สัญญา GC (CME)
       });
       if (out.length) return out;
       lastErr = host + ' empty';
@@ -32,9 +32,9 @@ async function yahoo(interval, range) {
 
 export function agg4h(b1h) {
   const m = new Map();
-  for (const [t, o, h, l, c] of b1h) {
+  for (const [t, o, h, l, c, v] of b1h) {
     const k = Math.floor(t / 14400) * 14400, r = m.get(k);
-    if (!r) m.set(k, [k, o, h, l, c]); else { r[2] = Math.max(r[2], h); r[3] = Math.min(r[3], l); r[4] = c; }
+    if (!r) m.set(k, [k, o, h, l, c, v || 0]); else { r[2] = Math.max(r[2], h); r[3] = Math.min(r[3], l); r[4] = c; r[5] += v || 0; }
   }
   return [...m.keys()].sort((a, b) => a - b).map(k => m.get(k));
 }
