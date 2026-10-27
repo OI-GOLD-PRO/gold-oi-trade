@@ -303,7 +303,8 @@ export class OptState {
     const ep = body && body.sub && body.sub.endpoint;
     if (!ep || !/^https:\/\//.test(ep) || !body.sub.keys || !body.sub.keys.p256dh || !body.sub.keys.auth) return { error: 'bad subscription' };
     const rest = subs.filter(x => x.endpoint !== ep);
-    if (!body.off) rest.push({ endpoint: ep, keys: { p256dh: body.sub.keys.p256dh, auth: body.sub.keys.auth }, at: Date.now() });
+    const types = body.types && typeof body.types === 'object' ? Object.fromEntries(Object.entries(body.types).filter(([k]) => /^[a-z]{2,12}$/.test(k)).map(([k, v]) => [k, !!v])) : null;
+    if (!body.off) rest.push({ endpoint: ep, keys: { p256dh: body.sub.keys.p256dh, auth: body.sub.keys.auth }, types, at: Date.now() });
     while (rest.length > 500) rest.shift();
     await this.state.storage.put('push', rest);
     return { ok: true, subs: rest.length };
@@ -312,6 +313,7 @@ export class OptState {
     const subs = await this.state.storage.get('push') || []; if (!subs.length || !items.length) return 0;
     const v = await this.vapid(), dead = new Set(); let n = 0;
     for (const sub of subs) for (const it of items) {
+      if (it.kind && sub.types && sub.types[it.kind] === false) continue; // ผู้ใช้ปิดชนิดนี้ไว้ในเมนู ⚙️
       try { const st = await sendPush(sub, it, v); if (st === 404 || st === 410) { dead.add(sub.endpoint); break; } if (st < 300) n++; } catch (e) {}
     }
     if (dead.size) await this.state.storage.put('push', subs.filter(x => !dead.has(x.endpoint)));
@@ -322,7 +324,7 @@ export class OptState {
     const tg = await this.state.storage.get('tg'), subs = await this.state.storage.get('push') || [];
     if ((!this.env.TELEGRAM_BOT_TOKEN || !tg || !tg.chats.length) && !subs.length) return;
     const st = await this.state.storage.get('al') || { lastT: 0, warned: [] };
-    const out = [];
+    const out = [], kinds = [];
     // โซน OI/Vol จากแท่ง 1 นาทีของ GC ที่ปิดแล้ว
     try {
       const bars = (await tvBars('COMEX:GC1!', '1', 15)).filter(b => b[0] > st.lastT && b[0] + 60 <= now / 1000);
@@ -330,7 +332,7 @@ export class OptState {
         let zr = Object.values(s.rows);
         if (!zr.some(r => r.oi > 0) && s.fb) zr = zr.concat(s.fb.rows.map(([k, t, oi]) => ({ k, t, oi, vol: 0 }))); // ใช้ OI ที่ยืมมาระหว่างรอ
         const zones = alertZones(zr, s.F);
-        evalAlerts(st, zones, bars, ymdOf(now + 2 * 3600e3)).forEach(a => out.push(alertText(a)));
+        evalAlerts(st, zones, bars, ymdOf(now + 2 * 3600e3)).forEach(a => { out.push(alertText(a)); kinds.push(a.kind === 'reach' ? 'zone' : 'break'); });
         st.lastT = bars[bars.length - 1][0];
       }
     } catch (e) {}
@@ -341,7 +343,7 @@ export class OptState {
       const d = newsDue(nw.ev, now, st.warned);
       if (d) {
         st.warned = [...st.warned.filter(x => x > now - 864e5), d.ms];
-        out.push(`📰 <b>ข่าวแดง USD อีก ${Math.max(1, Math.round((d.ms - now) / 60e3))} นาที</b> (${thTime(d.ms)} น.)\n` + d.list.map(e => `● ${escH(e.title)}${e.forecast ? ' (คาด ' + escH(e.forecast) + (e.previous ? ' · ก่อน ' + escH(e.previous) : '') + ')' : ''}`).join('\n'));
+        kinds.push('news'); out.push(`📰 <b>ข่าวแดง USD อีก ${Math.max(1, Math.round((d.ms - now) / 60e3))} นาที</b> (${thTime(d.ms)} น.)\n` + d.list.map(e => `● ${escH(e.title)}${e.forecast ? ' (คาด ' + escH(e.forecast) + (e.previous ? ' · ก่อน ' + escH(e.previous) : '') + ')' : ''}`).join('\n'));
       }
     } catch (e) {}
     await this.state.storage.put('al', st);
@@ -349,7 +351,7 @@ export class OptState {
       await this.tgSend(out.join('\n\n'));
       // Push: บรรทัดแรก = หัวข้อ, ที่เหลือ = เนื้อหา (ตัดแท็ก HTML)
       const plain = h => h.replace(/<[^>]+>/g, '').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&amp;/g, '&');
-      await this.pushSend(out.map((h, i) => { const [t, ...b] = plain(h).split('\n'); return { title: t, body: b.join('\n'), tag: 'oi' + now + i }; }));
+      await this.pushSend(out.map((h, i) => { const [t, ...b] = plain(h).split('\n'); return { title: t, body: b.join('\n'), tag: 'oi' + now + i, kind: kinds[i] }; }));
     }
   }
   async saveHist(s, m, seed) {
