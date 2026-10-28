@@ -1,4 +1,4 @@
-import worker, { alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset } from './src/index.js';
+import worker, { maxPain, miniPayload, alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset } from './src/index.js';
 const arr = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const mk = (n, step) => ({ chart: { result: [{ timestamp: arr(n, i => 1792700000 + i * step), indicators: { quote: [{ open: arr(n, i => 4000 + i), high: arr(n, i => 4001 + i), low: arr(n, i => 3999 + i), close: arr(n, i => i === 3 ? null : 4000.5 + i) }] } }] } });
 let calls = [];
@@ -49,4 +49,14 @@ am = evalAlerts(ast, zs, [[4500, 0, 4001, 3990, 3999], [4800, 0, 3994, 3990, 399
 if (am.some(a => a.kind === 'down')) throw new Error('break twice'); console.log('alerts ok', alertText(am[0] || { kind: 'reach', z: zs[0], price: 3999 }));
 const nd = newsDue([{ c: 'USD', i: 'H', date: '2026-10-28T12:30:00Z', title: 'GDP' }, { c: 'USD', i: 'M', date: '2026-10-28T12:30:00Z', title: 'x' }], Date.parse('2026-10-28T12:21:00Z'), []);
 if (!nd || nd.list.length !== 1 || newsDue([{ c: 'USD', i: 'H', date: '2026-10-28T12:30:00Z' }], Date.parse('2026-10-28T12:21:00Z'), [nd.ms])) throw new Error('news'); console.log('news ok');
+// Max Pain + payload จอ Mini
+const mpr = [{ k: 3950, t: 'P', oi: 100 }, { k: 4000, t: 'C', oi: 50 }, { k: 4000, t: 'P', oi: 50 }, { k: 4050, t: 'C', oi: 100 }];
+if (maxPain(mpr) !== 4000) throw new Error('maxPain ' + maxPain(mpr)); console.log('maxPain ok');
+const ms = { root: 'G2W', expTs: Date.UTC(2026, 9, 28, 17, 30) / 1000, F: 4012, openF: 4005, openEM: 22.4, itd: 4008.3, updated: 1, m: { M: 3990.4 },
+  rows: { a: { k: 4000, t: 'P', oi: 500, vol: 10, g: 0.01 }, b: { k: 4050, t: 'C', oi: 300, vol: 0, g: 0.01 } } };
+const mgf = Array.from({ length: 45 }, (_, i) => [1000 + i * 60, 0, 0, 0, 4010 + i * 0.1]);
+const mp = miniPayload(ms, mgf, 4000);
+if (mp.p !== 4014.4 || mp.c.length !== 40 || mp.ct !== 1300 || mp.mp !== 4000 || mp.gm !== 3990.4 || mp.z.length !== 2 || mp.z[0][3] !== 'P' || mp.z[1][3] !== 'C' || mp.pw !== 4000 || mp.cw !== 4050) throw new Error('mini ' + JSON.stringify(mp));
+const mp0 = miniPayload(null, null, 4000); if (mp0.p !== null || mp0.z.length) throw new Error('mini empty');
+console.log('mini ok', JSON.stringify(mp).length, 'bytes');
 console.log('ALL OK');

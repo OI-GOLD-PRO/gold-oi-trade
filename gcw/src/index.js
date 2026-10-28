@@ -437,6 +437,44 @@ export function straddle(rows, F) {
   for (const k of ks.slice(0, 3)) { const c = mid(by.get(k).C), p = mid(by.get(k).P); if (c !== null && p !== null) return { k, em: Math.round((c + p) * 100) / 100 }; }
   return null;
 }
+// Max Pain = strike ที่ผู้ถือออปชันได้เงินรวมน้อยที่สุดถ้าราคาปิดที่ strike นั้น (ใช้ OI)
+export function maxPain(rows) {
+  const r = rows.filter(x => x.oi > 0);
+  const ks = [...new Set(r.map(x => x.k))].sort((a, b) => a - b);
+  let best = null, bv = Infinity;
+  for (const S of ks) {
+    let v = 0;
+    for (const x of r) v += x.t === 'C' ? Math.max(0, S - x.k) * x.oi : Math.max(0, x.k - S) * x.oi;
+    if (v < bv) { bv = v; best = S; }
+  }
+  return best;
+}
+// ---------- OI Gold Pro Mini (จอ ESP32) ----------
+// JSON ขนาดเล็กให้จอ: ราคา Gold.F สด + แท่ง 1 นาทีล่าสุด + ระดับประจำวัน + โซน OI/Vol ใกล้ราคา
+// z = [strike, lo, hi, 'C'|'P'|'V', callOI, putOI]
+export function miniPayload(s, gf, nowSec) {
+  const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
+  const last = gf && gf.length ? gf[gf.length - 1] : null;
+  const p = last ? last[4] : (s && s.F) || null;
+  let rows = s ? Object.values(s.rows || {}) : [];
+  if (!rows.some(x => x.oi > 0) && s && s.fb) rows = rows.concat(s.fb.rows.map(([k, t, oi]) => ({ k, t, oi, vol: 0 })));
+  const ref = p || (s && s.F);
+  const w = walls(rows, ref);
+  const zones = s ? alertZones(rows, ref) : [];
+  const z = zones.sort((a, b) => Math.abs(a.k - ref) - Math.abs(b.k - ref)).slice(0, 12).sort((a, b) => a.k - b.k)
+    .map(o => [o.k, o.lo, o.hi, o.side.indexOf('Call') >= 0 ? 'C' : o.side.indexOf('Put') >= 0 ? 'P' : 'V', o.c || 0, o.p || 0]);
+  const m = s && s.m;
+  return {
+    v: 1, now: nowSec,
+    p: r1(p), pt: last ? last[0] : null,
+    c: (gf || []).slice(-40).map(b => r1(b[4])), ct: gf && gf.length ? gf[Math.max(0, gf.length - 40)][0] : null,
+    F: r1(s && s.F), open: r1(s && s.openF), em: r1(s && s.openEM),
+    itd: r1(s && s.itd), gm: r1(m && m.M), mp: maxPain(rows), cw: w.cw, pw: w.pw,
+    exp: s && s.expTs ? bkk(s.expTs).slice(5) : null, root: s ? s.root : null,
+    upd: s ? s.updated || null : null, mkt: marketOpen(nowSec * 1000),
+    z,
+  };
+}
 const marketOpen = now => { const d = new Date(now), wd = d.getUTCDay(), h = d.getUTCHours(); if (wd === 6) return false; if (wd === 0 && h < 22) return false; if (wd === 5 && h >= 22) return false; return true; };
 
 export default {
@@ -455,6 +493,20 @@ export default {
       try {
         const gf = await tvBars('BLACKBULL:GOLD.F', '1', 40);
         const res = new Response(JSON.stringify({ symbol: 'BLACKBULL:GOLD.F', updated: Math.floor(Date.now() / 1000), bars: gf.map(b => [b[0], b[1], b[2], b[3], b[4]]) }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=20' } });
+        await cache.put(ck, res.clone());
+        return res;
+      } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
+    }
+    if (url.pathname === '/mini') {
+      // จอ OI Gold Pro Mini · แคช 15 วินาที (หลายจอเรียกพร้อมกันได้ไม่หนัก)
+      const ck = new Request(url.origin + '/mini'), cache = caches.default;
+      const hit = await cache.match(ck); if (hit) return hit;
+      const hdr = { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=15' };
+      try {
+        let s = null;
+        if (env && env.OPT) { s = await (await env.OPT.get(env.OPT.idFromName('main')).fetch('https://do/get')).json(); }
+        let gf = null; try { gf = await tvBars('BLACKBULL:GOLD.F', '1', 45); } catch (e) {}
+        const res = new Response(JSON.stringify(miniPayload(s, gf, Math.floor(Date.now() / 1000))), { headers: hdr });
         await cache.put(ck, res.clone());
         return res;
       } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
