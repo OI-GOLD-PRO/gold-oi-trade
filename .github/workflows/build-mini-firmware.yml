@@ -29,7 +29,10 @@ jobs:
           BOOT=$(find ~/.platformio/packages -name boot_app0.bin | head -1)
           esptool.py --chip esp32 merge_bin -o dist/factory.bin --flash_mode dio --flash_freq 40m --flash_size 4MB \
             0x1000 $B/bootloader.bin 0x8000 $B/partitions.bin 0xe000 "$BOOT" 0x10000 $B/firmware.bin
-          ls -l dist $B/firmware.bin
+          cp $B/firmware.bin dist/firmware.bin
+          V=$(grep -oP '#define FW_VER "\K[^"]+' OIGoldProMini/OIGoldProMini.ino)
+          printf '{"v":"%s","size":%s,"sha":"%s"}\n' "$V" "$(stat -c%s dist/firmware.bin)" "${GITHUB_SHA::7}" > dist/version.json
+          cat dist/version.json; ls -l dist
       - uses: actions/upload-artifact@v4
         with:
           name: oi-gold-pro-mini-firmware
@@ -38,7 +41,7 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add dist/factory.bin
+          git add dist/factory.bin dist/firmware.bin dist/version.json
           if git diff --cached --quiet; then echo "image unchanged"; else
             git commit -m "Mini firmware build [skip ci]"
             git pull --rebase origin main

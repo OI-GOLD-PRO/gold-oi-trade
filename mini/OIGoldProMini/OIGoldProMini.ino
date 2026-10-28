@@ -10,13 +10,19 @@
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
 #include <HTTPClient.h>
+#include <HTTPUpdate.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
 #include <LovyanGFX.hpp>
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.3.0"
+#define FW_VER "0.4.0"
+// อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
+static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
+char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
+uint32_t lastUpdCheck = 0;
+WiFiClientSecure perpCli;  // การเชื่อมต่อค้างไว้กับ Bybit (ราคาสด)
 static const char *DATA_URL = "https://gc-yahoo.oigoldpro.workers.dev/mini?tf=";
 static const uint32_t FETCH_MS = 15000;
 
@@ -113,7 +119,7 @@ int W, H; bool LS;
 const int HDR = 26, STAT = 16, TB = 24;
 int yChart, hChart, yTool;
 
-void drawStatus(); void drawWifi(); void drawKb(); void drawMain(); void drawHeader(); void drawMenu(); void openWifi();
+void doUpdate(); void drawStatus(); void drawWifi(); void drawKb(); void drawMain(); void drawHeader(); void drawMenu(); void openWifi();
 float livePrice(); bool perpFresh();
 
 // ---------------- เครื่องมือทั่วไป ----------------
@@ -301,6 +307,10 @@ void drawHeader() {
   if (getLocalTime(&t, 0)) strftime(buf, sizeof(buf), "%H:%M", &t); else strcpy(buf, "--:--");
   lcd.setFont(&fonts::Font2); lcd.setTextColor(C_TEXT, C_PANEL); lcd.setTextDatum(top_right);
   lcd.drawString(buf, bx - 25, 6); lcd.setTextDatum(top_left);
+  if (newVer[0]) {  // มีเวอร์ชันใหม่: ลูกศรทองหน้าเวลา (MENU → UPDATE)
+    int ax = bx - 25 - lcd.textWidth(buf) - 10;
+    lcd.fillTriangle(ax, 6, ax - 5, 12, ax + 5, 12, C_GOLD); lcd.fillRect(ax - 2, 12, 5, 6, C_GOLD);
+  }
 }
 
 void drawStatus() {
@@ -488,27 +498,93 @@ void drawMain() {
 }
 
 // ---------------- เมนูตั้งค่า ----------------
+// ---------------- อัปเดตผ่าน WiFi (OTA จาก GitHub) ----------------
+long verNum(const char *v) { int a = 0, b = 0, c = 0; sscanf(v, "%d.%d.%d", &a, &b, &c); return a * 10000L + b * 100 + c; }
+
+bool checkUpdate() {
+  WiFiClientSecure cli; cli.setInsecure();
+  HTTPClient http; http.setTimeout(8000);
+  String url = String(OTA_BASE) + "version.json?t=" + String(millis());
+  if (!http.begin(cli, url)) return false;
+  int code = http.GET();
+  if (code != 200) { http.end(); return false; }
+  String body = http.getString(); http.end();
+  JsonDocument doc;
+  if (deserializeJson(doc, body)) return false;
+  const char *v = doc["v"] | "";
+  if (verNum(v) > verNum(FW_VER)) strlcpy(newVer, v, sizeof(newVer)); else newVer[0] = 0;
+  return true;
+}
+
+void otaBar(int done, int total) {
+  int bw = W - 40, x = 20, y = H / 2;
+  int w = total > 0 ? (int)((long)bw * done / total) : 0;
+  lcd.fillRect(x, y, w, 12, C_GOLD);
+  lcd.fillRect(x + w, y, bw - w, 12, C_PANEL);
+  char b[16]; snprintf(b, sizeof(b), "%d%%", total > 0 ? (int)(100L * done / total) : 0);
+  lcd.setFont(&fonts::Font2); lcd.setTextColor(C_TEXT, C_BG); lcd.setTextDatum(top_center);
+  lcd.fillRect(0, y + 18, W, 18, C_BG); lcd.drawString(b, W / 2, y + 18); lcd.setTextDatum(top_left);
+}
+
+void doUpdate() {
+  lcd.fillScreen(C_BG);
+  lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG); lcd.setTextDatum(top_center);
+  char t[40]; snprintf(t, sizeof(t), "Updating v" FW_VER " -> v%s", newVer);
+  lcd.drawString(t, W / 2, H / 2 - 40);
+  lcd.setTextColor(C_DIM, C_BG); lcd.drawString("do not unplug", W / 2, H / 2 - 20);
+  lcd.setTextDatum(top_left);
+  otaBar(0, 1);
+  spr.deleteSprite();   // คืนหน่วยความจำให้การดาวน์โหลด
+  perpCli.stop();
+  WiFiClientSecure cli; cli.setInsecure();
+  httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
+  httpUpdate.rebootOnUpdate(true);
+  httpUpdate.setLedPin(-1);
+  httpUpdate.onProgress([](int d, int tot) { otaBar(d, tot); });
+  t_httpUpdate_return r = httpUpdate.update(cli, String(OTA_BASE) + "firmware.bin");
+  // มาถึงตรงนี้ = ไม่สำเร็จ (สำเร็จจะรีสตาร์ทเอง) · เครื่องยังใช้เวอร์ชันเดิมได้ตามปกติ
+  lcd.fillScreen(C_BG); lcd.setTextColor(C_DN, C_BG);
+  lcd.drawString(r == HTTP_UPDATE_NO_UPDATES ? "No update" : "Update failed", 8, 8);
+  lcd.setTextColor(C_DIM, C_BG); lcd.drawString(httpUpdate.getLastErrorString().substring(0, 40), 8, 30);
+  delay(3000);
+  applyRotation(rotIdx);
+  sc = SC_MENU; drawMenu();
+}
+
+// ---------------- เมนูตั้งค่า ----------------
+const int MENU_N = 6;
 void drawMenu() {
   lcd.fillScreen(C_BG);
   lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG);
   lcd.drawString("OI GOLD PRO MINI  v" FW_VER, 8, 6);
-  int bw = W - 16, bh = (H - 40) / 5 - 6, y = 30;
+  int bw = W - 16, bh = (H - 36) / MENU_N - 5, y = 28;
   const char *rot[4] = {"ROTATE: PORTRAIT", "ROTATE: LANDSCAPE", "ROTATE: PORTRAIT 180", "ROTATE: LANDSCAPE 180"};
   const char *br[3] = {"BRIGHTNESS: HIGH", "BRIGHTNESS: MID", "BRIGHTNESS: LOW"};
-  button(8, y, bw, bh, rot[rotIdx], C_PANEL, C_TEXT, C_LINE); y += bh + 6;
-  button(8, y, bw, bh, muted ? "SOUND: OFF" : "SOUND: ON", C_PANEL, muted ? C_DN : C_UP, C_LINE); y += bh + 6;
-  button(8, y, bw, bh, br[brightIdx], C_PANEL, C_TEXT, C_LINE); y += bh + 6;
-  button(8, y, bw, bh, "WIFI SETUP", C_PANEL, C_TEXT, C_LINE); y += bh + 6;
+  button(8, y, bw, bh, rot[rotIdx], C_PANEL, C_TEXT, C_LINE); y += bh + 5;
+  button(8, y, bw, bh, muted ? "SOUND: OFF" : "SOUND: ON", C_PANEL, muted ? C_DN : C_UP, C_LINE); y += bh + 5;
+  button(8, y, bw, bh, br[brightIdx], C_PANEL, C_TEXT, C_LINE); y += bh + 5;
+  button(8, y, bw, bh, "WIFI SETUP", C_PANEL, C_TEXT, C_LINE); y += bh + 5;
+  char u[32];
+  if (newVer[0]) snprintf(u, sizeof(u), "UPDATE TO v%s", newVer); else strcpy(u, "CHECK FOR UPDATE");
+  button(8, y, bw, bh, u, newVer[0] ? C_CALL : C_PANEL, newVer[0] ? C_BG : C_TEXT, C_LINE); y += bh + 5;
   button(8, y, bw, bh, "BACK", C_GOLD, hex(0x1a1405));
 }
 
 void handleMenuTap(int x, int y) {
-  int bh = (H - 40) / 5 - 6, i = (y - 30) / (bh + 6);
-  if (y < 30 || i > 4) return;
+  int bh = (H - 36) / MENU_N - 5, i = (y - 28) / (bh + 5);
+  if (y < 28 || i >= MENU_N) return;
   if (i == 0) { rotIdx = (rotIdx + 1) & 3; prefs.putInt("rot", rotIdx); applyRotation(rotIdx); drawMenu(); }
   else if (i == 1) { muted = !muted; prefs.putBool("mute", muted); if (muted) beepLeft = 0; else tone(SPK, 2000, 80); drawMenu(); }
   else if (i == 2) { brightIdx = (brightIdx + 1) % 3; prefs.putInt("br", brightIdx); lcd.setBrightness(BRIGHT[brightIdx]); drawMenu(); }
   else if (i == 3) openWifi();
+  else if (i == 4) {
+    if (newVer[0]) { doUpdate(); return; }
+    button(8, 28 + 4 * (bh + 5), W - 16, bh, "CHECKING...", C_PANEL, C_DIM, C_LINE);
+    bool ok = WiFi.status() == WL_CONNECTED && checkUpdate();
+    lastUpdCheck = millis();
+    drawMenu();
+    if (!ok || !newVer[0]) button(8, 28 + 4 * (bh + 5), W - 16, bh, ok ? "UP TO DATE" : "CHECK FAILED", C_PANEL, ok ? C_UP : C_DN, C_LINE);
+  }
   else { sc = SC_MAIN; drawMain(); }
 }
 
@@ -661,7 +737,6 @@ void handleKbTap(int x, int y) {
 
 // ---------------- ราคาสด: Bybit XAUUSDT + offset (แบบแอป) ----------------
 static const char *PERP_URL = "https://api.bybit.com/v5/market/tickers?category=linear&symbol=XAUUSDT";
-WiFiClientSecure perpCli;
 float perp = NAN; uint32_t perpAt = 0;
 bool perpFresh() { return okf(perp) && okf(D.off) && millis() - perpAt < 6000; }
 float livePrice() { return perpFresh() ? perp + D.off : (haveData ? D.p : NAN); }
@@ -799,6 +874,9 @@ void loop() {
   if (online && haveData && ms - lastPerp >= 1000) {  // ราคาสดทุก 1 วินาที
     lastPerp = ms;
     if (pollPerp()) { tickCandle(); evalAlerts(); drawChart(); drawHeader(); lastHdr = ms; }
+  }
+  if (online && (lastUpdCheck == 0 || ms - lastUpdCheck >= 6UL * 3600 * 1000) && ms > 20000) {  // เช็กเวอร์ชันใหม่ตอนเปิดเครื่องและทุก 6 ชม.
+    lastUpdCheck = ms; checkUpdate(); drawHeader();
   }
   if (ms - lastHdr >= 1000) { lastHdr = ms; battPct = readBatt(); drawHeader(); }
   delay(5);
