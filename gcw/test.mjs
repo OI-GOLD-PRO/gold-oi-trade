@@ -56,7 +56,7 @@ const ms = { root: 'G2W', expTs: Date.UTC(2026, 9, 28, 17, 30) / 1000, F: 4012, 
   rows: { a: { k: 4000, t: 'P', oi: 500, vol: 10, g: 0.01 }, b: { k: 4050, t: 'C', oi: 300, vol: 0, g: 0.01 } } };
 const mgf = Array.from({ length: 45 }, (_, i) => [1000 + i * 60, 0, 0, 0, 4010 + i * 0.1]);
 const mp = miniPayload(ms, mgf, 4000);
-if (mp.p !== 4014.4 || mp.c.length !== 40 || mp.ct !== 1300 || mp.mp !== 4000 || mp.gm !== 3990.4 || mp.z.length !== 2 || mp.z[0][3] !== 'P' || mp.z[1][3] !== 'C' || mp.pw !== 4000 || mp.cw !== 4050) throw new Error('mini ' + JSON.stringify(mp));
+if (mp.p !== 4014.4 || mp.c.length !== 40 || mp.ct !== 1300 || mp.b.length !== 45 || mp.b[44][3] !== 4014.4 || mp.s.length !== 2 || mp.s[0][0] !== 4000 || mp.s[0][6] !== 1 || mp.s[0][7] !== 1 || mp.s[1][5] !== 1 || mp.mp !== 4000 || mp.gm !== 3990.4 || mp.z.length !== 2 || mp.z[0][3] !== 'P' || mp.z[1][3] !== 'C' || mp.pw !== 4000 || mp.cw !== 4050) throw new Error('mini ' + JSON.stringify(mp));
 const mp0 = miniPayload(null, null, 4000); if (mp0.p !== null || mp0.z.length) throw new Error('mini empty');
 console.log('mini ok', JSON.stringify(mp).length, 'bytes');
 console.log('ALL OK');

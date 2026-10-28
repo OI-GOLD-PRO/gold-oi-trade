@@ -450,9 +450,21 @@ export function maxPain(rows) {
   return best;
 }
 // ---------- OI Gold Pro Mini (จอ ESP32) ----------
-// JSON ขนาดเล็กให้จอ: ราคา Gold.F สด + แท่ง 1 นาทีล่าสุด + ระดับประจำวัน + โซน OI/Vol ใกล้ราคา
-// z = [strike, lo, hi, 'C'|'P'|'V', callOI, putOI]
-export function miniPayload(s, gf, nowSec) {
+// JSON ขนาดเล็กให้จอ: ราคา Gold.F สด + แท่งเทียน + ระดับประจำวัน + OI/Volume ราย strike แบบในแอป
+// b = [[o,h,l,c], ...] (bs = วินาทีต่อแท่ง, bt = เวลาแท่งแรก) · c = ราคาปิด 40 แท่งล่าสุด (เผื่อเฟิร์มแวร์ v0.1)
+// s = [[strike, callOI, putOI, volCall, volPut, rankCall(0=ไม่ติด 10 อันดับ), rankPut, topVol(1/0)], ...] ใกล้ราคา ±$80
+// z = [strike, lo, hi, 'C'|'P'|'V', callOI, putOI] โซนแจ้งเตือน (กติกาเดียวกับแอป/Telegram)
+export function strikeTable(rows, F, win = 80) {
+  const by = new Map();
+  rows.forEach(r => { if (F && Math.abs(r.k - F) > F * 0.1) return; const o = by.get(r.k) || { k: r.k, c: 0, p: 0, vc: 0, vp: 0 }; if (r.t === 'C') { o.c = r.oi || 0; o.vc += r.vol || 0; } else { o.p = r.oi || 0; o.vp += r.vol || 0; } by.set(r.k, o); });
+  const all = [...by.values()];
+  const rank = f => { const m = new Map(); all.filter(o => o[f] > 0).sort((a, b) => b[f] - a[f]).slice(0, 10).forEach((o, i) => m.set(o.k, i + 1)); return m; };
+  const rC = rank('c'), rP = rank('p');
+  const topV = new Set(all.filter(o => o.vc + o.vp > 0).sort((a, b) => (b.vc + b.vp) - (a.vc + a.vp)).slice(0, 5).map(o => o.k));
+  return all.filter(o => !F || Math.abs(o.k - F) <= win).sort((a, b) => a.k - b.k)
+    .map(o => [o.k, Math.round(o.c), Math.round(o.p), Math.round(o.vc), Math.round(o.vp), rC.get(o.k) || 0, rP.get(o.k) || 0, topV.has(o.k) ? 1 : 0]);
+}
+export function miniPayload(s, gf, nowSec, bs = 60) {
   const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
   const last = gf && gf.length ? gf[gf.length - 1] : null;
   const p = last ? last[4] : (s && s.F) || null;
@@ -464,17 +476,21 @@ export function miniPayload(s, gf, nowSec) {
   const z = zones.sort((a, b) => Math.abs(a.k - ref) - Math.abs(b.k - ref)).slice(0, 12).sort((a, b) => a.k - b.k)
     .map(o => [o.k, o.lo, o.hi, o.side.indexOf('Call') >= 0 ? 'C' : o.side.indexOf('Put') >= 0 ? 'P' : 'V', o.c || 0, o.p || 0]);
   const m = s && s.m;
+  const g = gf || [], b = g.slice(-120), c1 = bs === 60 ? g.slice(-40) : [];
   return {
-    v: 1, now: nowSec,
+    v: 2, now: nowSec,
     p: r1(p), pt: last ? last[0] : null,
-    c: (gf || []).slice(-40).map(b => r1(b[4])), ct: gf && gf.length ? gf[Math.max(0, gf.length - 40)][0] : null,
+    bs, bt: b.length ? b[0][0] : null, b: b.map(x => [r1(x[1]), r1(x[2]), r1(x[3]), r1(x[4])]),
+    c: c1.map(x => r1(x[4])), ct: c1.length ? c1[0][0] : null,
     F: r1(s && s.F), open: r1(s && s.openF), em: r1(s && s.openEM),
     itd: r1(s && s.itd), gm: r1(m && m.M), mp: maxPain(rows), cw: w.cw, pw: w.pw,
     exp: s && s.expTs ? bkk(s.expTs).slice(5) : null, root: s ? s.root : null,
     upd: s ? s.updated || null : null, mkt: marketOpen(nowSec * 1000),
+    s: ref ? strikeTable(rows, ref) : [],
     z,
   };
 }
+const MINI_TF = { '1': 60, '5': 300, '15': 900, '60': 3600 };
 const marketOpen = now => { const d = new Date(now), wd = d.getUTCDay(), h = d.getUTCHours(); if (wd === 6) return false; if (wd === 0 && h < 22) return false; if (wd === 5 && h >= 22) return false; return true; };
 
 export default {
@@ -499,14 +515,15 @@ export default {
     }
     if (url.pathname === '/mini') {
       // จอ OI Gold Pro Mini · แคช 15 วินาที (หลายจอเรียกพร้อมกันได้ไม่หนัก)
-      const ck = new Request(url.origin + '/mini'), cache = caches.default;
+      const tf = MINI_TF[url.searchParams.get('tf')] ? url.searchParams.get('tf') : '1';
+      const ck = new Request(url.origin + '/mini?tf=' + tf), cache = caches.default;
       const hit = await cache.match(ck); if (hit) return hit;
       const hdr = { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=15' };
       try {
         let s = null;
         if (env && env.OPT) { s = await (await env.OPT.get(env.OPT.idFromName('main')).fetch('https://do/get')).json(); }
-        let gf = null; try { gf = await tvBars('BLACKBULL:GOLD.F', '1', 45); } catch (e) {}
-        const res = new Response(JSON.stringify(miniPayload(s, gf, Math.floor(Date.now() / 1000))), { headers: hdr });
+        let gf = null; try { gf = await tvBars('BLACKBULL:GOLD.F', tf, 120); } catch (e) {}
+        const res = new Response(JSON.stringify(miniPayload(s, gf, Math.floor(Date.now() / 1000), MINI_TF[tf])), { headers: hdr });
         await cache.put(ck, res.clone());
         return res;
       } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
