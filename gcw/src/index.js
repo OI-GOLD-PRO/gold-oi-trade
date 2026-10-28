@@ -464,7 +464,7 @@ export function strikeTable(rows, F, win = 80) {
   return all.filter(o => !F || Math.abs(o.k - F) <= win).sort((a, b) => a.k - b.k)
     .map(o => [o.k, Math.round(o.c), Math.round(o.p), Math.round(o.vc), Math.round(o.vp), rC.get(o.k) || 0, rP.get(o.k) || 0, topV.has(o.k) ? 1 : 0]);
 }
-export function miniPayload(s, gf, nowSec, bs = 60) {
+export function miniPayload(s, gf, nowSec, bs = 60, off = null) {
   const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
   const last = gf && gf.length ? gf[gf.length - 1] : null;
   const p = last ? last[4] : (s && s.F) || null;
@@ -480,7 +480,9 @@ export function miniPayload(s, gf, nowSec, bs = 60) {
   return {
     v: 2, now: nowSec,
     p: r1(p), pt: last ? last[0] : null,
-    bs, bt: b.length ? b[0][0] : null, b: b.map(x => [r1(x[1]), r1(x[2]), r1(x[3]), r1(x[4])]),
+    bs, bt: b.length ? b[0][0] : null, lt: b.length ? b[b.length - 1][0] : null,
+    off: off && off.offset != null ? off.offset : null, // ราคาสด = Bybit XAUUSDT + off (median 5 แท่ง 1 นาที Gold.F − Bybit)
+    b: b.map(x => [r1(x[1]), r1(x[2]), r1(x[3]), r1(x[4])]),
     c: c1.map(x => r1(x[4])), ct: c1.length ? c1[0][0] : null,
     F: r1(s && s.F), open: r1(s && s.openF), em: r1(s && s.openEM),
     itd: r1(s && s.itd), gm: r1(m && m.M), mp: maxPain(rows), cw: w.cw, pw: w.pw,
@@ -522,8 +524,11 @@ export default {
       try {
         let s = null;
         if (env && env.OPT) { s = await (await env.OPT.get(env.OPT.idFromName('main')).fetch('https://do/get')).json(); }
-        let gf = null; try { gf = await tvBars('BLACKBULL:GOLD.F', tf, 120); } catch (e) {}
-        const res = new Response(JSON.stringify(miniPayload(s, gf, Math.floor(Date.now() / 1000), MINI_TF[tf])), { headers: hdr });
+        const [a, b1, pp] = await Promise.allSettled([tvBars('BLACKBULL:GOLD.F', tf, 120), tf === '1' ? Promise.resolve(null) : tvBars('BLACKBULL:GOLD.F', '1', 12), tvBars('BYBIT:XAUUSDT.P', '1', 12)]);
+        const gf = a.status === 'fulfilled' ? a.value : null, g1 = tf === '1' ? gf : (b1.status === 'fulfilled' ? b1.value : null);
+        const nowS = Math.floor(Date.now() / 1000);
+        const off = g1 && pp.status === 'fulfilled' && pp.value ? liveOffset(g1, pp.value, nowS) : null;
+        const res = new Response(JSON.stringify(miniPayload(s, gf, nowS, MINI_TF[tf], off)), { headers: hdr });
         await cache.put(ck, res.clone());
         return res;
       } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
