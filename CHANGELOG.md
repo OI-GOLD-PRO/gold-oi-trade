@@ -19,6 +19,12 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.4.3 — 2026-10-29 — ChatGPT
+- ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino
+- แก้อะไร: แก้ข้อผิดพลาดคอมไพล์ drawArc ของไอคอน Refresh โดยวาดส่วนโค้งด้วย drawLine แทน
+- ระวัง: รอ GitHub Actions ยืนยันผล Build และทดสอบ OTA บนเครื่องจริง; ไม่แก้ Worker
+
+
 ### Mini v0.4.2 — 2026-10-29 — ChatGPT
 - ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino
 - แก้อะไร: เพิ่มปุ่ม Refresh ข้าง Settings (รูปเฟืองแทน MENU) ในแถบล่าง; Refresh เรียก /mini และราคา Bybit ทันที แล้ววาดหน้าจอใหม่
