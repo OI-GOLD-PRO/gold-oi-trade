@@ -17,7 +17,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.4.0"
+#define FW_VER "0.4.1"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -105,6 +105,9 @@ uint32_t alertUntil = 0, ledUntil = 0; char alertTxt[40] = ""; uint16_t alertCol
 int beepLeft = 0; uint32_t nextBeep = 0; int beepFreq = 2000;
 
 // การตั้งค่า
+// ปิดจอ: manualOff = กดปิดจากเมนู · autoOff = 0 ไม่ปิดเอง, 1 ตลาดปิด, 2 ตลาดปิด+กลางคืน 00-07, 3 ตลาดปิด+กลางคืน 22-07
+bool manualOff = false, scrOff = false; int autoOff = 1; uint32_t wakeUntil = 0;
+const char *AUTO_N[4] = {"AUTO OFF: NEVER", "AUTO OFF: MKT CLOSED", "AUTO OFF: MKT+00-07", "AUTO OFF: MKT+22-07"};
 int rotIdx = 1; bool muted = false; int brightIdx = 0; int tfIdx = 0; int zoomIdx = 2;
 const uint8_t BRIGHT[3] = {220, 110, 35};
 const char *TF_Q[4] = {"1", "5", "15", "60"};
@@ -212,6 +215,7 @@ void fireAlert(const char *txt, uint16_t col, uint8_t led, int beeps, int freq) 
   strlcpy(alertTxt, txt, sizeof(alertTxt));
   alertCol = col; alertUntil = millis() + 60000; ledUntil = millis() + 15000; ledMask = led;
   if (!muted) { beepLeft = beeps; beepFreq = freq; nextBeep = 0; }
+  if (scrOff) wakeUntil = max(wakeUntil, millis() + 60000);  // จอดับอยู่: เปิดให้เห็นแจ้งเตือน 60 วินาที
 }
 
 uint16_t zoneCol(char t) { return t == 'C' ? C_CALL : t == 'P' ? C_PUT : C_GOLD; }
@@ -497,6 +501,33 @@ void drawMain() {
   drawHeader(); drawStatus(); drawChart(); drawToolbar();
 }
 
+// ---------------- เปิด/ปิดจอ ----------------
+// ตลาดทองปิด: เสาร์ 05:00 – จันทร์ 05:00 เวลาไทย
+bool schedOff() {
+  if (!autoOff) return false;
+  struct tm t;
+  if (!getLocalTime(&t, 0)) return haveData && !D.mkt;
+  int wd = t.tm_wday, h = t.tm_hour;
+  bool closed = (wd == 6 && h >= 5) || wd == 0 || (wd == 1 && h < 5);
+  if (closed) return true;
+  if (autoOff == 2) return h < 7;
+  if (autoOff == 3) return h >= 22 || h < 7;
+  return false;
+}
+void setScreen(bool off) {
+  if (off == scrOff) return;
+  scrOff = off;
+  if (off) { lcd.setBrightness(0); }
+  else {
+    lcd.setBrightness(BRIGHT[brightIdx]);
+    if (sc == SC_MAIN) drawMain(); else if (sc == SC_MENU) drawMenu();
+  }
+}
+void updateScreenPower() {
+  if (sc == SC_WIFI || sc == SC_KB) { setScreen(false); return; }
+  setScreen((manualOff || schedOff()) && millis() >= wakeUntil);
+}
+
 // ---------------- เมนูตั้งค่า ----------------
 // ---------------- อัปเดตผ่าน WiFi (OTA จาก GitHub) ----------------
 long verNum(const char *v) { int a = 0, b = 0, c = 0; sscanf(v, "%d.%d.%d", &a, &b, &c); return a * 10000L + b * 100 + c; }
@@ -552,17 +583,19 @@ void doUpdate() {
 }
 
 // ---------------- เมนูตั้งค่า ----------------
-const int MENU_N = 6;
+const int MENU_N = 6;  // แถว: [หมุน|เสียง] [ความสว่าง|ปิดจอ] [ปิดจอเอง] [WiFi] [อัปเดต] [กลับ]
 void drawMenu() {
   lcd.fillScreen(C_BG);
   lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG);
   lcd.drawString("OI GOLD PRO MINI  v" FW_VER, 8, 6);
-  int bw = W - 16, bh = (H - 36) / MENU_N - 5, y = 28;
-  const char *rot[4] = {"ROTATE: PORTRAIT", "ROTATE: LANDSCAPE", "ROTATE: PORTRAIT 180", "ROTATE: LANDSCAPE 180"};
-  const char *br[3] = {"BRIGHTNESS: HIGH", "BRIGHTNESS: MID", "BRIGHTNESS: LOW"};
-  button(8, y, bw, bh, rot[rotIdx], C_PANEL, C_TEXT, C_LINE); y += bh + 5;
-  button(8, y, bw, bh, muted ? "SOUND: OFF" : "SOUND: ON", C_PANEL, muted ? C_DN : C_UP, C_LINE); y += bh + 5;
-  button(8, y, bw, bh, br[brightIdx], C_PANEL, C_TEXT, C_LINE); y += bh + 5;
+  int bw = W - 16, hw = (bw - 6) / 2, bh = (H - 36) / MENU_N - 5, y = 28;
+  const char *rot[4] = {"ROT: PORT", "ROT: LAND", "ROT: PORT 180", "ROT: LAND 180"};
+  const char *br[3] = {"BRIGHT: HIGH", "BRIGHT: MID", "BRIGHT: LOW"};
+  button(8, y, hw, bh, rot[rotIdx], C_PANEL, C_TEXT, C_LINE);
+  button(14 + hw, y, hw, bh, muted ? "SOUND: OFF" : "SOUND: ON", C_PANEL, muted ? C_DN : C_UP, C_LINE); y += bh + 5;
+  button(8, y, hw, bh, br[brightIdx], C_PANEL, C_TEXT, C_LINE);
+  button(14 + hw, y, hw, bh, "SCREEN OFF", C_PANEL, C_GOLD, C_LINE); y += bh + 5;
+  button(8, y, bw, bh, AUTO_N[autoOff], C_PANEL, autoOff ? C_TEXT : C_DIM, C_LINE); y += bh + 5;
   button(8, y, bw, bh, "WIFI SETUP", C_PANEL, C_TEXT, C_LINE); y += bh + 5;
   char u[32];
   if (newVer[0]) snprintf(u, sizeof(u), "UPDATE TO v%s", newVer); else strcpy(u, "CHECK FOR UPDATE");
@@ -572,10 +605,13 @@ void drawMenu() {
 
 void handleMenuTap(int x, int y) {
   int bh = (H - 36) / MENU_N - 5, i = (y - 28) / (bh + 5);
+  bool right = x > W / 2;
   if (y < 28 || i >= MENU_N) return;
-  if (i == 0) { rotIdx = (rotIdx + 1) & 3; prefs.putInt("rot", rotIdx); applyRotation(rotIdx); drawMenu(); }
-  else if (i == 1) { muted = !muted; prefs.putBool("mute", muted); if (muted) beepLeft = 0; else tone(SPK, 2000, 80); drawMenu(); }
-  else if (i == 2) { brightIdx = (brightIdx + 1) % 3; prefs.putInt("br", brightIdx); lcd.setBrightness(BRIGHT[brightIdx]); drawMenu(); }
+  if (i == 0 && !right) { rotIdx = (rotIdx + 1) & 3; prefs.putInt("rot", rotIdx); applyRotation(rotIdx); drawMenu(); }
+  else if (i == 0) { muted = !muted; prefs.putBool("mute", muted); if (muted) beepLeft = 0; else tone(SPK, 2000, 80); drawMenu(); }
+  else if (i == 1 && !right) { brightIdx = (brightIdx + 1) % 3; prefs.putInt("br", brightIdx); lcd.setBrightness(BRIGHT[brightIdx]); drawMenu(); }
+  else if (i == 1) { manualOff = true; wakeUntil = 0; sc = SC_MAIN; setScreen(true); }  // แตะจอเพื่อเปิด
+  else if (i == 2) { autoOff = (autoOff + 1) & 3; prefs.putInt("ao", autoOff); wakeUntil = millis() + 5000; drawMenu(); }
   else if (i == 3) openWifi();
   else if (i == 4) {
     if (newVer[0]) { doUpdate(); return; }
@@ -827,6 +863,7 @@ void setup() {
   muted = prefs.getBool("mute", false);
   brightIdx = prefs.getInt("br", 0) % 3;
   tfIdx = prefs.getInt("tf", 0) & 3;
+  autoOff = prefs.getInt("ao", 1) & 3;
   zoomIdx = prefs.getInt("zm", 2); if (zoomIdx < 0 || zoomIdx > 5) zoomIdx = 2;
   D.off = NAN;
 
@@ -858,6 +895,18 @@ uint32_t lastHdr = 0, lastPerp = 0;
 void loop() {
   int32_t x, y;
   serviceAlerts();
+  static uint32_t lastPow = 0;
+  if (millis() - lastPow >= 500) { lastPow = millis(); updateScreenPower(); }
+  if (scrOff) {
+    // จอดับ: แตะที่ไหนก็ได้ = เปิด (ปิดเอง → เปิดถาวร, ปิดตามเวลา → เปิด 5 นาที) · ยังดึงราคาและแจ้งเตือนต่อ
+    if (tapped(x, y)) { if (manualOff) manualOff = false; else wakeUntil = millis() + 5UL * 60 * 1000; while (lcd.getTouch(&x, &y)) delay(20); wasDown = false; updateScreenPower(); return; }  // รอปล่อยนิ้ว ไม่ให้แตะนี้ไปกดปุ่ม
+    uint32_t ms = millis();
+    bool online = WiFi.status() == WL_CONNECTED;
+    if (online && (lastFetch == 0 || ms - lastFetch >= FETCH_MS)) { lastFetch = ms; if (fetchData()) { lastOk = millis(); tickCandle(); evalAlerts(); } }
+    if (online && haveData && ms - lastPerp >= 1000) { lastPerp = ms; if (pollPerp()) { tickCandle(); evalAlerts(); } }
+    delay(10);
+    return;
+  }
   if (sc == SC_WIFI) { if (tapped(x, y)) handleWifiTap(x, y); delay(10); return; }
   if (sc == SC_KB) { if (tapped(x, y)) handleKbTap(x, y); delay(10); return; }
   if (sc == SC_MENU) { if (tapped(x, y)) handleMenuTap(x, y); delay(10); return; }
