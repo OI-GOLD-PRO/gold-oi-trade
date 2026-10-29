@@ -17,7 +17,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.4.1"
+#define FW_VER "0.4.2"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -476,15 +476,32 @@ void drawChart() {
   spr.setTextDatum(top_left);
   spr.pushSprite(0, yChart);
 }
-// แถบล่าง: ไทม์เฟรม · ซูม −/+ · เมนู
-int tbX[7], tbW[7];
+// แถบล่าง: ไทม์เฟรม · ซูม · รีเฟรช · ตั้งค่า
+int tbX[8], tbW[8];
 void layoutToolbar() {
-  int g = 3, mw = LS ? 44 : 34, zw = LS ? 34 : 28;
-  int tw = (W - g * 8 - mw - 2 * zw) / 4, x = g;
+  int g = 3, iconW = LS ? 28 : 24, zw = LS ? 30 : 25;
+  int tw = (W - 9 * g - 2 * iconW - 2 * zw) / 4, x = g;
   for (int i = 0; i < 4; i++) { tbX[i] = x; tbW[i] = tw; x += tw + g; }
-  tbX[4] = x + g; tbW[4] = zw; x += zw + 2 * g;
-  tbX[5] = x; tbW[5] = zw; x += zw + g + g;
-  tbX[6] = W - g - mw; tbW[6] = mw;
+  for (int i = 4; i < 6; i++) { tbX[i] = x; tbW[i] = zw; x += zw + g; }
+  for (int i = 6; i < 8; i++) { tbX[i] = x; tbW[i] = iconW; x += iconW + g; }
+}
+void drawToolbarIcon(int idx, bool gear) {
+  int x = tbX[idx], y = yTool + 3, w = tbW[idx], h = TB - 5;
+  lcd.fillRoundRect(x, y, w, h, 3, C_PANEL);
+  lcd.drawRoundRect(x, y, w, h, 3, C_LINE);
+  int cx = x + w / 2, cy = y + h / 2;
+  if (gear) {
+    lcd.drawCircle(cx, cy, 5, C_GOLD);
+    lcd.drawCircle(cx, cy, 2, C_GOLD);
+    for (int i = 0; i < 8; i++) {
+      float a = i * 0.785398f;
+      lcd.drawLine(cx + (int)(6 * cosf(a)), cy + (int)(6 * sinf(a)),
+                   cx + (int)(8 * cosf(a)), cy + (int)(8 * sinf(a)), C_GOLD);
+    }
+  } else {
+    lcd.drawArc(cx, cy, 7, 6, 35, 310, C_GOLD, C_PANEL);
+    lcd.fillTriangle(cx + 6, cy - 5, cx + 9, cy - 1, cx + 4, cy - 1, C_GOLD);
+  }
 }
 void drawToolbar() {
   layoutToolbar();
@@ -493,7 +510,8 @@ void drawToolbar() {
   for (int i = 0; i < 4; i++) button(tbX[i], yTool + 3, tbW[i], TB - 5, TF_N[i], i == tfIdx ? C_GOLD : C_BG, i == tfIdx ? hex(0x1a1405) : C_DIM, i == tfIdx ? 0 : C_LINE);
   button(tbX[4], yTool + 3, tbW[4], TB - 5, "-", C_PANEL, zoomIdx < 5 ? C_TEXT : C_LINE, C_LINE);
   button(tbX[5], yTool + 3, tbW[5], TB - 5, "+", C_PANEL, zoomIdx > 0 ? C_TEXT : C_LINE, C_LINE);
-  button(tbX[6], yTool + 3, tbW[6], TB - 5, "MENU", C_PANEL, C_TEXT, C_LINE);
+  drawToolbarIcon(6, false);
+  drawToolbarIcon(7, true);
 }
 
 void drawMain() {
@@ -810,10 +828,21 @@ void tickCandle() {
 // ---------------- หน้าหลัก: แตะ / ลาก ----------------
 void handleMainTap(int x, int y) {
   if (y >= yTool) {
-    for (int i = 0; i < 7; i++) if (x >= tbX[i] - 2 && x <= tbX[i] + tbW[i] + 2) {
+    for (int i = 0; i < 8; i++) if (x >= tbX[i] - 1 && x <= tbX[i] + tbW[i] + 1) {
       if (i < 4) { if (tfIdx != i) { tfIdx = i; prefs.putInt("tf", tfIdx); haveData = false; nzst = 0; panBars = 0; yShift = 0; lastFetch = 0; drawToolbar(); drawChart(); } }
       else if (i == 4) { if (zoomIdx < 5) { zoomIdx++; prefs.putInt("zm", zoomIdx); drawToolbar(); drawChart(); } }  // − = เห็นแท่งมากขึ้น
       else if (i == 5) { if (zoomIdx > 0) { zoomIdx--; prefs.putInt("zm", zoomIdx); drawToolbar(); drawChart(); } }  // + = ขยาย
+      else if (i == 6) {
+        if (WiFi.status() == WL_CONNECTED) {
+          lastFetch = millis();
+          bool ok = fetchData();
+          if (ok) { lastOk = millis(); tickCandle(); evalAlerts(); }
+          if (haveData && pollPerp()) { tickCandle(); evalAlerts(); }
+          drawMain();
+        } else {
+          drawStatus();
+        }
+      }
       else { sc = SC_MENU; drawMenu(); }
       return;
     }
