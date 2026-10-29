@@ -17,7 +17,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.4.3"
+#define FW_VER "0.4.4"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -946,6 +946,8 @@ void loop() {
   if (sc == SC_MENU) { if (tapped(x, y)) handleMenuTap(x, y); delay(10); return; }
 
   handleTouchMain();
+  // Touch can switch SC_MAIN to SC_MENU; never redraw chart over the menu in this loop.
+  if (sc != SC_MAIN) { delay(5); return; }
   if (tDown) { delay(5); return; }  // กำลังลาก: ไม่ดึงข้อมูลแทรก
   uint32_t ms = millis();
   bool online = WiFi.status() == WL_CONNECTED;
