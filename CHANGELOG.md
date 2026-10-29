@@ -19,6 +19,12 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.4.2 — 2026-10-29 — ChatGPT
+- ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino
+- แก้อะไร: เพิ่มปุ่ม Refresh ข้าง Settings (รูปเฟืองแทน MENU) ในแถบล่าง; Refresh เรียก /mini และราคา Bybit ทันที แล้ววาดหน้าจอใหม่
+- ระวัง: รอ GitHub Actions คอมไพล์และทดสอบ OTA บนเครื่องจริง; ไม่แก้ Worker
+
+
 ### Mini เอกสาร — 2026-10-29 — Claude
 - ไฟล์: mini/HANDOFF.md (ใหม่)
 - แก้อะไร: เอกสารส่งต่องานแบบละเอียด (ฮาร์ดแวร์ พิน API /mini สถาปัตยกรรม OTA ข้อห้าม งานค้าง prompt สำหรับ ChatGPT)
