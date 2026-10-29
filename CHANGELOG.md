@@ -19,6 +19,12 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.4.4 — 2026-10-29 — ChatGPT
+- ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino
+- แก้อะไร: หลังสัมผัสเปลี่ยนหน้าจากกราฟไป Settings ให้ออกจาก loop ทันที ป้องกันราคา/กราฟวาดทับเมนูในรอบเดียวกัน
+- ระวัง: รอ CI Build และทดสอบบนบอร์ดจริง; ไม่แก้ Worker
+
+
 ### Mini v0.4.3 — 2026-10-29 — ChatGPT
 - ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino
 - แก้อะไร: แก้ข้อผิดพลาดคอมไพล์ drawArc ของไอคอน Refresh โดยวาดส่วนโค้งด้วย drawLine แทน
