@@ -14,6 +14,8 @@
 2. Library Manager: **LovyanGFX**, **ArduinoJson** (v7)
 3. เปิด `OIGoldProMini/OIGoldProMini.ino` แล้ว Upload
 
+เอกสารส่งต่องาน: [HANDOFF.md](HANDOFF.md) · บันทึกการแก้: [/CHANGELOG.md](../CHANGELOG.md)
+
 GitHub Actions คอมไพล์ด้วย PlatformIO ทุกครั้งที่แก้ `mini/` และเก็บไฟล์ `dist/factory.bin`
 - อัปเดตผ่าน WiFi: Actions วาง `dist/firmware.bin` + `dist/version.json` · จอเช็กตอนเปิดเครื่องและทุก 6 ชม. (ลูกศรทองในแถบหัว) · MENU → UPDATE · เปลี่ยน `FW_VER` ทุกครั้งที่ออกเวอร์ชันใหม่
 - ปิดจอ: MENU → SCREEN OFF (แตะจอ = เปิด) · AUTO OFF: ตลาดปิด (ส. 05:00–จ. 05:00) / +กลางคืน 00–07 / +22–07 (แตะ = เปิด 5 นาที) · จอดับยังดึงราคา แจ้งเตือนจะเปิดจอ 60 วินาที
