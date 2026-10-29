@@ -17,7 +17,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.4.2"
+#define FW_VER "0.4.3"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -499,7 +499,12 @@ void drawToolbarIcon(int idx, bool gear) {
                    cx + (int)(8 * cosf(a)), cy + (int)(8 * sinf(a)), C_GOLD);
     }
   } else {
-    lcd.drawArc(cx, cy, 7, 6, 35, 310, C_GOLD, C_PANEL);
+    // Draw refresh arc with portable line primitives (LovyanGFX drawArc signatures vary).
+    for (int deg = 35; deg < 310; deg += 15) {
+      float a = deg * 0.017453293f, b = (deg + 15) * 0.017453293f;
+      lcd.drawLine(cx + (int)(7 * cosf(a)), cy + (int)(7 * sinf(a)),
+                   cx + (int)(7 * cosf(b)), cy + (int)(7 * sinf(b)), C_GOLD);
+    }
     lcd.fillTriangle(cx + 6, cy - 5, cx + 9, cy - 1, cx + 4, cy - 1, C_GOLD);
   }
 }
