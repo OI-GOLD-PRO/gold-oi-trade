@@ -215,7 +215,7 @@ void fireAlert(const char *txt, uint16_t col, uint8_t led, int beeps, int freq) 
   strlcpy(alertTxt, txt, sizeof(alertTxt));
   alertCol = col; alertUntil = millis() + 60000; ledUntil = millis() + 15000; ledMask = led;
   if (!muted) { beepLeft = beeps; beepFreq = freq; nextBeep = 0; }
-  if (scrOff) wakeUntil = max(wakeUntil, millis() + 60000);  // จอดับอยู่: เปิดให้เห็นแจ้งเตือน 60 วินาที
+  if (scrOff) { uint32_t w = millis() + 60000; if (w > wakeUntil) wakeUntil = w; }  // จอดับอยู่: เปิดให้เห็นแจ้งเตือน 60 วินาที
 }
 
 uint16_t zoneCol(char t) { return t == 'C' ? C_CALL : t == 'P' ? C_PUT : C_GOLD; }
