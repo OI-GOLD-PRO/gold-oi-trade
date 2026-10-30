@@ -216,7 +216,7 @@ export function evalAlerts(st, zones, bars, sess) {
       let q = st.z[z.k];
       if (!q) { const ins = c >= z.lo && c <= z.hi; q = st.z[z.k] = { inside: ins, lastReach: ins ? t : -1e12, reached: ins, brokeDay: null }; continue; }
       const touch = l <= z.hi && h >= z.lo;
-      if (touch && !q.inside && t - q.lastReach >= REACH_COOL) { q.lastReach = t; q.reached = true; msgs.push({ kind: 'reach', z, price: c, t }); }
+      if (touch && !q.inside && t - q.lastReach >= REACH_COOL) { q.lastReach = t; q.reached = true; msgs.push({ kind: 'reach', z, price: c > z.hi ? l : c < z.lo ? h : c, t }); } // ราคาที่แตะโซนจริง (ไส้แท่ง) ไม่ใช่ราคาปิดที่อาจอยู่นอกโซน
       q.inside = c >= z.lo && c <= z.hi;
       if (q.reached && m5 !== null && q.brokeDay !== sess) {
         const up = m5 > z.hi + BRK, dn = m5 < z.lo - BRK;
@@ -237,8 +237,9 @@ const escH = x => String(x ?? '').replace(/[&<>]/g, ch => ({ '&': '&amp;', '<': 
 const thTime = ms => new Date(ms + 7 * 3600e3).toISOString().slice(11, 16);
 export function alertText(a) {
   const z = a.z, info = `strike <b>${z.k}</b> · ${z.side}\nCall ${z.c} · Put ${z.p}${z.v ? ' · Vol ' + z.v : ''}`;
-  if (a.kind === 'reach') return `🔔 <b>ราคาถึงโซน</b> GC ${a.price.toFixed(1)}\n${info}`;
-  return `🚀 <b>เบรกเอ้า${a.kind === 'up' ? 'ขึ้น ▲' : 'ลง ▼'}</b> M5 ปิด GC ${a.price.toFixed(1)}\n${info}`;
+  const rng = `โซน ${z.lo.toFixed(2)}–${z.hi.toFixed(2)}`;
+  if (a.kind === 'reach') return `🔔 <b>ราคาถึงโซน</b> แตะ ${a.price.toFixed(2)}\n${rng}\n${info}`;
+  return `🚀 <b>เบรกเอ้า${a.kind === 'up' ? 'ขึ้น ▲' : 'ลง ▼'}</b> M5 ปิด ${a.price.toFixed(2)}\n${rng}\n${info}`;
 }
 async function tgCall(env, method, body) {
   const r = await fetch(`https://api.telegram.org/bot${env.TELEGRAM_BOT_TOKEN}/${method}`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify(body) });
@@ -325,9 +326,9 @@ export class OptState {
     if ((!this.env.TELEGRAM_BOT_TOKEN || !tg || !tg.chats.length) && !subs.length) return;
     const st = await this.state.storage.get('al') || { lastT: 0, warned: [] };
     const out = [], kinds = [];
-    // โซน OI/Vol จากแท่ง 1 นาทีของ GC ที่ปิดแล้ว
+    // โซน OI/Vol จากแท่ง 1 นาทีที่ปิดแล้วของ Gold.F (เรียลไทม์ สเกลเดียวกับกราฟในแอป) — COMEX:GC1! แบบไม่ล็อกอินช้า 10 นาที ทำให้ราคาแจ้งเตือนไม่ตรงโซน
     try {
-      const bars = (await tvBars('COMEX:GC1!', '1', 15)).filter(b => b[0] > st.lastT && b[0] + 60 <= now / 1000);
+      const bars = (await tvBars('BLACKBULL:GOLD.F', '1', 15)).filter(b => b[0] > st.lastT && b[0] + 60 <= now / 1000);
       if (bars.length) {
         let zr = Object.values(s.rows);
         if (!zr.some(r => r.oi > 0) && s.fb) zr = zr.concat(s.fb.rows.map(([k, t, oi]) => ({ k, t, oi, vol: 0 }))); // ใช้ OI ที่ยืมมาระหว่างรอ
