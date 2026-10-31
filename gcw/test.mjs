@@ -1,4 +1,4 @@
-import worker, { maxPain, miniPayload, alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset } from './src/index.js';
+import worker, { maxPain, miniPayload, alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset, applyCmeOI, tvTradeDate } from './src/index.js';
 const arr = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const mk = (n, step) => ({ chart: { result: [{ timestamp: arr(n, i => 1792700000 + i * step), indicators: { quote: [{ open: arr(n, i => 4000 + i), high: arr(n, i => 4001 + i), low: arr(n, i => 3999 + i), close: arr(n, i => i === 3 ? null : 4000.5 + i) }] } }] } });
 let calls = [];
@@ -61,3 +61,17 @@ if (mp.p !== 4014.4 || mp.c.length !== 40 || mp.ct !== 1300 || mp.b.length !== 4
 const mp0 = miniPayload(null, null, 4000); if (mp0.p !== null || mp0.z.length) throw new Error('mini empty');
 console.log('mini ok', JSON.stringify(mp).length, 'bytes');
 console.log('ALL OK');
+
+// OI จาก CME แทน TradingView เมื่อวันเทรดใหม่กว่า
+{
+  const tvT = Date.UTC(2026, 9, 29, 23, 20) / 1000; // อัปเดต 29 ต.ค. 18:20 ชิคาโก = วันเทรด 29 ต.ค.
+  if (tvTradeDate(tvT) !== 20261029) throw new Error('tvTradeDate ' + tvTradeDate(tvT));
+  const rows = { a: { k: 3990, t: 'C', oi: 0, oiT: tvT }, b: { k: 4000, t: 'P', oi: 143, oiT: tvT } };
+  const cme = { root: 'G1M', exp: 20261102, tradeDate: '20261030', rows: [[3990, 'C', 517], [4000, 'P', 378]] };
+  if (applyCmeOI(rows, cme, 'G1M', 20261103)) throw new Error('cme other contract');
+  if (!applyCmeOI(rows, cme, 'G1M', 20261102)) throw new Error('cme not applied');
+  if (rows.a.oi !== 517 || rows.b.oi !== 378 || tvTradeDate(rows.a.oiT) !== 20261030) throw new Error('cme values ' + JSON.stringify(rows));
+  const rows2 = { b: { k: 4000, t: 'P', oi: 380, oiT: Date.UTC(2026, 9, 31, 1, 0) / 1000 } }; // TV วันเทรด 30 ต.ค. แล้ว
+  if (applyCmeOI(rows2, cme, 'G1M', 20261102)) throw new Error('cme should not override same day');
+  console.log('cme oi ok');
+}

@@ -19,6 +19,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Worker OI จาก CME — 2026-11-01 — Claude
+- ไฟล์: gcw/src/index.js (poll → applyCmeOI, tvTradeDate, /opt เพิ่ม oiSrc), gcw/test.mjs
+- แก้อะไร: อ่าน cme_oi.json (repo gold-oi-pro, อัปเดตทุกชั่วโมงจากเว็บ CME) ทุก 10 นาที ถ้าเป็นสัญญาเดียวกันและวันเทรดใหม่กว่า OI ของ TradingView → ใช้ OI ของ CME (โซนแอป, แจ้งเตือน, Mini, gmf itd ใช้ชุดเดียวกัน)
+- ระวัง: oiT ที่แทนค่าตั้งเป็น 18:30 ชิคาโกของวันเทรด CME เพื่อให้แอปแปลงวันได้ตรง
+
 ### Worker แจ้งเตือนโซน — 2026-10-30 — Claude
 - ไฟล์: gcw/src/index.js (alerts, evalAlerts, alertText)
 - แก้อะไร: ราคาแจ้งเตือน Telegram/Push ไม่ตรงโซน — เดิมใช้แท่ง COMEX:GC1! ซึ่งแบบไม่ล็อกอิน TradingView ช้า 10 นาที เปลี่ยนเป็น BLACKBULL:GOLD.F (เรียลไทม์ สเกลเดียวกับกราฟแอป) · ข้อความบอกราคาที่แตะโซนจริง (ไส้แท่ง) และช่วงโซน แทนราคาปิดที่อาจอยู่นอกโซน

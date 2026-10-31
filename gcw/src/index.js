@@ -386,6 +386,15 @@ export class OptState {
       const oiv = qq.oi && qq.oi.value !== undefined ? Number(qq.oi.value) : (prev ? prev.oi : null), oiT = qq.oi && qq.oi.time ? qq.oi.time : (prev ? prev.oiT : null);
       s.rows[x.s] = { k, t: type === 'call' ? 'C' : 'P', iv, d, g, bid: qq.bid ?? bid, ask: qq.ask ?? ask, lp: qq.lp ?? (prev && prev.lp), oi: oiv, oiT, ...acc };
     });
+    // OI จากเว็บ CME (GitHub Actions cme-oi ดึงทุกชั่วโมง → cme_oi.json) ถ้าวันเทรดใหม่กว่า OI ของ TradingView ให้ใช้ของ CME
+    try {
+      let cm = await this.state.storage.get('cme');
+      if (!cm || now - cm.at > 10 * 60e3) {
+        const j = await (await fetch('https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-pro/main/cme_oi.json?t=' + Math.floor(now / 600e3))).json();
+        cm = { at: now, d: j }; await this.state.storage.put('cme', cm);
+      }
+      s.oiSrc = applyCmeOI(s.rows, cm.d, c.root, c.exp) ? 'cme' : 'tv';
+    } catch (e) { s.oiSrc = 'tv'; }
     // Expected Move = ราคา Straddle ของ strike ใกล้ราคาที่สุด (mid ของ Call + Put) · จำค่าแรกของแต่ละวันเทรด (เริ่ม 22:00 UTC)
     const em = straddle(Object.values(s.rows), s.F);
     if (em) {
@@ -417,6 +426,26 @@ export class OptState {
     await this.alerts(s, now);
     return { ok: true, root: s.root, exp: s.exp, n: syms.length, F: s.F };
   }
+}
+// วันเทรด CME (yyyymmdd) ของเวลาที่ TradingView อัปเดต OI: ก่อน 16:00 ชิคาโก = วันทำการก่อนหน้า (OI ปิดวันออกหลังวันจบ)
+export function tvTradeDate(t) {
+  const p = Object.fromEntries(new Intl.DateTimeFormat('en-US', { timeZone: 'America/Chicago', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', hourCycle: 'h23' }).formatToParts(new Date(t * 1000)).map(x => [x.type, x.value]));
+  const d = new Date(Date.UTC(+p.year, +p.month - 1, +p.day, 12));
+  if (+p.hour < 16) d.setUTCDate(d.getUTCDate() - 1);
+  while (d.getUTCDay() === 0 || d.getUTCDay() === 6) d.setUTCDate(d.getUTCDate() - 1);
+  return d.getUTCFullYear() * 10000 + (d.getUTCMonth() + 1) * 100 + d.getUTCDate();
+}
+// ใช้ OI ของ CME แทนถ้าเป็นสัญญาเดียวกันและวันเทรดใหม่กว่า (หรือ TradingView ยังไม่มี OI) · oiT ตั้งเป็น 18:30 ชิคาโกของวันเทรดนั้น (แอปแปลงกลับเป็นวันเทรดได้ตรง)
+export function applyCmeOI(rows, cme, root, exp) {
+  if (!cme || !cme.rows || !cme.rows.length || cme.root !== root || +cme.exp !== +exp) return false;
+  const R = Object.values(rows), tvT = Math.max(0, ...R.map(r => r.oi > 0 ? r.oiT || 0 : 0));
+  const cmeTD = +cme.tradeDate, tvTD = tvT ? tvTradeDate(tvT) : 0;
+  if (!(cmeTD > tvTD)) return false;
+  const m = new Map(cme.rows.map(([k, t, v]) => [k + t, v]));
+  const y = Math.floor(cmeTD / 10000), mo = Math.floor(cmeTD / 100) % 100, d = cmeTD % 100;
+  const oiT = Date.UTC(y, mo - 1, d, 23, 30) / 1000;
+  R.forEach(r => { r.oi = m.get(r.k + r.t) || 0; r.oiT = oiT; });
+  return true;
 }
 // Call Wall / Put Wall = strike ที่ gamma × OI มากสุด (Call ที่ ≥ F−10, Put ที่ ≤ F+10) แบบเดียวกับในแอป
 export function walls(rows, F) {
@@ -576,7 +605,7 @@ export default {
         .map(x => [x.k, x.t, x.iv == null ? null : +x.iv.toFixed(4), x.d == null ? null : +x.d.toFixed(4), x.g == null ? null : +x.g.toPrecision(4), x.bid ?? null, x.ask ?? null, x.lp ?? null, x.vol || 0, Math.round(x.buy || 0), Math.round(x.sell || 0), x.oi ?? null]) : [];
       const pick = k => s ? s[k] ?? null : null;
       const oiT = s ? Math.max(0, ...Object.values(s.rows).map(x => x.oiT || 0)) || null : null;
-      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), itd: pick('itd'), gexItd: pick('gexItd'), oiT, gmfM: s && s.m ? s.m : null, oiFb: s && s.fb ? s.fb : null, rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
+      return new Response(JSON.stringify({ root: pick('root'), exp: pick('exp'), expTs: pick('expTs'), F, updated: pick('updated'), polls: pick('polls'), em: pick('em'), emK: pick('emK'), sess: pick('sess'), openF: pick('openF'), openEM: pick('openEM'), openT: pick('openT'), itd: pick('itd'), gexItd: pick('gexItd'), oiT, oiSrc: pick('oiSrc'), gmfM: s && s.m ? s.m : null, oiFb: s && s.fb ? s.fb : null, rows }), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=30' } });
     }
     const tf = new URL(request.url).searchParams.get('tf') || '1m';
     const plan = PLAN[tf];
