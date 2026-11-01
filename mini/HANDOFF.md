@@ -3,7 +3,7 @@
 > สำหรับผู้พัฒนาร่วม (Claude / ChatGPT / คน) อ่านไฟล์นี้ให้จบก่อนแก้อะไรก็ตาม
 > **กติกาสำคัญ:** แก้เสร็จทุกครั้งต้องจดลง [`/CHANGELOG.md`](../CHANGELOG.md) (ดูหัวข้อ 11) — ไม่จด = อีกฝั่งไม่รู้ และอาจแก้ทับกัน
 >
-> อัปเดตเอกสารล่าสุด: 2026-11-01 · เฟิร์มแวร์ปัจจุบัน **v0.7.1** (ดูรายการล่าสุดใน CHANGELOG เสมอ) · `/mini` API **v2**
+> อัปเดตเอกสารล่าสุด: 2026-11-01 · เฟิร์มแวร์ปัจจุบัน **v0.7.2** (ดูรายการล่าสุดใน CHANGELOG เสมอ) · `/mini` API **v2**
 
 ---
 
@@ -165,11 +165,13 @@ Bybit REST ทุก 1 วินาที (งานเน็ตแกน 0) ┘
 | `exp`, `root` | str | เวลาหมดอายุ (ไทย "MM-DD HH:MM") / รหัสสัญญา |
 | `upd` | sec | เวลา Worker poll ล่าสุด |
 | `mkt` | bool | ตลาดเปิดอยู่ไหม |
-| `s` | `[[k, callOI, putOI, volC, volP, rankC, rankP, topVol, iv×10],…]` | ราย strike ภายใน ±$80 จากราคา · rank 0 = ไม่ติด 10 อันดับ · topVol 1 = Volume 5 อันดับแรก |
+| `s` | `[[k, callOI, putOI, volC, volP, rankC, rankP, topVol, ivOTM%×10 (คำนวณเอง)],…]` | ราย strike ภายใน ±$80 จากราคา · rank 0 = ไม่ติด 10 อันดับ · topVol 1 = Volume 5 อันดับแรก |
 | `z` | `[[k, lo, hi, 'C'\|'P'\|'V', callOI, putOI],…]` | โซนแจ้งเตือน ≤12 โซนใกล้ราคา (กติกาเดียวกับ Telegram ของแอป) |
 | `nx` | `[[วินาที UTC, ชื่อข่าว ≤28 ตัว ASCII],…]` | ข่าวแดง USD (impact H) 3 รายการถัดไปภายใน 24 ชม. จาก `gold-oi-pro/news.json` (แคช 10 นาที) · v0.6 |
-| `iv` | float | ATM IV % (เฉลี่ย Call/Put ของ strike ใกล้ราคาสุด) · v0.7.1 |
-| `sd` | float | 1SD ($) = F × IV × √(เวลาถึงหมดอายุ/ปี) · v0.7.1 |
+| `iv` | float | ATM IV % คำนวณเอง Black-76 (`smileIV` แบบ live.js) · v0.7.2 |
+| `sm` | `[F, a, b, c]` | เส้นโค้ง IV: iv% = a + b·(k−F) + c·(k−F)² (fit ±4% รอบ F จาก put-call parity) · v0.7.2 |
+| `os`, `vs` | `[ค่ากลาง, SD]` | การกระจายของ OI / Volume ราย strike (ถ่วงน้ำหนัก) · v0.7.2 |
+| `sd` | float | SD ของ OI ($) — **ผู้ใช้กำหนด: SD = ส่วนเบี่ยงเบนมาตรฐานของ OI ไม่ใช่จาก IV** · v0.7.2 |
 | `dl` | `[คะแนน, 'A'\|'C'\|'N']` | Dealer รับ/ไล่/กลาง (`dealerScore`: gamma เทียบ flip 0.4 + แรงตรึง 0.25 × vol/OI ±$10) · v0.7.1 |
 
 **ต้องมี `code=` (v0.7)** = รหัสเข้าแอป OI Gold Pro · Worker ตรวจกับ Apps Script `?api=login` (ชีตเดียวกับแอป) แคชผล 10 นาที (ไม่ผ่าน 2 นาที) · ไม่ผ่าน → 401 `{error:'auth', reason}` · Apps Script ล่ม → 503
@@ -202,7 +204,7 @@ Bybit REST ทุก 1 วินาที (งานเน็ตแกน 0) ┘
 - ธงสื่อสาร (volatile): `reqFetch` (ขอดึงทันที เช่น เปลี่ยน TF/ปุ่มรีเฟรช), `reqUpd`, `updRes`, `netPause`, `netIdle`, `ndReady`
 
 ### หน้าจอ (`enum Screen`)
-`SC_MAIN` กราฟ · `SC_MENU` เมนู · `SC_WIFI` รายการ WiFi · `SC_KB` คีย์บอร์ด (`kbFor` 0 = รหัส WiFi, 1 = รหัสเข้าใช้: `openCode` / `submitCode` → งานเน็ต `doLogin` → `loginResult`) · `SC_DASH` Dashboard 3 หน้า (แตะแถบหัว/เมนู · ปุ่มล่าง CLOSE / < PREV / NEXT > · หน้า 1 สรุป ds + Dealer + IV/SD, หน้า 2 OI ราย strike + เส้น IV + แถบ ±1/±2SD, หน้า 3 Volume ราย strike) · `SC_SND` ตั้งเสียงแจ้งเตือน (เมนู → ALERT SOUNDS)
+`SC_MAIN` กราฟ · `SC_MENU` เมนู · `SC_WIFI` รายการ WiFi · `SC_KB` คีย์บอร์ด (`kbFor` 0 = รหัส WiFi, 1 = รหัสเข้าใช้: `openCode` / `submitCode` → งานเน็ต `doLogin` → `loginResult`) · `SC_DASH` Dashboard 3 หน้า (แตะแถบหัว/เมนู · ปุ่มล่าง CLOSE / < PREV / NEXT > · หน้า 1 สรุป ds + Dealer + IV/SD, หน้า 2 OI ราย strike เต็มจอ + เส้นโค้ง IV + แถบ ±1/±2 SD ของ OI, หน้า 3 Volume ราย strike + SD ของ Volume) · `SC_SND` ตั้งเสียงแจ้งเตือน (เมนู → ALERT SOUNDS)
 
 ท่าทางบนหน้ากราฟ (v0.6.1): แตะปุ่มล่าง · ลาก = เลื่อนกราฟ (ลากซ้ายได้ เว้นที่ว่างขวา) · **แตะ 1 ครั้ง = เส้นเล็ง / แตะอีกครั้ง = ซ่อน** (ตอนแสดงอยู่ ลาก = ย้ายเส้นเล็ง · `overlayCross`: ราคา, เวลา/OHLC แท่ง, OI strike ใกล้สุด) · แตะแกนราคาหรือป้าย AUTO = กลับอัตโนมัติ · **แตะแถบหัว = Dashboard** · แตะแถบแจ้งเตือน = ปิด
 

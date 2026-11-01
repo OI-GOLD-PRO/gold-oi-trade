@@ -485,7 +485,56 @@ export function maxPain(rows) {
 // b = [[o,h,l,c], ...] (bs = วินาทีต่อแท่ง, bt = เวลาแท่งแรก) · c = ราคาปิด 40 แท่งล่าสุด (เผื่อเฟิร์มแวร์ v0.1)
 // s = [[strike, callOI, putOI, volCall, volPut, rankCall(0=ไม่ติด 10 อันดับ), rankPut, topVol(1/0)], ...] ใกล้ราคา ±$80
 // z = [strike, lo, hi, 'C'|'P'|'V', callOI, putOI] โซนแจ้งเตือน (กติกาเดียวกับแอป/Telegram)
-export function strikeTable(rows, F, win = 80) {
+// ---------- IV คำนวณเอง (Black-76 แบบ live.js ของแอป) ----------
+// ราคา = ค่ากลาง bid/ask (spread แคบ) ไม่มีใช้ราคาล่าสุด · F = put-call parity ของ 3 strike ใกล้ราคา · IV ฝั่ง OTM (Put ใต้ F / Call เหนือ F) แบบเส้น Vol ของ CME
+const NCDF = x => { const z = Math.abs(x) / Math.SQRT2, t = 1 / (1 + 0.3275911 * z), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z); return x >= 0 ? 0.5 * (1 + y) : 0.5 * (1 - y); };
+const b76 = (F, K, T, sg, call) => { const v = sg * Math.sqrt(T), d1 = (Math.log(F / K) + v * v / 2) / v, d2 = d1 - v; return call ? F * NCDF(d1) - K * NCDF(d2) : K * NCDF(-d2) - F * NCDF(-d1); };
+export function implVol(p, F, K, T, call) {
+  const intr = Math.max(0, call ? F - K : K - F);
+  if (!(p > intr + 0.02) || !(T > 0)) return null;
+  let lo = 0.01, hi = 3;
+  if (b76(F, K, T, hi, call) < p) return null;
+  for (let i = 0; i < 60; i++) { const m = (lo + hi) / 2; if (b76(F, K, T, m, call) > p) hi = m; else lo = m; }
+  return (lo + hi) / 2;
+}
+export function smileIV(rows, ref, T) {
+  const by = new Map(); rows.forEach(r => { const o = by.get(r.k) || {}; o[r.t] = r; by.set(r.k, o); });
+  const px = (k, t) => { const r = (by.get(k) || {})[t]; if (!r) return null; const b = +r.bid, a = +r.ask; if (b > 0 && a > b) { const m = (a + b) / 2; if (a - b <= Math.max(0.6, m * 0.25)) return m; } const l = +r.lp; return l > 0 ? l : null; };
+  const ks = [...by.keys()].sort((a, b) => a - b);
+  const par = ks.filter(k => px(k, 'C') && px(k, 'P')).sort((a, b) => Math.abs(a - ref) - Math.abs(b - ref)).slice(0, 3).map(k => k + px(k, 'C') - px(k, 'P')).sort((a, b) => a - b);
+  const F = par.length ? par[Math.floor(par.length / 2)] : ref;
+  const pts = [];
+  ks.forEach(k => {
+    if (Math.abs(k - F) > F * 0.08) return;
+    const otmC = k >= F, p1 = px(k, otmC ? 'C' : 'P');
+    let iv = p1 ? implVol(p1, F, k, T, otmC) : null;
+    if (iv === null) { const p2 = px(k, otmC ? 'P' : 'C'); if (p2) iv = implVol(p2, F, k, T, !otmC); }
+    if (iv !== null && iv > 0.02 && iv < 2.5) pts.push([k, iv]);
+  });
+  if (pts.length < 3) return null;
+  const ivAt = x => { if (x <= pts[0][0]) return pts[0][1]; if (x >= pts[pts.length - 1][0]) return pts[pts.length - 1][1]; for (let i = 1; i < pts.length; i++) if (x <= pts[i][0]) { const [k0, v0] = pts[i - 1], [k1, v1] = pts[i]; return v0 + (v1 - v0) * (x - k0) / (k1 - k0); } return null; };
+  // เส้นโค้ง smile: ถดถอยกำลังสอง iv% = a + b·d + c·d² (d = k − F) เฉพาะ strike ใกล้ราคา (±4%)
+  const fp = pts.filter(([k]) => Math.abs(k - F) <= F * 0.04).map(([k, v]) => [k - F, v * 100]);
+  let fit = null;
+  if (fp.length >= 4) {
+    const S = [0, 0, 0, 0, 0], Y = [0, 0, 0];
+    fp.forEach(([d, v]) => { let p = 1; for (let i = 0; i < 5; i++) { S[i] += p; if (i < 3) Y[i] += v * p; p *= d; } });
+    const M = [[S[0], S[1], S[2], Y[0]], [S[1], S[2], S[3], Y[1]], [S[2], S[3], S[4], Y[2]]];
+    for (let i = 0; i < 3; i++) { let piv = i; for (let r = i + 1; r < 3; r++) if (Math.abs(M[r][i]) > Math.abs(M[piv][i])) piv = r; [M[i], M[piv]] = [M[piv], M[i]]; if (Math.abs(M[i][i]) < 1e-12) { fit = false; break; } for (let r = 0; r < 3; r++) if (r !== i) { const f = M[r][i] / M[i][i]; for (let c = i; c < 4; c++) M[r][c] -= f * M[i][c]; } }
+    if (fit !== false) fit = [M[0][3] / M[0][0], M[1][3] / M[1][1], M[2][3] / M[2][2]];
+    else fit = null;
+  }
+  return { F, pts, ivAt, fit };
+}
+// SD ของการกระจาย (OI หรือ Volume) ราย strike: ค่ากลางถ่วงน้ำหนัก + ส่วนเบี่ยงเบนมาตรฐาน
+export function distSD(rows, F, field) {
+  const by = new Map(); rows.forEach(r => { if (F && Math.abs(r.k - F) > F * 0.1) return; by.set(r.k, (by.get(r.k) || 0) + (Number(r[field]) || 0)); });
+  let w = 0, m = 0; by.forEach((v, k) => { w += v; m += v * k; });
+  if (!(w > 0)) return null;
+  m /= w; let q = 0; by.forEach((v, k) => { q += v * (k - m) * (k - m); });
+  return [Math.round(m * 10) / 10, Math.round(Math.sqrt(q / w) * 10) / 10];
+}
+export function strikeTable(rows, F, win = 80, ivOf = null) {
   const by = new Map();
   rows.forEach(r => { if (F && Math.abs(r.k - F) > F * 0.1) return; const o = by.get(r.k) || { k: r.k, c: 0, p: 0, vc: 0, vp: 0, ivC: null, ivP: null }; if (r.t === 'C') { o.c = r.oi || 0; o.vc += r.vol || 0; if (r.iv > 0) o.ivC = r.iv; } else { o.p = r.oi || 0; o.vp += r.vol || 0; if (r.iv > 0) o.ivP = r.iv; } by.set(r.k, o); });
   const all = [...by.values()];
@@ -493,7 +542,7 @@ export function strikeTable(rows, F, win = 80) {
   const rC = rank('c'), rP = rank('p');
   const topV = new Set(all.filter(o => o.vc + o.vp > 0).sort((a, b) => (b.vc + b.vp) - (a.vc + a.vp)).slice(0, 5).map(o => o.k));
   return all.filter(o => !F || Math.abs(o.k - F) <= win).sort((a, b) => a.k - b.k)
-    .map(o => { const iv = F && o.k < F ? (o.ivP || o.ivC) : (o.ivC || o.ivP);  // IV ฝั่ง OTM (แบบ smile)
+    .map(o => { const iv = ivOf ? ivOf(o.k) : (F && o.k < F ? (o.ivP || o.ivC) : (o.ivC || o.ivP));  // IV ฝั่ง OTM (แบบ smile)
       return [o.k, Math.round(o.c), Math.round(o.p), Math.round(o.vc), Math.round(o.vp), rC.get(o.k) || 0, rP.get(o.k) || 0, topV.has(o.k) ? 1 : 0, iv ? Math.round(iv * 1000) : 0]; });  // [8] = IV % × 10
 }
 // ATM IV (%) = เฉลี่ย IV Call/Put ของ strike ใกล้ราคาที่สุดที่มี IV
@@ -530,6 +579,8 @@ export function miniPayload(s, gf, nowSec, bs = 60, off = null) {
   const last = gf && gf.length ? gf[gf.length - 1] : null;
   const p = last ? last[4] : (s && s.F) || null;
   let rows = s ? Object.values(s.rows || {}) : [];
+  const ivT = s && s.expTs ? Math.max((s.expTs - (s.updated || nowSec)) / (365 * 86400), 60 / (365 * 86400)) : null;  // เวลาถึงหมดอายุ ณ เวลาที่ได้ราคาออปชัน
+  const sm = ivT && rows.length && (s.F || (gf && gf.length)) ? smileIV(rows, s.F || gf[gf.length - 1][4], ivT) : null;
   if (!rows.some(x => x.oi > 0) && s && s.fb) rows = rows.concat(s.fb.rows.map(([k, t, oi]) => ({ k, t, oi, vol: 0 })));
   const ref = p || (s && s.F);
   const w = walls(rows, ref);
@@ -549,9 +600,12 @@ export function miniPayload(s, gf, nowSec, bs = 60, off = null) {
     itd: r1(s && s.itd), gm: r1(m && m.M), mp: maxPain(rows), cw: w.cw, pw: w.pw,
     exp: s && s.expTs ? bkk(s.expTs).slice(5) : null, root: s ? s.root : null,
     upd: s ? s.updated || null : null, mkt: marketOpen(nowSec * 1000),
-    s: ref ? strikeTable(rows, ref) : [],
-    iv: ref ? atmIv(rows, ref) : null,
-    sd: (() => { const iv = ref ? atmIv(rows, ref) : null; if (!iv || !s || !s.expTs) return null; const T = Math.max((s.expTs - nowSec) / (365 * 86400), 1 / (365 * 24)); return r1(ref * iv / 100 * Math.sqrt(T)); })(),
+    s: ref ? strikeTable(rows, ref, 80, sm ? (k => { const p = sm.pts.find(x => x[0] === k); return p ? p[1] : null; }) : null) : [],
+    iv: sm ? r1(sm.ivAt(sm.F) * 100) : (ref ? atmIv(rows, ref) : null),   // ATM IV % (คำนวณเองจากราคาออปชัน แบบแอป)
+    sm: sm && sm.fit ? [r1(sm.F), +sm.fit[0].toFixed(3), +sm.fit[1].toFixed(5), +sm.fit[2].toFixed(7)] : null,  // เส้นโค้ง IV: iv% = a + b·(k−F) + c·(k−F)²
+    os: ref ? distSD(rows, ref, 'oi') : null,   // [ค่ากลาง, SD] ของ OI ราย strike
+    vs: ref ? distSD(rows, ref, 'vol') : null,  // [ค่ากลาง, SD] ของ Volume วันนี้
+    sd: (() => { const o = ref ? distSD(rows, ref, 'oi') : null; return o ? o[1] : null; })(),  // 1 SD ของ OI (ผู้ใช้กำหนด)
     dl: ref && s ? dealerScore(rows, ref, s.itd || (m && m.M) || null, s.em || s.openEM, s.expTs, nowSec * 1000) : null,
     z,
   };

@@ -20,7 +20,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.7.1"
+#define FW_VER "0.7.2"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -105,7 +105,9 @@ struct Data {
   Zone z[12]; int nz;
   Strike s[MAXS]; int ns;
   float cw, pw;                       // Call Wall / Put Wall
-  float ivA, sd; int dlS; char dlM;   // ATM IV %, 1SD ($), Dealer คะแนน −100..100 + โหมด A รับ / C ไล่ / N กลาง
+  float ivA, sd; int dlS; char dlM;   // ATM IV %, 1SD ของ OI ($), Dealer คะแนน −100..100 + โหมด A รับ / C ไล่ / N กลาง
+  bool smOk; float smF, smA, smB, smC; // เส้นโค้ง IV: iv% = A + B·(k−F) + C·(k−F)²
+  float osM, osS, vsM, vsS;           // ค่ากลาง/SD ของ OI และ Volume ราย strike
   uint32_t nxT[3]; char nxS[3][30]; int nn;  // ข่าวแดง USD ถัดไป (เวลา UTC วินาที, ชื่อ)
 };
 Data D;                  // ของจอ (แกน 1) เท่านั้น
@@ -220,6 +222,9 @@ bool fetchMini(int tf) {
   NT.mkt = doc["mkt"] | true; mktOpen = NT.mkt;
   NT.cw = jf(doc["cw"]); NT.pw = jf(doc["pw"]);
   NT.ivA = jf(doc["iv"]); NT.sd = jf(doc["sd"]);
+  NT.smOk = doc["sm"].is<JsonArray>();
+  if (NT.smOk) { NT.smF = doc["sm"][0] | 0.0f; NT.smA = doc["sm"][1] | 0.0f; NT.smB = doc["sm"][2] | 0.0f; NT.smC = doc["sm"][3] | 0.0f; }
+  NT.osM = jf(doc["os"][0]); NT.osS = jf(doc["os"][1]); NT.vsM = jf(doc["vs"][0]); NT.vsS = jf(doc["vs"][1]);
   if (doc["dl"].is<JsonArray>()) { NT.dlS = doc["dl"][0] | 0; const char *dm = doc["dl"][1] | "N"; NT.dlM = dm[0]; } else NT.dlM = 0;
   NT.nn = 0;
   for (JsonVariant v : doc["nx"].as<JsonArray>()) {
@@ -870,7 +875,7 @@ void drawDashP1() {
   }
   // 4) ตัวเลขจากออปชัน
   int cw2 = (LS ? W / 2 : W) / 2 - 6, nx0 = LS ? W / 2 + 6 : x0;
-  struct NV { const char *n; float v; uint16_t c; } nv[8] = {{"MaxPain", D.mp, C_MP}, {"gmf itd", D.itd, C_GMI}, {"gmf M", D.gm, C_GMM}, {"EM +-", D.em, C_EM}, {"CallWall", D.cw, C_CALL}, {"PutWall", D.pw, C_PUT}, {"ATM IV%", D.ivA, C_TEXT}, {"1 SD", D.sd, C_GOLD}};
+  struct NV { const char *n; float v; uint16_t c; } nv[8] = {{"MaxPain", D.mp, C_MP}, {"gmf itd", D.itd, C_GMI}, {"gmf M", D.gm, C_GMM}, {"EM +-", D.em, C_EM}, {"CallWall", D.cw, C_CALL}, {"PutWall", D.pw, C_PUT}, {"ATM IV%", D.ivA, C_TEXT}, {"OI 1SD", D.sd, C_GOLD}};
   for (int i = 0; i < 8; i++) {
     int xx = nx0 + (i % 2) * cw2, yy = ny + (i / 2) * 12;
     lcd.setTextColor(C_DIM, C_BG); lcd.drawString(nv[i].n, xx, yy);
@@ -878,7 +883,7 @@ void drawDashP1() {
   }
 }
 
-// หน้า 2/3: กราฟแท่งราย strike แบบ CME QuikStrike — OI (Call/Put) + เส้น IV + แถบ ±1/±2 SD · หรือ Volume วันนี้
+// หน้า 2/3: กราฟแท่งราย strike เต็มจอ แบบ CME QuikStrike — OI (Call/Put) + เส้นโค้ง IV + แถบ ±1/±2 SD ของ OI · หรือ Volume วันนี้ + SD ของ Volume
 void drawStrikeBars(bool vol) {
   lcd.fillScreen(C_BG);
   lcd.fillRect(0, 0, W, 22, C_PANEL);
@@ -887,65 +892,70 @@ void drawStrikeBars(bool vol) {
   if (D.exp[0]) { char e[24]; snprintf(e, sizeof(e), "exp %s", D.exp); lcd.drawString(e, W - 30, 7); }
   lcd.setTextDatum(top_left);
   float P = livePrice(); if (!okf(P)) P = D.F;
-  if (!haveData || !D.ns || !okf(P)) { lcd.setFont(&fonts::Font2); lcd.setTextColor(C_DIM, C_BG); lcd.drawString("no data", 10, 40); return; }
-  float sd = okf(D.sd) && D.sd > 0 ? D.sd : NAN;
-  float half = okf(sd) ? max(2.3f * sd, 20.0f) : 40.0f, k0 = P - half, k1 = P + half;
-  int idx[MAXS], m = 0;
-  for (int i = 0; i < D.ns; i++) if (D.s[i].k >= k0 && D.s[i].k <= k1) idx[m++] = i;
-  if (!m) { lcd.setFont(&fonts::Font2); lcd.setTextColor(C_DIM, C_BG); lcd.drawString("no strikes near price", 10, 40); return; }
-  const int px0 = 6, px1 = W - (vol ? 6 : 28), py0 = 40, py1 = H - DFT - 14;
+  if (!haveData || D.ns < 2 || !okf(P)) { lcd.setFont(&fonts::Font2); lcd.setTextColor(C_DIM, C_BG); lcd.drawString("no data", 10, 40); return; }
+  // ช่วงแกนนอน = strike ทั้งหมดที่ได้มา (±$80 จากราคา) → เต็มจอ
+  float k0 = D.s[0].k, k1 = D.s[D.ns - 1].k; if (k1 - k0 < 10) { k0 -= 5; k1 += 5; }
+  float pad = (k1 - k0) * 0.02f; k0 -= pad; k1 += pad;
+  const int px0 = 2, px1 = W - (vol ? 2 : 26), py0 = 34, py1 = H - DFT - 12;
   auto X = [&](float k) { return px0 + (int)((k - k0) / (k1 - k0) * (px1 - px0)); };
-  // แถบ SD (แบบ CME): ±2SD จาง, ±1SD เข้มกว่า
-  if (okf(sd)) {
-    int a2 = max(px0, X(P - 2 * sd)), b2 = min(px1, X(P + 2 * sd)), a1 = max(px0, X(P - sd)), b1 = min(px1, X(P + sd));
-    lcd.fillRect(a2, py0, b2 - a2, py1 - py0, blend(0xe0b44c, 0x04060a, 0.07f));
-    lcd.fillRect(a1, py0, b1 - a1, py1 - py0, blend(0xe0b44c, 0x04060a, 0.15f));
+  // แถบ SD ของการกระจาย OI / Volume (ค่ากลางถ่วงน้ำหนัก ± SD)
+  float mu = vol ? D.vsM : D.osM, sd = vol ? D.vsS : D.osS;
+  char t[32];
+  if (okf(mu) && okf(sd) && sd > 0) {
+    int a2 = max(px0, X(mu - 2 * sd)), b2 = min(px1, X(mu + 2 * sd)), a1 = max(px0, X(mu - sd)), b1 = min(px1, X(mu + sd));
+    if (b2 > a2) lcd.fillRect(a2, py0, b2 - a2, py1 - py0, blend(0xe0b44c, 0x04060a, 0.07f));
+    if (b1 > a1) lcd.fillRect(a1, py0, b1 - a1, py1 - py0, blend(0xe0b44c, 0x04060a, 0.16f));
+    int xm = X(mu); if (xm > px0 && xm < px1) for (int y = py0; y < py1; y += 6) lcd.drawFastVLine(xm, y, 3, blend(0xe0b44c, 0x04060a, 0.5f));
     lcd.setTextColor(C_GOLD, C_BG); lcd.setTextDatum(top_center);
-    if (a1 > px0 + 10) lcd.drawString("-1SD", a1, 27); if (b1 < px1 - 10) lcd.drawString("+1SD", b1, 27);
-    if (a2 > px0 + 10 && a1 - a2 > 26) lcd.drawString("-2SD", a2, 27); if (b2 < px1 - 10 && b2 - b1 > 26) lcd.drawString("+2SD", b2, 27);
+    if (a1 > px0 + 12) lcd.drawString("-1SD", a1, py0 + 12);
+    if (b1 < px1 - 12) lcd.drawString("+1SD", b1, py0 + 12);
+    if (a2 > px0 + 12 && a1 - a2 > 28) lcd.drawString("-2SD", a2, py0 + 12);
+    if (b2 < px1 - 12 && b2 - b1 > 28) lcd.drawString("+2SD", b2, py0 + 12);
     lcd.setTextDatum(top_left);
   }
   // แท่ง Call (ซ้ายของ strike) / Put (ขวา)
-  long mx = 1; for (int j = 0; j < m; j++) { Strike &q = D.s[idx[j]]; mx = max(mx, vol ? max(q.vc, q.vp) : max(q.c, q.p)); }
-  int gap = px1 - px0; for (int j = 1; j < m; j++) gap = min(gap, X(D.s[idx[j]].k) - X(D.s[idx[j - 1]].k));
-  int bw = max(1, min(8, gap / 2 - 1)), hh = py1 - py0 - 4;
+  long mx = 1; for (int j = 0; j < D.ns; j++) { Strike &q = D.s[j]; mx = max(mx, vol ? max(q.vc, q.vp) : max(q.c, q.p)); }
+  int gap = px1 - px0; for (int j = 1; j < D.ns; j++) gap = min(gap, X(D.s[j].k) - X(D.s[j - 1].k));
+  int bw = max(1, min(10, gap / 2 - 1)), hh = py1 - py0 - 4;
   uint16_t cc = vol ? C_VOLC : C_CALL, pc = vol ? C_VOLP : C_PUT;
-  for (int j = 0; j < m; j++) {
-    Strike &q = D.s[idx[j]]; int x = X(q.k);
+  for (int j = 0; j < D.ns; j++) {
+    Strike &q = D.s[j]; int x = X(q.k);
     long cv = vol ? q.vc : q.c, pv = vol ? q.vp : q.p;
     if (cv > 0) { int h = max(1L, hh * cv / mx); lcd.fillRect(x - bw, py1 - h, bw, h, cc); }
     if (pv > 0) { int h = max(1L, hh * pv / mx); lcd.fillRect(x, py1 - h, bw, h, pc); }
   }
   lcd.drawFastHLine(px0, py1, px1 - px0, C_LINE);
-  // ป้าย strike แกนล่าง (เว้นระยะไม่ให้ชน)
   lcd.setTextColor(C_DIM, C_BG); lcd.setTextDatum(top_center);
   int lastLx = -100;
-  for (int j = 0; j < m; j++) { int x = X(D.s[idx[j]].k); if (x - lastLx < 30) continue; char t[8]; snprintf(t, sizeof(t), "%.0f", D.s[idx[j]].k); lcd.drawString(t, x, py1 + 3); lastLx = x; }
+  for (int j = 0; j < D.ns; j++) { int x = X(D.s[j].k); if (x - lastLx < 32 || x < px0 + 12 || x > px1 - 12) continue; snprintf(t, sizeof(t), "%.0f", D.s[j].k); lcd.drawString(t, x, py1 + 2); lastLx = x; }
   lcd.setTextDatum(top_left);
-  // เส้น IV (หน้า OI) สเกลขวา
+  // เส้นโค้ง IV (หน้า OI) แบบ CME: โค้งจากการ fit + จุด IV จริงราย strike · สเกลขวา
   if (!vol) {
-    int lo = 32767, hi = -1;
-    for (int j = 0; j < m; j++) { int v = D.s[idx[j]].iv; if (v > 0) { lo = min(lo, v); hi = max(hi, v); } }
-    if (hi > 0) {
-      if (hi - lo < 10) { lo -= 5; hi += 5; }
-      auto Yv = [&](int v) { return py1 - 4 - (int)((long)(v - lo) * (hh - 8) / (hi - lo)); };
-      int ppx = -1, ppy = 0;
-      for (int j = 0; j < m; j++) { int v = D.s[idx[j]].iv; if (v <= 0) continue; int x = X(D.s[idx[j]].k), y = Yv(v); if (ppx >= 0) lcd.drawWideLine(ppx, ppy, x, y, 1.2f, C_TEXT); ppx = x; ppy = y; }
-      char t[10]; lcd.setTextColor(C_TEXT, C_BG);
-      snprintf(t, sizeof(t), "%.1f", hi / 10.0f); lcd.drawString(t, px1 + 2, py0 - 2);
-      snprintf(t, sizeof(t), "%.1f", lo / 10.0f); lcd.drawString(t, px1 + 2, py1 - 10);
+    float lo = 1e9, hi = -1e9;
+    auto ivc = [&](float k) { float d = k - D.smF; return D.smA + D.smB * d + D.smC * d * d; };
+    if (D.smOk) for (int x = px0; x <= px1; x += 2) { float v = ivc(k0 + (float)(x - px0) / (px1 - px0) * (k1 - k0)); lo = min(lo, v); hi = max(hi, v); }
+    for (int j = 0; j < D.ns; j++) if (D.s[j].iv > 0) { float v = D.s[j].iv / 10.0f; lo = min(lo, v); hi = max(hi, v); }
+    if (hi > lo - 1e8 && hi > 0) {
+      if (hi - lo < 2) { lo -= 1; hi += 1; }
+      float pd = (hi - lo) * 0.08f; lo -= pd; hi += pd;
+      auto Yv = [&](float v) { return py1 - 2 - (int)((v - lo) / (hi - lo) * (hh - 4)); };
+      for (int j = 0; j < D.ns; j++) if (D.s[j].iv > 0) lcd.fillCircle(X(D.s[j].k), Yv(D.s[j].iv / 10.0f), 1, C_DIM);
+      if (D.smOk) { int ppx = -1, ppy = 0; for (int x = px0; x <= px1; x += 2) { int y = Yv(ivc(k0 + (float)(x - px0) / (px1 - px0) * (k1 - k0))); if (y >= py0 && y <= py1 && ppx >= 0) lcd.drawWideLine(ppx, ppy, x, y, 1.0f, C_TEXT); ppx = x; ppy = max(py0, min(py1, y)); } }
+      lcd.setTextColor(C_TEXT, C_BG);
+      snprintf(t, sizeof(t), "%.1f", hi); lcd.drawString(t, px1 + 2, py0);
+      snprintf(t, sizeof(t), "%.1f", lo); lcd.drawString(t, px1 + 2, py1 - 9);
       lcd.drawString("IV%", px1 + 2, (py0 + py1) / 2 - 4);
     }
   }
   // ราคาปัจจุบัน
-  int xp = X(P); for (int y = py0; y < py1; y += 4) lcd.drawFastVLine(xp, y, 2, C_GOLD);
-  char t[24]; snprintf(t, sizeof(t), "%.1f", P); lcd.setTextColor(C_BG, C_GOLD);
-  int tw = lcd.textWidth(t) + 4, tx = max(px0, min(px1 - tw, xp - tw / 2)); lcd.fillRect(tx, py0, tw, 10, C_GOLD); lcd.drawString(t, tx + 2, py0 + 1);
-  // คำอธิบาย
-  lcd.fillRect(px0, 25, 10, 6, cc); lcd.setTextColor(C_DIM, C_BG); lcd.drawString(vol ? "Call vol" : "Call", px0 + 13, 24);
-  int lx2 = px0 + 13 + lcd.textWidth(vol ? "Call vol" : "Call") + 8;
-  lcd.fillRect(lx2, 25, 10, 6, pc); lcd.drawString(vol ? "Put vol" : "Put", lx2 + 13, 24);
-  if (okf(sd)) { snprintf(t, sizeof(t), "1SD %.1f", sd); lcd.setTextColor(C_GOLD, C_BG); lcd.setTextDatum(top_right); lcd.drawString(t, px1, 24); lcd.setTextDatum(top_left); }
+  int xp = X(P); if (xp >= px0 && xp <= px1) { for (int y = py0; y < py1; y += 4) lcd.drawFastVLine(xp, y, 2, C_GOLD);
+    snprintf(t, sizeof(t), "%.1f", P); lcd.setTextColor(C_BG, C_GOLD);
+    int tw = lcd.textWidth(t) + 4, tx = max(px0, min(px1 - tw, xp - tw / 2)); lcd.fillRect(tx, py0, tw, 10, C_GOLD); lcd.drawString(t, tx + 2, py0 + 1); }
+  // คำอธิบายบนแถบหัว (ใต้ชื่อ)
+  int lx = 6; lcd.fillRect(lx, 25, 8, 6, cc); lcd.setTextColor(C_DIM, C_BG); lcd.drawString("C", lx + 10, 24);
+  lcd.fillRect(lx + 20, 25, 8, 6, pc); lcd.drawString("P", lx + 30, 24);
+  if (okf(sd)) { snprintf(t, sizeof(t), "%s SD %.1f", vol ? "VOL" : "OI", sd); lcd.setTextColor(C_GOLD, C_BG); lcd.setTextDatum(top_right); lcd.drawString(t, px1, 24); lcd.setTextDatum(top_left); }
+  if (!vol && okf(D.ivA)) { snprintf(t, sizeof(t), "ATM IV %.1f%%", D.ivA); lcd.setTextColor(C_TEXT, C_BG); lcd.drawString(t, lx + 44, 24); }
 }
 void openDash() { sc = SC_DASH; dashPage = 0; reqDash = true; dashAt = millis(); drawDash(); }
 

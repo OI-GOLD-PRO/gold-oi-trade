@@ -19,6 +19,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.7.2 + Worker — 2026-11-02 — Claude
+- ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino, gcw/src/index.js, gcw/test.mjs, mini/HANDOFF.md
+- แก้อะไร (ผู้ใช้แจ้ง): (1) IV ไม่ตรง — เดิมใช้ IV ของ TradingView (ข้อมูลเพี้ยนกับสัญญารายวัน) → คำนวณเองด้วย Black-76 แบบ live.js ของแอป (`smileIV`: mid bid/ask ถ้า spread แคบ ไม่งั้นราคาล่าสุด, F จาก put-call parity, IV ฝั่ง OTM, T ณ เวลาที่ poll) (2) **SD = ส่วนเบี่ยงเบนมาตรฐานของ OI** (ผู้ใช้กำหนด) → `distSD` ค่ากลางถ่วงน้ำหนัก OI ± SD (`os`), ของ Volume (`vs`), `sd` = SD ของ OI · หน้า 1 เปลี่ยนป้ายเป็น "OI 1SD" (3) หน้า 2 เส้น IV โค้งแบบ CME — fit กำลังสองรอบ F (±4%) ส่ง `sm` = [F, a, b, c] จอวาดโค้ง + จุด IV จริง (4) หน้า 2/3 กราฟเต็มจอ (แกนนอน = strike ทั้งหมดที่ส่งมา)
+- ระวัง: `s[i][8]` เปลี่ยนเป็น IV ที่คำนวณเอง (0 = คำนวณไม่ได้) · `iv` = ATM IV จาก smile (ไม่มี smile ใช้ค่า TradingView) · ยังไม่ได้ทดสอบบนบอร์ดจริง
+
 ### Mini v0.7.1 + Worker — 2026-11-02 — Claude
 - ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino, gcw/src/index.js, gcw/test.mjs, mini/HANDOFF.md
 - แก้อะไร (ผู้ใช้ขอ): Dashboard หน้า 1 เพิ่ม **Dealer** (รับ/ไล่ แบบ dealer.js แต่ไม่รวม Big Traders) + **ATM IV** + **1SD** · ปุ่มล่าง CLOSE / < PREV / NEXT > · **หน้า 2** = แท่ง OI ราย strike (Call/Put) + เส้น IV (smile ฝั่ง OTM) + แถบ ±1/±2 SD แบบ CME QuikStrike · **หน้า 3** = แท่ง Volume วันนี้ราย strike + แถบ SD · Worker /mini เพิ่ม `iv` (ATM IV %), `sd` (1SD $ = F × IV × √T ถึงหมดอายุ), `dl` ([คะแนน −100..100, 'A'|'C'|'N']) และ `s[i][8]` = IV % × 10

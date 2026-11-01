@@ -1,4 +1,4 @@
-import worker, { atmIv, dealerScore, loginCode, checkCode, miniNews, miniDash, maxPain, miniPayload, alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset, applyCmeOI, tvTradeDate } from './src/index.js';
+import worker, { implVol, smileIV, distSD, atmIv, dealerScore, loginCode, checkCode, miniNews, miniDash, maxPain, miniPayload, alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset, applyCmeOI, tvTradeDate } from './src/index.js';
 const arr = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const mk = (n, step) => ({ chart: { result: [{ timestamp: arr(n, i => 1792700000 + i * step), indicators: { quote: [{ open: arr(n, i => 4000 + i), high: arr(n, i => 4001 + i), low: arr(n, i => 3999 + i), close: arr(n, i => i === 3 ? null : 4000.5 + i) }] } }] } });
 let calls = [];
@@ -79,6 +79,15 @@ if (md.sc !== 100 || md.g !== 62 || md.lv[0][0] !== 4050 || md.lv[1][1] !== 'S' 
   const dA = dealerScore(rr, 4010, 3990, 20, 1000 + 3600, 1000 * 1000), dC = dealerScore(rr, 3970, 3990, 20, 1000 + 3600, 1000 * 1000);
   if (!dA || dA[1] !== 'A' || !dC || dC[1] !== 'C') throw new Error('dealer ' + JSON.stringify([dA, dC]));
   console.log('iv/dealer ok', dA, dC); }
+{ // IV คำนวณเอง: สร้างราคาจาก smile ที่รู้ค่า แล้วต้องได้ IV กลับมาใกล้เดิม
+  const F = 4000, T = 1 / 365, ivOf = k => 0.18 + 0.000004 * (k - F) * (k - F), rows = [];
+  const NC = x => { const z = Math.abs(x) / Math.SQRT2, t = 1 / (1 + 0.3275911 * z), y = 1 - (((((1.061405429 * t - 1.453152027) * t) + 1.421413741) * t - 0.284496736) * t + 0.254829592) * t * Math.exp(-z * z); return x >= 0 ? 0.5 * (1 + y) : 0.5 * (1 - y); };
+  const B = (K, sg, c) => { const v = sg * Math.sqrt(T), d1 = (Math.log(F / K) + v * v / 2) / v, d2 = d1 - v; return c ? F * NC(d1) - K * NC(d2) : K * NC(-d2) - F * NC(-d1); };
+  for (let k = 3900; k <= 4100; k += 10) for (const t of ['C', 'P']) { const p = B(k, ivOf(k), t === 'C'); rows.push({ k, t, bid: p - 0.05, ask: p + 0.05, oi: 10, vol: 1 }); }
+  const sm = smileIV(rows, 4001, T);
+  if (!sm || Math.abs(sm.F - 4000) > 0.5 || Math.abs(sm.ivAt(4000) - 0.18) > 0.01 || !sm.fit || Math.abs(sm.fit[0] - 18) > 1 || !(sm.fit[2] > 0)) throw new Error('smile ' + JSON.stringify(sm && { F: sm.F, atm: sm.ivAt(4000), fit: sm.fit }));
+  const ds = distSD([{ k: 3990, oi: 10 }, { k: 4010, oi: 10 }], 4000, 'oi'); if (ds[0] !== 4000 || ds[1] !== 10) throw new Error('distSD ' + ds);
+  console.log('smile ok', sm.fit, ds); }
 console.log('mini news/dash ok');
 
 
