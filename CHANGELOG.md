@@ -19,6 +19,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Worker /mini/dash — 2026-11-02 (2) — Claude
+- ไฟล์: gcw/src/index.js
+- แก้อะไร: จอขึ้น "sheet auth" → ลองรหัสของจอก่อน แล้วค่อย DASH_CODE (เดิมใช้ DASH_CODE ก่อน ถ้าตั้งผิดจะไม่ผ่าน) · ข้อความ error บอกว่าตัวไหนไม่ผ่าน "(code)" / "(DASH_CODE)"
+- ระวัง: ถ้ายังขึ้น "sheet auth (code)" = Apps Script api=data ไม่รับรหัสที่ api=login รับ → ต้องดูโค้ด doGet ใน Apps Script (ไม่ได้อยู่ใน repo)
+
 ### Worker /mini/dash — 2026-11-02 — Claude
 - ไฟล์: gcw/src/index.js
 - แก้อะไร: ผู้ใช้แจ้ง Dashboard บนจอไม่ขึ้น (ยังไม่ได้ตั้ง secret DASH_CODE) → /mini/dash อ่านชีตด้วยรหัสแอปที่จอส่งมา (ผ่าน checkCode แล้ว) · DASH_CODE ไม่จำเป็นแล้ว (ถ้าตั้งไว้ใช้ก่อน) · คำตอบ Apps Script ที่ไม่ใช่ JSON → error "sheet HTTP xxx"
