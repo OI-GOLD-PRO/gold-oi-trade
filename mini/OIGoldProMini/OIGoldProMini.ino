@@ -1,7 +1,8 @@
 // OI Gold Pro Mini — จอ ESP32 CYD 2.8" (ESP32-2432S028 รุ่น 2 USB, ชิปจอ ILI9341)
 // กราฟแท่งเทียน GC1 (Gold.F, ราคาสดจาก Bybit XAUUSDT + offset ทุก 1 วินาทีจากงานเน็ตแกน 0) + OI/Volume ราย strike แบบแอป OI Gold Pro (Call เขียว แนวต้าน · Put แดง แนวรับ)
 // เส้น gmf itd / gmf M / Max Pain / Expected Move / Call-Put Wall · โซน OI 10 อันดับ · แจ้งเตือนเข้าโซน/ทะลุโซน (ปิด M5)/ข่าวแดง
-// v0.6: หน้า Dashboard (แตะแถบหัว), เส้นเล็ง (แตะค้างบนกราฟ), เสียงแจ้งเตือนแยกชนิด + ระดับเสียง, เปิดใช้งานต่อเครื่อง
+// v0.6: หน้า Dashboard (แตะแถบหัว), เส้นเล็ง (แตะบนกราฟ), เสียงแจ้งเตือนแยกชนิด + ระดับเสียง
+// v0.7: เข้าใช้ด้วยรหัสเดียวกับแอป OI Gold Pro (ตรวจกับชีตผ่าน Worker /mini/login) แทนรหัส GX
 // ข้อมูลจาก Worker: https://gc-yahoo.oigoldpro.workers.dev/mini?tf=1|5|15|60 (อัปเดตทุก 15 วินาที)
 //
 // Arduino IDE:  Board = ESP32 Dev Module
@@ -19,17 +20,17 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.6.1"
+#define FW_VER "0.7.0"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
 WiFiClientSecure perpCli;  // REST สำรองของ Bybit (ใช้เมื่อ WebSocket หลุด)
 static const char *WORKER = "https://gc-yahoo.oigoldpro.workers.dev";
 static const char *DATA_URL = "https://gc-yahoo.oigoldpro.workers.dev/mini?tf=";
-char devId[13] = "", devTok[40] = "";  // id = MAC ของชิป · tok = ได้หลังเจ้าของอนุมัติ (Preferences "tok")
-volatile int actSt = 0;  // 0 ยังไม่รู้, 1 รออนุมัติ, 2 ใช้ได้, 3 ถูกปิด
-volatile bool actAuth = false, reqAct = false, newTok = false;
-char actCode[10] = "", tokBuf[40] = "";
+// รหัสเข้าใช้ = รหัสเข้าแอป OI Gold Pro (Preferences "code") · หมดอายุ/ถูกลบในชีต → /mini ตอบ 401 → จอขึ้นหน้าใส่รหัส
+char loginCode[64] = "", tryCode[64] = "", okCode[64] = "", loginExp[24] = "";
+volatile bool reqLogin = false; volatile int loginRes = 0;  // 0 รอ, 1 ใช้ได้, 2 รหัสผิด, 3 หมดอายุ, 4 เซิร์ฟเวอร์/เน็ตมีปัญหา
+String urlEnc(const char *p) { String o; char b[4]; for (; *p; p++) { char c = *p; if (isalnum((unsigned char)c) || c == '-' || c == '_' || c == '.' || c == '~') o += c; else { snprintf(b, sizeof(b), "%%%02X", (uint8_t)c); o += b; } } return o; }
 
 static const uint32_t FETCH_MS = 15000;
 
@@ -147,6 +148,7 @@ void fireAlert(const char *txt, uint16_t col, uint8_t led, int kind); void drawC
 void tickCandle(); void evalAlerts(); bool checkUpdate(); void pauseNet(bool p);
 void doUpdate(); void drawStatus(); void drawWifi(); void drawKb(); void drawMain(); void drawHeader(bool full = false); void drawMenu(); void openWifi();
 float livePrice(); bool perpFresh();
+void openCode(const char *msg); void finishCode(); void submitCode();
 
 // ---------------- เครื่องมือทั่วไป ----------------
 float jf(JsonVariant v) { return v.isNull() ? NAN : v.as<float>(); }
@@ -192,7 +194,7 @@ Data NT;  // ที่พักระหว่างแปลง JSON (งาน
 bool fetchMini(int tf) {
   WiFiClientSecure cli; cli.setInsecure();
   HTTPClient http; http.setTimeout(9000);
-  String url = String(DATA_URL) + TF_Q[tf] + "&id=" + devId + (devTok[0] ? String("&tok=") + devTok : String());
+  String url = String(DATA_URL) + TF_Q[tf] + "&code=" + urlEnc(loginCode);
   if (!http.begin(cli, url)) { miniErr = -100; return false; }
   int code = http.GET();
   if (code != 200) { http.end(); miniErr = code; return false; }
@@ -485,12 +487,9 @@ void overlayCross();
 // หน้าวินิจฉัยตอนยังไม่มีข้อมูลกราฟ (บอกว่าติดตรงไหน)
 void drawDiag() {
   char b[48]; int y = 8;
-  if (miniErr == 401) {  // ยังไม่ได้อนุมัติเครื่องนี้
-    spr.setFont(&fonts::Font2); spr.setTextDatum(top_left); spr.setTextColor(C_GOLD); spr.drawString("ACTIVATE THIS SCREEN", 8, y); y += 22;
-    spr.setFont(&fonts::Font4); spr.setTextColor(C_TEXT); spr.drawString(actCode[0] ? actCode : "...", 8, y); y += 30;
-    spr.setFont(&fonts::Font0); spr.setTextColor(C_DIM);
-    spr.drawString(actSt == 3 ? "this screen was disabled by owner" : "send this code to the owner to approve", 8, y); y += 12;
-    snprintf(b, sizeof(b), "id %s", devId); spr.drawString(b, 8, y);
+  if (miniErr == 401) {  // รหัสเข้าใช้ไม่ถูก/หมดอายุ (ปกติจอจะไปหน้าใส่รหัสเอง)
+    spr.setFont(&fonts::Font2); spr.setTextDatum(top_left); spr.setTextColor(C_GOLD); spr.drawString("APP CODE NEEDED", 8, y); y += 22;
+    spr.setFont(&fonts::Font0); spr.setTextColor(C_DIM); spr.drawString("MENU > APP CODE  (same code as the app)", 8, y);
     return;
   }
   spr.setFont(&fonts::Font2); spr.setTextDatum(top_left);
@@ -741,7 +740,7 @@ bool fetchDash() {  // งานเน็ต
   static Dash X;
   WiFiClientSecure cli; cli.setInsecure();
   HTTPClient http; http.setTimeout(15000);
-  String url = String(WORKER) + "/mini/dash?id=" + devId + "&tok=" + devTok;
+  String url = String(WORKER) + "/mini/dash?code=" + urlEnc(loginCode);
   memset(&X, 0, sizeof(X));
   bool ok = false;
   if (http.begin(cli, url)) {
@@ -947,8 +946,8 @@ void drawMenu() {
   char u[32];
   if (newVer[0]) snprintf(u, sizeof(u), "UPDATE v%s", newVer); else strcpy(u, "CHECK UPDATE");
   button(8, y, hw, bh, u, newVer[0] ? C_CALL : C_PANEL, newVer[0] ? C_BG : C_TEXT, C_LINE);
-  snprintf(u, sizeof(u), "%s %s", actCode[0] ? actCode : "DEVICE", actSt == 2 ? "OK" : actSt == 1 ? "WAIT" : actSt == 3 ? "OFF" : "--");
-  button(14 + hw, y, hw, bh, u, C_PANEL, actSt == 2 ? C_UP : actSt == 3 ? C_DN : C_DIM, C_LINE); y += bh + 5;
+  if (loginExp[0]) snprintf(u, sizeof(u), "CODE %.10s", loginExp); else strcpy(u, "APP CODE");
+  button(14 + hw, y, hw, bh, u, C_PANEL, miniErr == 401 ? C_DN : C_TEXT, C_LINE); y += bh + 5;
   button(8, y, hw, bh, "DASHBOARD", C_PANEL, C_GOLD, C_LINE);
   button(14 + hw, y, hw, bh, "BACK", C_GOLD, hex(0x1a1405));
 }
@@ -969,7 +968,7 @@ void handleMenuTap(int x, int y) {
   else if (i == 2) { autoOff = (autoOff + 1) & 3; prefs.putInt("ao", autoOff); wakeUntil = millis() + 5000; drawMenu(); }
   else if (i == 3 && !right) openWifi();
   else if (i == 3) { sc = SC_SND; drawSnd(); }
-  else if (i == 4 && right) { reqAct = true; }  // เช็กสถานะเปิดใช้งานใหม่ (ผลขึ้นเมื่อเปิดเมนูครั้งหน้า)
+  else if (i == 4 && right) openCode(nullptr);  // เปลี่ยนรหัสเข้าใช้
   else if (i == 4) {
     int hw = (W - 16 - 6) / 2;
     if (newVer[0]) { doUpdate(); return; }
@@ -986,6 +985,8 @@ struct Net { char ssid[33]; int rssi; bool open; };
 Net nets[7]; int nNets = 0;
 char selSsid[33] = ""; char pass[64] = ""; int passLen = 0;
 bool kbShift = false, kbSym = false;
+int kbFor = 0;  // 0 = รหัส WiFi, 1 = รหัสเข้าใช้ (รหัสแอป)
+char kbMsg[40] = ""; uint16_t kbMsgCol = 0;
 
 void openWifi() {
   sc = SC_WIFI;
@@ -1040,7 +1041,10 @@ void drawKbText() {
 void drawKb() {
   lcd.fillScreen(C_BG);
   lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG);
-  char t[48]; snprintf(t, sizeof(t), "Password: %s", selSsid);
+  char t[48];
+  if (kbFor == 1) snprintf(t, sizeof(t), "%s", kbMsg[0] ? kbMsg : "APP CODE (same as OI Gold Pro app)");
+  else snprintf(t, sizeof(t), "Password: %s", selSsid);
+  if (kbFor == 1 && kbMsg[0]) lcd.setTextColor(kbMsgCol, C_BG);
   lcd.drawString(t, 6, 2);
   drawKbText();
   for (int r = 0; r < 4; r++) {
@@ -1088,6 +1092,7 @@ void finishWifi() {
   sc = SC_MAIN;
   applyRotation(rotIdx);
   pauseNet(false); reqFetch = true;
+  if (!loginCode[0]) { openCode(nullptr); return; }  // ยังไม่เคยใส่รหัสเข้าใช้
   drawMain();
 }
 
@@ -1102,6 +1107,31 @@ void tryConnectSelected() {
   }
 }
 
+// ---------------- หน้าใส่รหัสเข้าใช้ (ใช้คีย์บอร์ดเดียวกับ WiFi) ----------------
+void openCode(const char *msg) {
+  sc = SC_KB; kbFor = 1; kbShift = false; kbSym = false;
+  lcd.setRotation(rotIdx >= 2 ? 3 : 1); W = lcd.width(); H = lcd.height();
+  pass[0] = 0; passLen = 0;
+  if (msg) { strlcpy(kbMsg, msg, sizeof(kbMsg)); kbMsgCol = C_DN; } else kbMsg[0] = 0;
+  drawKb();
+}
+void finishCode() { kbFor = 0; kbMsg[0] = 0; sc = SC_MAIN; applyRotation(rotIdx); drawMain(); }
+void submitCode() {
+  if (!passLen || reqLogin) return;
+  if (WiFi.status() != WL_CONNECTED) { strcpy(kbMsg, "NO WIFI - try again"); kbMsgCol = C_DN; drawKb(); return; }
+  strlcpy(tryCode, pass, sizeof(tryCode)); loginRes = 0; reqLogin = true;  // งานเน็ตตรวจกับ /mini/login
+  strcpy(kbMsg, "checking..."); kbMsgCol = C_GOLD; drawKb();
+}
+void loginResult() {  // loop เรียกเมื่องานเน็ตตรวจเสร็จ
+  int r = loginRes; loginRes = 0;
+  if (r == 1) {
+    strlcpy(loginCode, okCode, sizeof(loginCode)); prefs.putString("code", loginCode); prefs.putString("cexp", loginExp);
+    miniErr = 1; haveData = false; reqFetch = true; finishCode();
+    return;
+  }
+  strcpy(kbMsg, r == 2 ? "WRONG CODE" : r == 3 ? "CODE EXPIRED" : "SERVER ERROR - try again"); kbMsgCol = C_DN; drawKb();
+}
+
 void handleWifiTap(int x, int y) {
   if (y >= H - 32) { if (x < 160) openWifi(); else finishWifi(); return; }
   int i = (y - 26) / 25;
@@ -1110,7 +1140,7 @@ void handleWifiTap(int x, int y) {
     pass[0] = 0; passLen = 0;
     if (nets[i].open) { tryConnectSelected(); return; }
     if (prefs.getString("ssid", "") == selSsid) { strlcpy(pass, prefs.getString("pass", "").c_str(), 64); passLen = strlen(pass); }
-    kbShift = false; kbSym = false; sc = SC_KB; drawKb();
+    kbFor = 0; kbShift = false; kbSym = false; sc = SC_KB; drawKb();
   }
 }
 
@@ -1120,10 +1150,14 @@ void handleKbTap(int x, int y) {
     else if (x < 104) { kbSym = !kbSym; drawKb(); }
     else if (x < 196) kbAdd(' ');
     else if (x < 254) { if (passLen) { pass[--passLen] = 0; drawKbText(); } }
+    else if (kbFor == 1) submitCode();
     else tryConnectSelected();
     return;
   }
-  if (y < 50) { if (y < 20) { sc = SC_WIFI; drawWifi(); } return; }  // แตะหัวข้อ = กลับรายการ WiFi
+  if (y < 50) {  // แตะหัวข้อ = กลับรายการ WiFi / ยกเลิกเปลี่ยนรหัส (ถ้ามีรหัสที่ใช้ได้อยู่แล้ว)
+    if (y < 20) { if (kbFor == 0) { sc = SC_WIFI; drawWifi(); } else if (loginCode[0] && miniErr != 401) finishCode(); }
+    return;
+  }
   int r = (y - 50) / 36; if (r < 0 || r > 3) return;
   const char *row = KB_ROWS[kbSym][r]; int n = strlen(row), off = (W - n * 32) / 2;
   int i = (x - off) / 32; if (x < off || i >= n) return;
@@ -1132,24 +1166,19 @@ void handleKbTap(int x, int y) {
   kbAdd(c);
 }
 
-// ---------------- เปิดใช้งานเครื่อง (งานเน็ต) ----------------
-// จอส่ง id (MAC) ไป /mini/act → ได้รหัส GX-xxxx · เจ้าของอนุมัติที่ /mini/admin → จอได้ tok เก็บใน Preferences
-bool checkAct() {
+// ---------------- ตรวจรหัสเข้าใช้ (งานเน็ต) ----------------
+int doLogin() {
   WiFiClientSecure cli; cli.setInsecure();
-  HTTPClient http; http.setTimeout(8000);
-  if (!http.begin(cli, String(WORKER) + "/mini/act?id=" + devId)) return false;
+  HTTPClient http; http.setTimeout(20000);  // Apps Script อาจช้า
+  if (!http.begin(cli, String(WORKER) + "/mini/login?code=" + urlEnc(tryCode))) return 4;
   int code = http.GET();
-  if (code != 200) { http.end(); return false; }
+  if (code != 200) { http.end(); return 4; }
   String body = http.getString(); http.end();
   JsonDocument doc;
-  if (deserializeJson(doc, body) || !doc["error"].isNull()) return false;
-  strlcpy(actCode, doc["code"] | "", sizeof(actCode));
-  const char *st = doc["st"] | "";
-  actSt = !strcmp(st, "ok") ? 2 : !strcmp(st, "pending") ? 1 : !strcmp(st, "off") ? 3 : 0;
-  actAuth = doc["auth"] | false;
-  const char *tk = doc["tok"] | "";
-  if (tk[0] && strcmp(tk, devTok)) { strlcpy(tokBuf, tk, sizeof(tokBuf)); newTok = true; }  // จอบันทึกลง Preferences เอง
-  return true;
+  if (deserializeJson(doc, body)) return 4;
+  if (doc["ok"] | false) { strlcpy(okCode, doc["code"] | tryCode, sizeof(okCode)); strlcpy(loginExp, doc["exp"] | "", sizeof(loginExp)); return 1; }
+  const char *r = doc["reason"] | "";
+  return !strcmp(r, "expired") ? 3 : !strcmp(r, "server") ? 4 : 2;
 }
 
 // ---------------- ข่าวแดง (ฝั่งจอ) ----------------
@@ -1193,7 +1222,7 @@ bool pollPerpRest() {
 void freeTlsIfLow() { if (ESP.getMaxAllocHeap() < 45000) perpCli.stop(); }
 
 void netTask(void *) {
-  uint32_t lastF = 0, lastRest = 0, lastUpd = 0, lastAct = 0; int failF = 0;
+  uint32_t lastF = 0, lastRest = 0, lastUpd = 0; int failF = 0;
   for (;;) {
     if (netPause || WiFi.status() != WL_CONNECTED) {
       perpCli.stop();
@@ -1203,13 +1232,10 @@ void netTask(void *) {
     }
     netIdle = false;
     uint32_t ms = millis();
-    // เปิดใช้งาน: ตอนเริ่ม · ทุก 60 วิ ถ้า /mini ตอบ 401 (รออนุมัติ) · ทุก 10 นาทีถ้ายังไม่อนุมัติแต่ยังไม่บังคับ · ทุก 6 ชม. ถ้าใช้ได้แล้ว
-    if (reqAct || !lastAct || ms - lastAct >= (miniErr == 401 ? 60000UL : actSt == 2 ? 6UL * 3600 * 1000 : 600000UL)) {
-      reqAct = false; lastAct = ms; freeTlsIfLow(); checkAct();
-      if (newTok) reqFetch = true;
-    }
+    if (reqLogin) { reqLogin = false; perpCli.stop(); loginRes = doLogin(); }
     if (reqDash) { reqDash = false; perpCli.stop(); fetchDash(); }
-    if (reqFetch || !lastF || ms - lastF >= (failF ? 5000 : FETCH_MS)) {
+    // ไม่มีรหัส หรือรหัสใช้ไม่ได้ (401) = ไม่ดึง จนกว่าจะใส่รหัสใหม่ (reqFetch)
+    if (loginCode[0] && (miniErr != 401 || reqFetch) && (reqFetch || !lastF || ms - lastF >= (failF ? 5000 : FETCH_MS))) {
       reqFetch = false; lastF = ms;
       if (failF) perpCli.stop(); else freeTlsIfLow();  // ดึงไม่ได้รอบก่อน → ปิดการเชื่อมต่อราคาให้หน่วยความจำว่างก่อน
       if (fetchMini(tfIdx)) { miniErr = 0; miniOkAt = millis(); failF = 0; } else failF++;
@@ -1344,8 +1370,8 @@ void setup() {
   tfIdx = prefs.getInt("tf", 0) & 3;
   autoOff = prefs.getInt("ao", 1) & 3;
   sndVol = prefs.getInt("vol", 2) & 3; sndType[0] = prefs.getInt("sz", 1) & 3; sndType[1] = prefs.getInt("sb", 3) & 3; sndType[2] = prefs.getInt("sn", 2) & 3;
-  strlcpy(devTok, prefs.getString("tok", "").c_str(), sizeof(devTok));
-  { uint64_t mac = ESP.getEfuseMac(); snprintf(devId, sizeof(devId), "%02X%02X%02X%02X%02X%02X", (int)(mac & 0xff), (int)((mac >> 8) & 0xff), (int)((mac >> 16) & 0xff), (int)((mac >> 24) & 0xff), (int)((mac >> 32) & 0xff), (int)((mac >> 40) & 0xff)); }
+  strlcpy(loginCode, prefs.getString("code", "").c_str(), sizeof(loginCode));
+  strlcpy(loginExp, prefs.getString("cexp", "").c_str(), sizeof(loginExp));
   spkInit();
   zoomIdx = prefs.getInt("zm", 2); if (zoomIdx < 0 || zoomIdx > 5) zoomIdx = 2;
   D.off = NAN;
@@ -1413,7 +1439,8 @@ void loop() {
     delay(10);
     return;
   }
-  if (newTok) { newTok = false; strlcpy(devTok, tokBuf, sizeof(devTok)); prefs.putString("tok", devTok); }  // ได้รับอนุมัติแล้ว
+  if (sc == SC_KB && kbFor == 1 && loginRes) loginResult();
+  if (miniErr == 401 && sc == SC_MAIN) openCode("CODE NOT VALID - enter again");  // รหัสหมดอายุ/ถูกลบในชีต
   if (sc == SC_WIFI) { if (tapped(x, y)) handleWifiTap(x, y); delay(10); return; }
   if (sc == SC_KB) { if (tapped(x, y)) handleKbTap(x, y); delay(10); return; }
   if (sc == SC_SND) { if (tapped(x, y)) handleSndTap(x, y); delay(10); return; }

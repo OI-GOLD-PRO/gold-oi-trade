@@ -249,44 +249,8 @@ async function tgCall(env, method, body) {
 
 export class OptState {
   constructor(state, env) { this.state = state; this.env = env; }
-  // ---------- เปิดใช้งานจอ ----------
-  async actGet(id) {
-    if (!/^[0-9A-F]{12}$/.test(id || '')) return { error: 'bad id' };
-    const dev = await this.state.storage.get('dev') || {};
-    let d = dev[id];
-    const now = Math.floor(Date.now() / 1000);
-    if (!d) {
-      const used = new Set(Object.values(dev).map(x => x.code));
-      let code; do { code = 'GX-' + (1000 + (crypto.getRandomValues(new Uint16Array(1))[0] % 9000)); } while (used.has(code));
-      d = dev[id] = { code, st: 'pending', first: now };
-    }
-    d.last = now;
-    await this.state.storage.put('dev', dev);
-    return { st: d.st, code: d.code, ...(d.st === 'ok' ? { tok: d.tok } : {}) };
-  }
-  async actCheck(id, tok) {
-    const dev = await this.state.storage.get('dev') || {}, d = dev[id];
-    const ok = !!(d && d.st === 'ok' && tok && d.tok === tok);
-    if (d) { const now = Math.floor(Date.now() / 1000); if (!d.last || now - d.last > 300) { d.last = now; await this.state.storage.put('dev', dev); } }
-    return { ok };
-  }
-  async actAdmin(b) {
-    const dev = await this.state.storage.get('dev') || {};
-    if (b.a === 'list') return { list: Object.entries(dev).map(([id, d]) => ({ id, code: d.code, st: d.st, name: d.name || '', first: d.first, last: d.last })).sort((x, y) => (y.last || 0) - (x.last || 0)) };
-    const d = dev[b.id]; if (!d) return { error: 'no device' };
-    if (b.a === 'ok') { d.st = 'ok'; d.tok = rhex(16); }
-    else if (b.a === 'off') { d.st = 'off'; delete d.tok; }
-    else if (b.a === 'name') d.name = String(b.v || '').slice(0, 40);
-    else if (b.a === 'del') delete dev[b.id];
-    else return { error: 'bad action' };
-    await this.state.storage.put('dev', dev);
-    return { ok: true };
-  }
   async fetch(req) {
     const u = new URL(req.url);
-    if (u.pathname === '/act') return new Response(JSON.stringify(await this.actGet(u.searchParams.get('id'))));
-    if (u.pathname === '/actchk') return new Response(JSON.stringify(await this.actCheck(u.searchParams.get('id'), u.searchParams.get('tok'))));
-    if (u.pathname === '/actadm') return new Response(JSON.stringify(await this.actAdmin(await req.json().catch(() => ({})))));
     if (u.pathname === '/pushkey') return new Response(JSON.stringify({ key: (await this.vapid()).pub }));
     if (u.pathname === '/pushsub') return new Response(JSON.stringify(await this.pushSub(await req.json().catch(() => null))));
     if (u.pathname === '/pushtest') { // ส่งทดสอบเฉพาะเครื่องที่ขอ
@@ -585,18 +549,34 @@ export function miniDash(A) {
     lv: (A.levels || []).map(l => [Number(l.p), String(l.k || '').slice(0, 1), Math.max(1, Math.min(3, Number(l.s) || 1))]).filter(l => isFinite(l[0])).sort((a, b) => b[0] - a[0]).slice(0, 8) };
 }
 const SHEET_API = 'https://script.google.com/macros/s/AKfycbwQrp29KWhUCVO0ojjS73SiLtDKe1QKx69KOOF90QQOlV3csHXqxfOGUYKYw2D6nZp0tw/exec';
-// ---------- เปิดใช้งานจอทีละเครื่อง ----------
-const ADMIN_HTML = `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OI Gold Pro Mini · เครื่อง</title>
-<style>body{font:15px system-ui,sans-serif;background:#0b1020;color:#e6e9f2;margin:0;padding:16px}h1{font-size:18px;color:#e0b44c}input,button{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid #1f2a46;background:#121a30;color:#e6e9f2}button{cursor:pointer}.ok{color:#2fbf8f}.pending{color:#e0b44c}.off{color:#e5576b}table{width:100%;border-collapse:collapse;margin-top:12px}td,th{padding:8px 6px;border-bottom:1px solid #1f2a46;text-align:left;font-size:14px}.b{background:#e0b44c;color:#1a1405;border:0}.r{background:#e5576b;color:#fff;border:0}small{color:#8a93ab}</style></head><body>
-<h1>OI Gold Pro Mini · อนุมัติเครื่อง</h1><div><input id="k" type="password" placeholder="รหัสแอดมิน (MINI_ADMIN)" style="width:220px"> <button onclick="load()">เข้า</button></div>
-<p><small>จอที่ยังไม่อนุมัติจะแสดงรหัสเปิดใช้งาน เช่น GX-1234 · กดอนุมัติให้ตรงกับรหัสบนจอ</small></p><div id="o"></div>
-<script>const K=()=>document.getElementById('k').value;try{document.getElementById('k').value=localStorage.getItem('mk')||''}catch(e){}
-const T=s=>s?new Date(s*1000).toLocaleString('th-TH'):'-';
-async function api(a,id,v){const r=await fetch('/mini/admin/api',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:K(),a,id,v})});return r.json()}
-async function load(){try{localStorage.setItem('mk',K())}catch(e){}const j=await api('list');const o=document.getElementById('o');if(j.error){o.textContent='ผิดพลาด: '+j.error;return}
-o.innerHTML='<div>บังคับเปิดใช้งาน: <b>'+(j.auth?'เปิด':'ปิด (ทุกเครื่องใช้ได้)')+'</b></div><table><tr><th>รหัส</th><th>ชื่อ</th><th>สถานะ</th><th>ล่าสุด</th><th></th></tr>'+j.list.map(d=>'<tr><td><b>'+d.code+'</b><br><small>'+d.id+'</small></td><td><input value="'+(d.name||'').replace(/"/g,'')+'" onchange="api(\'name\',\''+d.id+'\',this.value)" style="width:110px"></td><td class="'+d.st+'">'+({ok:'ใช้ได้',pending:'รออนุมัติ',off:'ปิด'})[d.st]+'</td><td><small>'+T(d.last)+'</small></td><td>'+(d.st!=='ok'?'<button class="b" onclick="api(\'ok\',\''+d.id+'\').then(load)">อนุมัติ</button> ':'<button class="r" onclick="api(\'off\',\''+d.id+'\').then(load)">ปิด</button> ')+'<button onclick="if(confirm(\'ลบ?\'))api(\'del\',\''+d.id+'\').then(load)">ลบ</button></td></tr>').join('')+'</table>'}
-</script></body></html>`;
-const rhex = n => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join('');
+// ---------- รหัสเข้าจอ = รหัสเข้าแอป OI Gold Pro (ตรวจกับ Apps Script ?api=login · แคช 10 นาที) ----------
+const ascii = (x, n) => String(x == null ? '' : x).replace(/[^\x20-\x7e]/g, '').slice(0, n);
+async function sha16(t) { const h = await crypto.subtle.digest('SHA-256', new TextEncoder().encode(t)); return [...new Uint8Array(h)].slice(0, 16).map(b => b.toString(16).padStart(2, '0')).join(''); }
+export async function checkCode(code, fetcher = fetch) {
+  code = String(code || '').trim();
+  if (!code || code.length > 64) return { ok: false, reason: 'missing' };
+  const hasCache = typeof caches !== 'undefined';
+  const ck = hasCache ? new Request('https://cache.local/login/' + await sha16(code)) : null;
+  if (hasCache) { const hit = await caches.default.match(ck); if (hit) return hit.json(); }
+  let j;
+  try { const r = await fetcher(`${SHEET_API}?api=login&code=${encodeURIComponent(code)}&t=${Date.now()}`); j = JSON.parse(await r.text()); }
+  catch (e) { return { ok: false, reason: 'server' }; }  // ไม่แคชตอนเซิร์ฟเวอร์ล่ม
+  const out = { ok: !!(j && (j.ok || j.legacy)), reason: ascii(j && j.reason, 20), exp: ascii(j && j.expire, 24) };
+  if (hasCache) await caches.default.put(ck, new Response(JSON.stringify(out), { headers: { 'cache-control': `public, max-age=${out.ok ? 600 : 120}` } }));
+  return out;
+}
+// ลองตามที่พิมพ์ แล้วตัวพิมพ์ใหญ่/เล็ก (แบบหน้า login ของแอป)
+export async function loginCode(code, fetcher = fetch) {
+  code = String(code || '').trim();
+  let res = await checkCode(code, fetcher), used = code;
+  for (const alt of [code.toUpperCase(), code.toLowerCase()]) {
+    if (res.ok || res.reason === 'expired' || res.reason === 'server' || alt === used) continue;
+    const r2 = await checkCode(alt, fetcher);
+    if (r2.ok || r2.reason === 'expired') { res = r2; used = alt; }
+  }
+  return { ...res, code: res.ok ? used : '' };
+}
+
 const marketOpen = now => { const d = new Date(now), wd = d.getUTCDay(), h = d.getUTCHours(); if (wd === 6) return false; if (wd === 0 && h < 22) return false; if (wd === 5 && h >= 22) return false; return true; };
 
 export default {
@@ -623,25 +603,14 @@ export default {
       const J = (o, st = 200) => new Response(JSON.stringify(o), { status: st, headers: { ...CORS, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
       if (!env || !env.OPT) return J({ error: 'no OPT binding' }, 500);
       const stub = env.OPT.get(env.OPT.idFromName('main'));
-      if (url.pathname === '/mini/act') {  // จอขอสถานะ/รหัสเปิดใช้งาน
-        const r = await (await stub.fetch('https://do/act?id=' + encodeURIComponent(url.searchParams.get('id') || ''))).json();
-        return J({ ...r, auth: env.MINI_AUTH === '1' });
-      }
+      if (url.pathname === '/mini/login') return J(await loginCode(url.searchParams.get('code')));  // จอตรวจรหัสตอนผู้ใช้พิมพ์
       if (url.pathname === '/mini/flash') return new Response(MINI_FLASH_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' } });
       if (url.pathname === '/mini/flash/manifest.json') {
         let v = null; try { v = (await (await fetch('https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/version.json?t=' + Math.floor(Date.now() / 300e3))).json()).v; } catch (e) {}
         return J(MINI_MANIFEST(v));
       }
-      if (url.pathname === '/mini/admin') return new Response(ADMIN_HTML, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
-      if (url.pathname === '/mini/admin/api' && request.method === 'POST') {
-        const b = await request.json().catch(() => ({}));
-        if (!env.MINI_ADMIN) return J({ error: 'ยังไม่ได้ตั้ง MINI_ADMIN ใน Cloudflare' });
-        if (b.key !== env.MINI_ADMIN) return J({ error: 'รหัสแอดมินไม่ถูก' }, 403);
-        const r = await (await stub.fetch('https://do/actadm', { method: 'POST', body: JSON.stringify(b) })).json();
-        return J(b.a === 'list' ? { ...r, auth: env.MINI_AUTH === '1' } : r);
-      }
       if (url.pathname === '/mini/dash') {
-        if (env.MINI_AUTH === '1') { const c = await (await stub.fetch(`https://do/actchk?id=${encodeURIComponent(url.searchParams.get('id') || '')}&tok=${encodeURIComponent(url.searchParams.get('tok') || '')}`)).json(); if (!c.ok) return J({ error: 'auth' }, 401); }
+        { const c = await checkCode(url.searchParams.get('code')); if (!c.ok) return J({ error: 'auth', reason: c.reason }, c.reason === 'server' ? 503 : 401); }
         if (!env.DASH_CODE) return J({ error: 'DASH_CODE not set' });
         const ck = new Request(url.origin + '/mini/dash'), cache = caches.default;
         const hit = await cache.match(ck); if (hit) return hit;
@@ -662,11 +631,8 @@ export default {
     if (url.pathname === '/mini') {
       // จอ OI Gold Pro Mini · แคช 15 วินาที (หลายจอเรียกพร้อมกันได้ไม่หนัก)
       const tf = MINI_TF[url.searchParams.get('tf')] ? url.searchParams.get('tf') : '1';
-      // บังคับเปิดใช้งาน (ตั้ง MINI_AUTH=1 ใน Cloudflare): ต้องแนบ id + tok ที่อนุมัติแล้ว
-      if (env && env.OPT && env.MINI_AUTH === '1') {
-        const c = await (await env.OPT.get(env.OPT.idFromName('main')).fetch(`https://do/actchk?id=${encodeURIComponent(url.searchParams.get('id') || '')}&tok=${encodeURIComponent(url.searchParams.get('tok') || '')}`)).json();
-        if (!c.ok) return new Response(JSON.stringify({ error: 'auth' }), { status: 401, headers: { ...CORS, 'content-type': 'application/json' } });
-      }
+      // ต้องมีรหัสเข้าแอปที่ยังใช้ได้ (code=…) · ตรวจกับชีตเดียวกับแอป แคช 10 นาที
+      { const c = await checkCode(url.searchParams.get('code')); if (!c.ok) return new Response(JSON.stringify({ error: 'auth', reason: c.reason }), { status: c.reason === 'server' ? 503 : 401, headers: { ...CORS, 'content-type': 'application/json' } }); }
       const ck = new Request(url.origin + '/mini?tf=' + tf), cache = caches.default;
       const hit = await cache.match(ck); if (hit) return hit;
       const hdr = { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=15' };

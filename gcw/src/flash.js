@@ -35,7 +35,7 @@ export const MINI_FLASH_PAGE = `<!doctype html>
 </esp-web-install-button></div>
 <div class="card"><b>หลังติดตั้งเสร็จ</b><ol>
   <li>ถ้าเลือก "ลบข้อมูลเดิม" ต้องตั้ง WiFi ใหม่บนจอ (เลือกชื่อ WiFi แล้วพิมพ์รหัส)</li>
-  <li>จอจะขึ้นรหัสเครื่อง <code>GX-xxxx</code> (ในเมนู) ส่งรหัสนี้ให้เจ้าของเพื่ออนุมัติ</li>
+  <li>ต่อ WiFi เสร็จ จอจะให้ใส่ <b>รหัสเข้าแอป OI Gold Pro</b> (รหัสเดียวกับที่ใช้เข้าแอป)</li>
   <li>เวอร์ชันถัดไปอัปเดตผ่าน WiFi ได้เลย: MENU → CHECK UPDATE</li>
 </ol></div>
 </main>

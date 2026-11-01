@@ -3,7 +3,7 @@
 > สำหรับผู้พัฒนาร่วม (Claude / ChatGPT / คน) อ่านไฟล์นี้ให้จบก่อนแก้อะไรก็ตาม
 > **กติกาสำคัญ:** แก้เสร็จทุกครั้งต้องจดลง [`/CHANGELOG.md`](../CHANGELOG.md) (ดูหัวข้อ 11) — ไม่จด = อีกฝั่งไม่รู้ และอาจแก้ทับกัน
 >
-> อัปเดตเอกสารล่าสุด: 2026-11-01 · เฟิร์มแวร์ปัจจุบัน **v0.6.1** (ดูรายการล่าสุดใน CHANGELOG เสมอ) · `/mini` API **v2**
+> อัปเดตเอกสารล่าสุด: 2026-11-01 · เฟิร์มแวร์ปัจจุบัน **v0.7.0** (ดูรายการล่าสุดใน CHANGELOG เสมอ) · `/mini` API **v2**
 
 ---
 
@@ -169,20 +169,18 @@ Bybit REST ทุก 1 วินาที (งานเน็ตแกน 0) ┘
 | `z` | `[[k, lo, hi, 'C'\|'P'\|'V', callOI, putOI],…]` | โซนแจ้งเตือน ≤12 โซนใกล้ราคา (กติกาเดียวกับ Telegram ของแอป) |
 | `nx` | `[[วินาที UTC, ชื่อข่าว ≤28 ตัว ASCII],…]` | ข่าวแดง USD (impact H) 3 รายการถัดไปภายใน 24 ชม. จาก `gold-oi-pro/news.json` (แคช 10 นาที) · v0.6 |
 
-พารามิเตอร์เพิ่ม (v0.6): `id` (MAC 12 ตัว) และ `tok` — ถ้าตั้ง `MINI_AUTH=1` ใน Cloudflare ต้องมี tok ที่อนุมัติแล้ว ไม่งั้นตอบ 401
+**ต้องมี `code=` (v0.7)** = รหัสเข้าแอป OI Gold Pro · Worker ตรวจกับ Apps Script `?api=login` (ชีตเดียวกับแอป) แคชผล 10 นาที (ไม่ผ่าน 2 นาที) · ไม่ผ่าน → 401 `{error:'auth', reason}` · Apps Script ล่ม → 503
 
 ### Endpoint อื่นของ Mini (v0.6, ใน `gcw/src/index.js` + `gcw/src/flash.js`)
 | Endpoint | ใช้ทำอะไร |
 |---|---|
-| `GET /mini/act?id=` | จอขอสถานะเปิดใช้งาน → `{st: pending\|ok\|off, code: "GX-1234", tok (เมื่อ ok), auth}` เก็บใน Durable Object key `dev` |
-| `GET /mini/admin` | หน้าเว็บแอดมิน: ใส่รหัส `MINI_ADMIN` → รายการเครื่อง อนุมัติ/ปิด/ตั้งชื่อ/ลบ (เรียก `POST /mini/admin/api`) |
-| `GET /mini/dash?id=&tok=` | ผลวิเคราะห์ ds แบบตัวเลข `{u, tr, sc, g, lv:[[p,'R'\|'S'\|'P',ความแข็ง1-3]]}` · Worker อ่าน Apps Script `?api=data&sym=gold&code=DASH_CODE` · แคช 5 นาที |
+| `GET /mini/login?code=` | จอตรวจรหัสตอนผู้ใช้พิมพ์ → `{ok, reason: invalid\|expired\|server, exp, code}` (ลองตัวพิมพ์ใหญ่/เล็กแบบแอป · `code` = แบบที่ใช้ได้จริง) |
+| `GET /mini/dash?code=` | ผลวิเคราะห์ ds แบบตัวเลข `{u, tr, sc, g, lv:[[p,'R'\|'S'\|'P',ความแข็ง1-3]]}` · Worker อ่าน Apps Script `?api=data&sym=gold&code=DASH_CODE` · แคช 5 นาที |
 | `GET /mini/flash` | หน้าเว็บติดตั้งเฟิร์มแวร์ (ESP Web Tools) · manifest `/mini/flash/manifest.json` ชี้ `mini/dist/factory.bin` |
 
 **Cloudflare secrets ของ Worker `gc-yahoo`** (ตั้งที่ Workers → gc-yahoo → Settings → Variables and Secrets · `keep_vars = true` จะไม่ลบตอน deploy):
-- `MINI_ADMIN` — รหัสเข้าหน้า /mini/admin (เจ้าของตั้งเอง)
-- `DASH_CODE` — รหัสเข้าแอป OI Gold Pro (login code) ที่ Worker ใช้อ่าน dashboard
-- `MINI_AUTH` = `1` — บังคับให้ทุกจอต้องอนุมัติก่อน (ไม่ตั้ง = ทุกจอใช้ได้ แต่ยังได้รหัส GX ไว้ล่วงหน้า)
+- `DASH_CODE` — รหัสเข้าแอป OI Gold Pro ที่ Worker ใช้อ่าน dashboard
+- (v0.6 เคยมี `MINI_ADMIN` / `MINI_AUTH` + หน้า /mini/admin + รหัส GX — **เอาออกใน v0.7** ใช้รหัสแอปแทน)
 
 ฟังก์ชันใน `gcw/src/index.js`: `miniPayload()`, `strikeTable()`, `maxPain()`, ตัว route `if (url.pathname === '/mini')`
 **ถ้าเพิ่ม/เปลี่ยนฟิลด์:** เพิ่มเท่านั้น อย่าลบ/เปลี่ยนความหมายฟิลด์เดิม (เครื่องที่ยังไม่อัปเดตยังใช้อยู่) · ถ้าจำเป็นต้องเปลี่ยน ให้เพิ่ม `v` แล้วรองรับทั้งสองแบบ · อัปเดตเทสต์ใน `gcw/test.mjs`
@@ -201,11 +199,11 @@ Bybit REST ทุก 1 วินาที (งานเน็ตแกน 0) ┘
 - ธงสื่อสาร (volatile): `reqFetch` (ขอดึงทันที เช่น เปลี่ยน TF/ปุ่มรีเฟรช), `reqUpd`, `updRes`, `netPause`, `netIdle`, `ndReady`
 
 ### หน้าจอ (`enum Screen`)
-`SC_MAIN` กราฟ · `SC_MENU` เมนู · `SC_WIFI` รายการ WiFi · `SC_KB` คีย์บอร์ดใส่รหัส · `SC_DASH` Dashboard (แตะแถบหัว/เมนู, แตะ = ปิด) · `SC_SND` ตั้งเสียงแจ้งเตือน (เมนู → ALERT SOUNDS)
+`SC_MAIN` กราฟ · `SC_MENU` เมนู · `SC_WIFI` รายการ WiFi · `SC_KB` คีย์บอร์ด (`kbFor` 0 = รหัส WiFi, 1 = รหัสเข้าใช้: `openCode` / `submitCode` → งานเน็ต `doLogin` → `loginResult`) · `SC_DASH` Dashboard (แตะแถบหัว/เมนู, แตะ = ปิด) · `SC_SND` ตั้งเสียงแจ้งเตือน (เมนู → ALERT SOUNDS)
 
 ท่าทางบนหน้ากราฟ (v0.6.1): แตะปุ่มล่าง · ลาก = เลื่อนกราฟ (ลากซ้ายได้ เว้นที่ว่างขวา) · **แตะ 1 ครั้ง = เส้นเล็ง / แตะอีกครั้ง = ซ่อน** (ตอนแสดงอยู่ ลาก = ย้ายเส้นเล็ง · `overlayCross`: ราคา, เวลา/OHLC แท่ง, OI strike ใกล้สุด) · แตะแกนราคาหรือป้าย AUTO = กลับอัตโนมัติ · **แตะแถบหัว = Dashboard** · แตะแถบแจ้งเตือน = ปิด
 
-เมนู (v0.6): [ROT\|SOUND] [BRIGHT\|SCREEN OFF] [OFF:…\|SPEED] [WIFI SETUP\|ALERT SOUNDS] [CHECK UPDATE\|GX-xxxx สถานะ] [DASHBOARD\|BACK] (หน้า WiFi/คีย์บอร์ดบังคับแนวนอนเสมอ: rotation 1 หรือ 3 ตามทิศที่ผู้ใช้ตั้ง) · เปิดเครื่อง: มี WiFi บันทึกไว้ → รอ 10 วิ แล้วเข้าหน้ากราฟเสมอ (loop ลองเชื่อมใหม่ทุก 20 วิ) · ไปหน้าเลือก WiFi เมื่อแตะจอระหว่างรอ/ยังไม่เคยตั้ง/MENU → WIFI SETUP
+เมนู (v0.6): [ROT\|SOUND] [BRIGHT\|SCREEN OFF] [OFF:…\|SPEED] [WIFI SETUP\|ALERT SOUNDS] [CHECK UPDATE\|APP CODE (วันหมดอายุ)] [DASHBOARD\|BACK] (หน้า WiFi/คีย์บอร์ดบังคับแนวนอนเสมอ: rotation 1 หรือ 3 ตามทิศที่ผู้ใช้ตั้ง) · เปิดเครื่อง: มี WiFi บันทึกไว้ → รอ 10 วิ แล้วเข้าหน้ากราฟเสมอ (loop ลองเชื่อมใหม่ทุก 20 วิ) · ไปหน้าเลือก WiFi เมื่อแตะจอระหว่างรอ/ยังไม่เคยตั้ง/MENU → WIFI SETUP
 
 ### เลย์เอาต์หน้าหลัก
 ```
@@ -259,7 +257,7 @@ Bybit REST ทุก 1 วินาที (งานเน็ตแกน 0) ┘
 | `ao` | 0–3 auto-off |
 | `vol` | 0–3 ระดับเสียง (LOW/MID/HIGH/MAX) |
 | `sz`, `sb`, `sn` | 0–3 เสียงเข้าโซน / ทะลุโซน / ข่าว (OFF/BEEP/CHIME/ALARM) |
-| `tok` | token เปิดใช้งานที่ได้จาก /mini/act |
+| `code`, `cexp` | รหัสเข้าใช้ (รหัสแอป) ที่ผ่านแล้ว + วันหมดอายุ |
 | `spi40` | bool ส่งภาพ 40MHz (ค่าเริ่ม false = 27MHz) · แตะจอค้างตอนเปิดเครื่อง = รีเซ็ตเป็น 27MHz |
 | `ssid`, `pass` | WiFi ที่บันทึก |
 

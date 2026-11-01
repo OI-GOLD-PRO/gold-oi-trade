@@ -19,6 +19,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.7.0 + Worker — 2026-11-01 — Claude
+- ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino, gcw/src/index.js, gcw/src/flash.js, gcw/test.mjs, mini/HANDOFF.md
+- แก้อะไร (ผู้ใช้ขอ): เข้าใช้จอด้วย **รหัสเดียวกับแอป OI Gold Pro** และบังคับทุกจอ · เอาระบบรหัส GX + /mini/act + /mini/admin + MINI_ADMIN/MINI_AUTH ออก · Worker: `checkCode` (Apps Script `?api=login`, แคช 10 นาที/ไม่ผ่าน 2 นาที, Apps Script ล่ม = 503 ไม่แคช), `/mini/login` (ลองตัวพิมพ์ใหญ่/เล็ก), `/mini` และ `/mini/dash` ต้องมี `code=` · จอ: ไม่มีรหัส → หน้าใส่รหัสหลังต่อ WiFi · 401 → กลับหน้าใส่รหัสเอง · MENU → APP CODE (แสดงวันหมดอายุ) เปลี่ยนรหัส · Preferences `code`, `cexp`
+- ระวัง: จอ v0.6.x หลัง Worker นี้ deploy จะได้ 401 (ไม่มี code) แต่ยังอัปเดต OTA ได้ (version.json อยู่บน GitHub) · ยังไม่ได้ทดสอบบนบอร์ดจริง
+
 ### Mini v0.6.1 — 2026-11-01 — Claude
 - ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino, mini/HANDOFF.md
 - แก้อะไร (ผู้ใช้ขอ): (1) เส้นเล็งเปลี่ยนจาก "แตะค้าง" เป็น **แตะ 1 ครั้ง = แสดง / แตะอีกครั้ง = ซ่อน** แบบแอป · ตอนแสดงอยู่ ลาก = เลื่อนเส้นเล็ง · เส้นเล็งค้างอยู่แม้ข้อมูลอัปเดต (`overlayCross()` วาดใน drawChart) (2) แตะค้างแล้วลากใน v0.6.0 กลายเป็นเส้นเล็ง ลากกราฟไม่ได้ → เอาแตะค้างออก · **ลากกราฟไปซ้ายได้** (panBars ติดลบ = ช่องว่างด้านขวา สูงสุด 80% ของจำนวนแท่งบนจอ) (3) แตะป้าย **AUTO** บนกราฟ (มุมขวาบน ขยายพื้นที่แตะ 62×24 px) = กลับอัตโนมัติ (เดิมต้องแตะแกนราคา)
