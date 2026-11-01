@@ -1,11 +1,12 @@
 // OI Gold Pro Mini — จอ ESP32 CYD 2.8" (ESP32-2432S028 รุ่น 2 USB, ชิปจอ ILI9341)
-// กราฟแท่งเทียน GC1 (Gold.F, ราคาสดจาก Bybit XAUUSDT + offset ทุก 1 วินาที) + OI/Volume ราย strike แบบแอป OI Gold Pro (Call เขียว แนวต้าน · Put แดง แนวรับ)
+// กราฟแท่งเทียน GC1 (Gold.F, ราคาสดจาก Bybit XAUUSDT + offset ผ่าน WebSocket) + OI/Volume ราย strike แบบแอป OI Gold Pro (Call เขียว แนวต้าน · Put แดง แนวรับ)
 // เส้น gmf itd / gmf M / Max Pain / Expected Move · โซน OI 10 อันดับ · แจ้งเตือนเข้าโซน/ทะลุโซน
 // ข้อมูลจาก Worker: https://gc-yahoo.oigoldpro.workers.dev/mini?tf=1|5|15|60 (อัปเดตทุก 15 วินาที)
 //
 // Arduino IDE:  Board = ESP32 Dev Module
 //               Partition Scheme = Minimal SPIFFS (1.9MB APP with OTA)
-// Libraries:    LovyanGFX, ArduinoJson (v7)
+// Libraries:    LovyanGFX, ArduinoJson (v7), WebSockets (Markus Sattler)
+// v0.5: งานเน็ตทั้งหมดอยู่บนแกน 0 (netTask) · จอ/สัมผัส/แจ้งเตือนอยู่บนแกน 1 (loop) · ส่งข้อมูลผ่าน ND + mutex
 
 #include <WiFi.h>
 #include <WiFiClientSecure.h>
@@ -13,16 +14,16 @@
 #include <HTTPUpdate.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
+#include <WebSocketsClient.h>
 #include <LovyanGFX.hpp>
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.4.4"
+#define FW_VER "0.5.0"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
-uint32_t lastUpdCheck = 0;
-WiFiClientSecure perpCli;  // การเชื่อมต่อค้างไว้กับ Bybit (ราคาสด)
+WiFiClientSecure perpCli;  // REST สำรองของ Bybit (ใช้เมื่อ WebSocket หลุด)
 static const char *DATA_URL = "https://gc-yahoo.oigoldpro.workers.dev/mini?tf=";
 static const uint32_t FETCH_MS = 15000;
 
@@ -57,7 +58,10 @@ public:
 };
 
 LGFX lcd;
-LGFX_Sprite spr(&lcd);
+LGFX_Sprite spr(&lcd);   // กราฟ (8-bit)
+LGFX_Sprite hspr(&lcd);  // แถบหัว (16-bit)
+LGFX_Sprite sspr(&lcd);  // แถบสถานะ (8-bit)
+bool hOk = false, sOk = false;
 Preferences prefs;
 
 const int LED_R = 4, LED_G = 16, LED_B = 17;  // LED RGB หลังบอร์ด (LOW = ติด)
@@ -88,15 +92,19 @@ struct Strike { float k; long c, p, vc, vp; uint8_t rc, rp, tv; };
 #define MAXB 120
 #define MAXS 40
 struct Data {
-  float p; float b[MAXB][4]; int nb; int bs; uint32_t lt; float off;
+  int tf; float p; float b[MAXB][4]; int nb; int bs; uint32_t lt; float off;
   float F, open, em, itd, gm, mp;
   char exp[16]; bool mkt;
   Zone z[12]; int nz;
   Strike s[MAXS]; int ns;
 };
-Data D;
+Data D;                  // ของจอ (แกน 1) เท่านั้น
+Data ND;                 // งานเน็ตเขียนเสร็จแล้ววางไว้ที่นี่ (ล็อก mx)
+SemaphoreHandle_t mx;
+volatile bool ndReady = false, reqFetch = false, reqUpd = false, netPause = false, netIdle = false;
+volatile int updRes = 0;  // ผลเช็กอัปเดต: 0 รอ, 1 สำเร็จ, 2 ล้มเหลว
 bool haveData = false;
-uint32_t lastFetch = 0, lastOk = 0;
+uint32_t lastOk = 0;
 
 // สถานะแจ้งเตือนต่อโซน (กติกาเดียวกับแอป: ถึงโซน → พัก 1 ชม. · ทะลุขอบ $2 → พัก 30 นาที)
 struct ZState { float k; bool inside, reached, hasReach, hasBreak; uint32_t lastReach, lastBreak; };
@@ -122,6 +130,7 @@ int W, H; bool LS;
 const int HDR = 26, STAT = 16, TB = 24;
 int yChart, hChart, yTool;
 
+void tickCandle(); void evalAlerts(); bool checkUpdate(); void pauseNet(bool p);
 void doUpdate(); void drawStatus(); void drawWifi(); void drawKb(); void drawMain(); void drawHeader(); void drawMenu(); void openWifi();
 float livePrice(); bool perpFresh();
 
@@ -158,16 +167,19 @@ void applyRotation(int r) {
   yChart = HDR + STAT;
   yTool = H - TB;
   hChart = yTool - yChart;
-  spr.deleteSprite();
+  spr.deleteSprite(); hspr.deleteSprite(); sspr.deleteSprite();
   spr.setColorDepth(8);
   spr.createSprite(W, hChart);
+  hspr.setColorDepth(16); hOk = hspr.createSprite(W, HDR) != nullptr;
+  sspr.setColorDepth(8);  sOk = sspr.createSprite(W, STAT) != nullptr;
 }
 
-// ---------------- ดึงข้อมูล ----------------
-bool fetchData() {
+// ---------------- ดึงข้อมูล (เรียกจากงานเน็ตเท่านั้น) ----------------
+Data NT;  // ที่พักระหว่างแปลง JSON (งานเน็ตใช้คนเดียว)
+bool fetchMini(int tf) {
   WiFiClientSecure cli; cli.setInsecure();
   HTTPClient http; http.setTimeout(9000);
-  String url = String(DATA_URL) + TF_Q[tfIdx];
+  String url = String(DATA_URL) + TF_Q[tf];
   if (!http.begin(cli, url)) return false;
   int code = http.GET();
   if (code != 200) { http.end(); return false; }
@@ -177,36 +189,39 @@ bool fetchData() {
   if (deserializeJson(doc, body)) return false;
   if (!doc["error"].isNull()) return false;
 
-  D.p = jf(doc["p"]); D.bs = doc["bs"] | 60; D.lt = doc["lt"] | 0; D.off = jf(doc["off"]);
-  D.nb = 0;
+  NT.tf = tf;
+  NT.p = jf(doc["p"]); NT.bs = doc["bs"] | 60; NT.lt = doc["lt"] | 0; NT.off = jf(doc["off"]);
+  NT.nb = 0;
   for (JsonVariant v : doc["b"].as<JsonArray>()) {
-    if (D.nb >= MAXB) break;
+    if (NT.nb >= MAXB) break;
     JsonArray a = v.as<JsonArray>();
-    for (int i = 0; i < 4; i++) D.b[D.nb][i] = jf(a[i]);
-    if (okf(D.b[D.nb][3])) D.nb++;
+    for (int i = 0; i < 4; i++) NT.b[NT.nb][i] = jf(a[i]);
+    if (okf(NT.b[NT.nb][3])) NT.nb++;
   }
-  D.F = jf(doc["F"]); D.open = jf(doc["open"]); D.em = jf(doc["em"]);
-  D.itd = jf(doc["itd"]); D.gm = jf(doc["gm"]); D.mp = jf(doc["mp"]);
-  strlcpy(D.exp, doc["exp"] | "", sizeof(D.exp));
-  D.mkt = doc["mkt"] | true;
-  D.nz = 0;
+  NT.F = jf(doc["F"]); NT.open = jf(doc["open"]); NT.em = jf(doc["em"]);
+  NT.itd = jf(doc["itd"]); NT.gm = jf(doc["gm"]); NT.mp = jf(doc["mp"]);
+  strlcpy(NT.exp, doc["exp"] | "", sizeof(NT.exp));
+  NT.mkt = doc["mkt"] | true;
+  NT.nz = 0;
   for (JsonVariant v : doc["z"].as<JsonArray>()) {
-    if (D.nz >= 12) break;
+    if (NT.nz >= 12) break;
     JsonArray a = v.as<JsonArray>();
-    Zone &q = D.z[D.nz++];
+    Zone &q = NT.z[NT.nz++];
     q.k = a[0] | 0.0f; q.lo = a[1] | 0.0f; q.hi = a[2] | 0.0f;
     const char *t = a[3] | "V"; q.t = t[0];
     q.c = a[4] | 0L; q.p = a[5] | 0L;
   }
-  D.ns = 0;
+  NT.ns = 0;
   for (JsonVariant v : doc["s"].as<JsonArray>()) {
-    if (D.ns >= MAXS) break;
+    if (NT.ns >= MAXS) break;
     JsonArray a = v.as<JsonArray>();
-    Strike &q = D.s[D.ns++];
+    Strike &q = NT.s[NT.ns++];
     q.k = a[0] | 0.0f; q.c = a[1] | 0L; q.p = a[2] | 0L; q.vc = a[3] | 0L; q.vp = a[4] | 0L;
     q.rc = a[5] | 0; q.rp = a[6] | 0; q.tv = a[7] | 0;
   }
-  haveData = true;
+  xSemaphoreTake(mx, portMAX_DELAY);
+  memcpy(&ND, &NT, sizeof(Data)); ndReady = true;
+  xSemaphoreGive(mx);
   return true;
 }
 
@@ -260,107 +275,115 @@ void serviceAlerts() {
 
 // ---------------- หน้าหลัก ----------------
 // ---- ไอคอนแถบหัวแบบ iPhone ----
-void drawWifiIcon(int cx, int by, uint16_t bg) {  // cx = กึ่งกลาง, by = ฐาน
+void drawWifiIcon(LovyanGFX &g, int cx, int by, uint16_t bg) {  // cx = กึ่งกลาง, by = ฐาน
   int bars = 0;
   if (WiFi.status() == WL_CONNECTED) { int r = WiFi.RSSI(); bars = r > -60 ? 3 : r > -72 ? 2 : 1; }
-  lcd.fillRect(cx - 9, by - 12, 19, 13, bg);
+  g.fillRect(cx - 9, by - 12, 19, 13, bg);
   for (int i = 0; i < 3; i++) {
     int r1 = 4 + i * 4;
-    lcd.fillArc(cx, by, r1 - 2, r1, 225, 315, i < bars ? C_TEXT : C_LINE);
+    g.fillArc(cx, by, r1 - 2, r1, 225, 315, i < bars ? C_TEXT : C_LINE);
   }
-  lcd.fillCircle(cx, by - 1, 1, bars ? C_TEXT : C_LINE);
+  g.fillCircle(cx, by - 1, 1, bars ? C_TEXT : C_LINE);
 }
-void drawBattIcon(int x, int y, uint16_t bg) {  // กรอบ 22x11
-  lcd.fillRect(x, y, 26, 11, bg);
-  lcd.drawRoundRect(x, y, 22, 11, 3, C_DIM);
-  lcd.fillRect(x + 22, y + 3, 2, 5, C_DIM);
+void drawBattIcon(LovyanGFX &g, int x, int y, uint16_t bg) {  // กรอบ 22x11
+  g.fillRect(x, y, 26, 11, bg);
+  g.drawRoundRect(x, y, 22, 11, 3, C_DIM);
+  g.fillRect(x + 22, y + 3, 2, 5, C_DIM);
   if (battPct < 0) {  // ไม่มีแบต/วัดไม่ได้ = ใช้ไฟ USB → รูปสายฟ้า
-    lcd.fillRoundRect(x + 2, y + 2, 18, 7, 2, C_UP);
-    lcd.fillTriangle(x + 12, y + 1, x + 8, y + 6, x + 12, y + 6, C_PANEL);
-    lcd.fillTriangle(x + 10, y + 5, x + 14, y + 5, x + 10, y + 10, C_PANEL);
+    g.fillRoundRect(x + 2, y + 2, 18, 7, 2, C_UP);
+    g.fillTriangle(x + 12, y + 1, x + 8, y + 6, x + 12, y + 6, C_PANEL);
+    g.fillTriangle(x + 10, y + 5, x + 14, y + 5, x + 10, y + 10, C_PANEL);
   } else {
     int w = max(1, 18 * battPct / 100);
-    lcd.fillRoundRect(x + 2, y + 2, w, 7, 2, battPct <= 20 ? C_DN : C_TEXT);
+    g.fillRoundRect(x + 2, y + 2, w, 7, 2, battPct <= 20 ? C_DN : C_TEXT);
   }
 }
 
+// แถบหัว/แถบสถานะวาดลง sprite แล้วส่งทีเดียว → ไม่กระพริบเวลาราคาเปลี่ยนถี่ (ถ้าหน่วยความจำไม่พอ วาดลงจอตรง)
 void drawHeader() {
-  lcd.fillRect(0, 0, W, HDR, C_PANEL);
-  lcd.drawFastHLine(0, HDR - 1, W, C_LINE);
-  lcd.pushImage(2, 2, LOGO_W, LOGO_H, (const lgfx::rgb565_t *)LOGO);
+  LovyanGFX &g = hOk ? (LovyanGFX &)hspr : (LovyanGFX &)lcd;
+  g.fillRect(0, 0, W, HDR, C_PANEL);
+  g.drawFastHLine(0, HDR - 1, W, C_LINE);
+  g.pushImage(2, 2, LOGO_W, LOGO_H, (const lgfx::rgb565_t *)LOGO);
   char buf[24];
   int x = LOGO_W + 5;
-  lcd.setFont(&fonts::Font2); lcd.setTextColor(C_DIM, C_PANEL);
-  lcd.drawString("GC1", x, 6); x += lcd.textWidth("GC1") + 4;
-  lcd.setFont(&fonts::Font4); lcd.setTextColor(C_GOLD, C_PANEL);
+  g.setFont(&fonts::Font2); g.setTextColor(C_DIM, C_PANEL);
+  g.drawString("GC1", x, 6); x += g.textWidth("GC1") + 4;
+  g.setFont(&fonts::Font4); g.setTextColor(C_GOLD, C_PANEL);
   float P = livePrice();
   if (okf(P)) snprintf(buf, sizeof(buf), "%.1f", P); else strcpy(buf, "----.-");
-  lcd.drawString(buf, x, 1); x += lcd.textWidth(buf) + 4;
-  // จุดสถานะสด (เขียว = ราคาสด, เหลือง = ข้อมูลช้า, แดง = ไม่มีข้อมูล)
+  g.drawString(buf, x, 1); x += g.textWidth(buf) + 4;
+  // จุดสถานะสด (เขียว = ราคาสด, ทอง = ข้อมูลช้า, แดง = ไม่มีข้อมูล)
   bool fresh = perpFresh();
   uint16_t dc = !haveData ? C_DN : fresh ? C_CALL : (millis() - lastOk > 60000 ? C_DN : C_GOLD);
-  lcd.fillCircle(x + 2, 13, 3, dc); x += 9;
+  g.fillCircle(x + 2, 13, 3, dc); x += 9;
   if (LS && haveData && okf(P) && okf(D.open)) {
     float ch = P - D.open; snprintf(buf, sizeof(buf), "%+.1f", ch);
-    lcd.setFont(&fonts::Font2); lcd.setTextColor(ch >= 0 ? C_UP : C_DN, C_PANEL); lcd.drawString(buf, x, 6);
+    g.setFont(&fonts::Font2); g.setTextColor(ch >= 0 ? C_UP : C_DN, C_PANEL); g.drawString(buf, x, 6);
   }
   // ขวา: เวลา · WiFi · แบต
-  int bx = W - 27; drawBattIcon(bx, 8, C_PANEL);
-  drawWifiIcon(bx - 13, 19, C_PANEL);
+  int bx = W - 27; drawBattIcon(g, bx, 8, C_PANEL);
+  drawWifiIcon(g, bx - 13, 19, C_PANEL);
   struct tm t;
   if (getLocalTime(&t, 0)) strftime(buf, sizeof(buf), "%H:%M", &t); else strcpy(buf, "--:--");
-  lcd.setFont(&fonts::Font2); lcd.setTextColor(C_TEXT, C_PANEL); lcd.setTextDatum(top_right);
-  lcd.drawString(buf, bx - 25, 6); lcd.setTextDatum(top_left);
+  g.setFont(&fonts::Font2); g.setTextColor(C_TEXT, C_PANEL); g.setTextDatum(top_right);
+  g.drawString(buf, bx - 25, 6); g.setTextDatum(top_left);
   if (newVer[0]) {  // มีเวอร์ชันใหม่: ลูกศรทองหน้าเวลา (MENU → UPDATE)
-    int ax = bx - 25 - lcd.textWidth(buf) - 10;
-    lcd.fillTriangle(ax, 6, ax - 5, 12, ax + 5, 12, C_GOLD); lcd.fillRect(ax - 2, 12, 5, 6, C_GOLD);
+    int ax = bx - 25 - g.textWidth(buf) - 10;
+    g.fillTriangle(ax, 6, ax - 5, 12, ax + 5, 12, C_GOLD); g.fillRect(ax - 2, 12, 5, 6, C_GOLD);
   }
+  if (hOk) hspr.pushSprite(0, 0);
 }
 
 void drawStatus() {
-  int y = HDR;
+  LovyanGFX &g = sOk ? (LovyanGFX &)sspr : (LovyanGFX &)lcd;
+  int y = sOk ? 0 : HDR;
   if (alertUntil) {
-    lcd.fillRect(0, y, W, STAT, alertCol);
-    lcd.setFont(&fonts::Font2); lcd.setTextColor(C_BG, alertCol);
-    lcd.setTextDatum(middle_center); lcd.drawString(alertTxt, W / 2, y + STAT / 2); lcd.setTextDatum(top_left);
+    g.fillRect(0, y, W, STAT, alertCol);
+    g.setFont(&fonts::Font2); g.setTextColor(C_BG, alertCol);
+    g.setTextDatum(middle_center); g.drawString(alertTxt, W / 2, y + STAT / 2); g.setTextDatum(top_left);
+    if (sOk) sspr.pushSprite(0, HDR);
     return;
   }
-  lcd.fillRect(0, y, W, STAT, C_BG);
-  lcd.setFont(&fonts::Font0);
+  g.fillRect(0, y, W, STAT, C_BG);
+  g.setFont(&fonts::Font0);
   char buf[48];
   float P = livePrice();
   if (haveData) {
     if (LS) { if (okf(D.em)) snprintf(buf, sizeof(buf), "EM %.1f  exp %s", D.em, D.exp); else snprintf(buf, sizeof(buf), "exp %s", D.exp); }
     else if (okf(P) && okf(D.open)) snprintf(buf, sizeof(buf), "%+.1f  EM %.1f", P - D.open, okf(D.em) ? D.em : 0.0f);
     else buf[0] = 0;
-    lcd.setTextColor(C_DIM, C_BG); lcd.setTextDatum(middle_right); lcd.drawString(buf, W - 4, y + STAT / 2);
+    g.setTextColor(C_DIM, C_BG); g.setTextDatum(middle_right); g.drawString(buf, W - 4, y + STAT / 2);
   }
-  lcd.setTextDatum(middle_left);
-  if (!haveData) { lcd.setTextColor(C_DIM, C_BG); lcd.drawString("waiting for data...", 4, y + STAT / 2); lcd.setTextDatum(top_left); return; }
-  if (!D.mkt) { lcd.setTextColor(C_DIM, C_BG); lcd.drawString("MARKET CLOSED", 4, y + STAT / 2); lcd.setTextDatum(top_left); return; }
-  for (int i = 0; i < D.nz; i++) {
-    Zone &z = D.z[i];
-    if (P >= z.lo && P <= z.hi) {
+  g.setTextDatum(middle_left);
+  if (!haveData) { g.setTextColor(C_DIM, C_BG); g.drawString("waiting for data...", 4, y + STAT / 2); }
+  else if (!D.mkt) { g.setTextColor(C_DIM, C_BG); g.drawString("MARKET CLOSED", 4, y + STAT / 2); }
+  else {
+    int in = -1;
+    for (int i = 0; i < D.nz; i++) if (P >= D.z[i].lo && P <= D.z[i].hi) { in = i; break; }
+    if (in >= 0) {
+      Zone &z = D.z[in];
       snprintf(buf, sizeof(buf), "IN %s ZONE %.0f", z.t == 'C' ? "CALL" : z.t == 'P' ? "PUT" : "VOL", z.k);
-      lcd.setTextColor(zoneCol(z.t), C_BG); lcd.drawString(buf, 4, y + STAT / 2); lcd.setTextDatum(top_left);
-      return;
+      g.setTextColor(zoneCol(z.t), C_BG); g.drawString(buf, 4, y + STAT / 2);
+    } else {
+      int bi = -1, ai = -1;
+      for (int i = 0; i < D.nz; i++) {
+        if (D.z[i].hi < P && (bi < 0 || D.z[i].hi > D.z[bi].hi)) bi = i;
+        if (D.z[i].lo > P && (ai < 0 || D.z[i].lo < D.z[ai].lo)) ai = i;
+      }
+      int x = 4;
+      if (ai >= 0) {
+        snprintf(buf, sizeof(buf), "R %.0f +%.1f", D.z[ai].k, D.z[ai].lo - P);
+        g.setTextColor(zoneCol(D.z[ai].t), C_BG); g.drawString(buf, x, y + STAT / 2); x += g.textWidth(buf) + 10;
+      }
+      if (bi >= 0) {
+        snprintf(buf, sizeof(buf), "S %.0f -%.1f", D.z[bi].k, P - D.z[bi].hi);
+        g.setTextColor(zoneCol(D.z[bi].t), C_BG); g.drawString(buf, x, y + STAT / 2);
+      }
     }
   }
-  int bi = -1, ai = -1;
-  for (int i = 0; i < D.nz; i++) {
-    if (D.z[i].hi < P && (bi < 0 || D.z[i].hi > D.z[bi].hi)) bi = i;
-    if (D.z[i].lo > P && (ai < 0 || D.z[i].lo < D.z[ai].lo)) ai = i;
-  }
-  int x = 4;
-  if (ai >= 0) {
-    snprintf(buf, sizeof(buf), "R %.0f +%.1f", D.z[ai].k, D.z[ai].lo - P);
-    lcd.setTextColor(zoneCol(D.z[ai].t), C_BG); lcd.drawString(buf, x, y + STAT / 2); x += lcd.textWidth(buf) + 10;
-  }
-  if (bi >= 0) {
-    snprintf(buf, sizeof(buf), "S %.0f -%.1f", D.z[bi].k, P - D.z[bi].hi);
-    lcd.setTextColor(zoneCol(D.z[bi].t), C_BG); lcd.drawString(buf, x, y + STAT / 2);
-  }
-  lcd.setTextDatum(top_left);
+  g.setTextDatum(top_left);
+  if (sOk) sspr.pushSprite(0, HDR);
 }
 
 // ---- กราฟ ----
@@ -588,7 +611,8 @@ void doUpdate() {
   lcd.setTextColor(C_DIM, C_BG); lcd.drawString("do not unplug", W / 2, H / 2 - 20);
   lcd.setTextDatum(top_left);
   otaBar(0, 1);
-  spr.deleteSprite();   // คืนหน่วยความจำให้การดาวน์โหลด
+  pauseNet(true);       // หยุดงานเน็ต + ปิด WebSocket ก่อน
+  spr.deleteSprite(); hspr.deleteSprite(); sspr.deleteSprite(); hOk = sOk = false;  // คืนหน่วยความจำให้การดาวน์โหลด
   perpCli.stop();
   WiFiClientSecure cli; cli.setInsecure();
   httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
@@ -602,10 +626,12 @@ void doUpdate() {
   lcd.setTextColor(C_DIM, C_BG); lcd.drawString(httpUpdate.getLastErrorString().substring(0, 40), 8, 30);
   delay(3000);
   applyRotation(rotIdx);
+  pauseNet(false);
   sc = SC_MENU; drawMenu();
 }
 
 // ---------------- เมนูตั้งค่า ----------------
+bool menuWaitUpd = false;
 const int MENU_N = 6;  // แถว: [หมุน|เสียง] [ความสว่าง|ปิดจอ] [ปิดจอเอง] [WiFi] [อัปเดต] [กลับ]
 void drawMenu() {
   lcd.fillScreen(C_BG);
@@ -638,11 +664,9 @@ void handleMenuTap(int x, int y) {
   else if (i == 3) openWifi();
   else if (i == 4) {
     if (newVer[0]) { doUpdate(); return; }
+    if (WiFi.status() != WL_CONNECTED) { button(8, 28 + 4 * (bh + 5), W - 16, bh, "CHECK FAILED", C_PANEL, C_DN, C_LINE); return; }
     button(8, 28 + 4 * (bh + 5), W - 16, bh, "CHECKING...", C_PANEL, C_DIM, C_LINE);
-    bool ok = WiFi.status() == WL_CONNECTED && checkUpdate();
-    lastUpdCheck = millis();
-    drawMenu();
-    if (!ok || !newVer[0]) button(8, 28 + 4 * (bh + 5), W - 16, bh, ok ? "UP TO DATE" : "CHECK FAILED", C_PANEL, ok ? C_UP : C_DN, C_LINE);
+    updRes = 0; reqUpd = true; menuWaitUpd = true;  // งานเน็ตเช็กให้ ผลแสดงใน loop
   }
   else { sc = SC_MAIN; drawMain(); }
 }
@@ -655,6 +679,7 @@ bool kbShift = false, kbSym = false;
 
 void openWifi() {
   sc = SC_WIFI;
+  pauseNet(true);  // สแกน/เชื่อม WiFi ใหม่ระหว่างงานเน็ตทำงานไม่ได้
   lcd.setRotation(1); W = lcd.width(); H = lcd.height();  // ตั้งค่า WiFi ใช้แนวนอนเสมอ
   lcd.fillScreen(C_BG);
   lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG);
@@ -749,7 +774,7 @@ bool connectWifi(const char *ssid, const char *pw, uint32_t ms, bool showUi) {
 void finishWifi() {
   sc = SC_MAIN;
   applyRotation(rotIdx);
-  lastFetch = 0;
+  pauseNet(false); reqFetch = true;
   drawMain();
 }
 
@@ -794,22 +819,96 @@ void handleKbTap(int x, int y) {
   kbAdd(c);
 }
 
-// ---------------- ราคาสด: Bybit XAUUSDT + offset (แบบแอป) ----------------
+// ---------------- งานเน็ต (แกน 0) ----------------
+// v0.5: ดึงข้อมูลทั้งหมดในงานแยกบนแกน 0 → จอ/สัมผัสบนแกน 1 ไม่ต้องรอเน็ต
+// ราคาสด: WebSocket ของ Bybit (ส่งมาเองเมื่อราคาเปลี่ยน) · ถ้า WebSocket หลุดเกิน 8 วินาที ใช้ REST ทุก 2 วินาทีแทน
 static const char *PERP_URL = "https://api.bybit.com/v5/market/tickers?category=linear&symbol=XAUUSDT";
-float perp = NAN; uint32_t perpAt = 0;
+WebSocketsClient ws;
+volatile float perp = NAN; volatile uint32_t perpAt = 0, perpSeq = 0;
+volatile bool wsUp = false; uint32_t wsDownAt = 0, wsPingAt = 0;
 bool perpFresh() { return okf(perp) && okf(D.off) && millis() - perpAt < 6000; }
 float livePrice() { return perpFresh() ? perp + D.off : (haveData ? D.p : NAN); }
 
-bool pollPerp() {
+void setPerp(float v) { if (v > 0) { if (v != perp) { perp = v; perpSeq++; } perpAt = millis(); } }
+
+void wsEvent(WStype_t type, uint8_t *payload, size_t len) {
+  if (type == WStype_CONNECTED) {
+    wsUp = true; wsPingAt = millis();
+    ws.sendTXT("{\"op\":\"subscribe\",\"args\":[\"tickers.XAUUSDT\"]}");
+  } else if (type == WStype_DISCONNECTED) {
+    if (wsUp) wsDownAt = millis();
+    wsUp = false;
+  } else if (type == WStype_TEXT) {
+    const char *s = (const char *)payload;
+    if (!strstr(s, "tickers.XAUUSDT")) return;
+    const char *k = strstr(s, "\"lastPrice\":\"");
+    if (k) setPerp(atof(k + 13));
+    else if (okf(perp)) perpAt = millis();  // ข้อความ delta ที่ราคาไม่เปลี่ยน = ยังสดอยู่
+  }
+}
+
+bool pollPerpRest() {
   HTTPClient http; http.setReuse(true); http.setTimeout(2500);
   if (!http.begin(perpCli, PERP_URL)) return false;
   int code = http.GET();
   if (code != 200) { http.end(); return false; }
   String s = http.getString(); http.end();
   int i = s.indexOf("\"lastPrice\":\""); if (i < 0) return false;
-  float v = s.substring(i + 13).toFloat(); if (v <= 0) return false;
-  perp = v; perpAt = millis();
+  setPerp(s.substring(i + 13).toFloat());
   return true;
+}
+
+void netTask(void *) {
+  ws.onEvent(wsEvent);
+  ws.setReconnectInterval(3000);
+  bool wsBegun = false;
+  uint32_t lastF = 0, lastRest = 0, lastUpd = 0;
+  for (;;) {
+    if (netPause || WiFi.status() != WL_CONNECTED) {
+      if (wsBegun) { ws.disconnect(); wsBegun = false; wsUp = false; }
+      netIdle = netPause;
+      vTaskDelay(pdMS_TO_TICKS(50));
+      continue;
+    }
+    netIdle = false;
+    if (!wsBegun) { ws.beginSSL("stream.bybit.com", 443, "/v5/public/linear"); wsBegun = true; wsDownAt = millis(); }
+    ws.loop();
+    uint32_t ms = millis();
+    if (wsUp && ms - wsPingAt >= 20000) { wsPingAt = ms; ws.sendTXT("{\"op\":\"ping\"}"); }  // Bybit ตัดถ้าไม่ ping
+    if (reqFetch || !lastF || ms - lastF >= FETCH_MS) { reqFetch = false; lastF = ms; fetchMini(tfIdx); }
+    if (!wsUp && millis() - wsDownAt > 8000 && millis() - lastRest >= 2000) { lastRest = millis(); pollPerpRest(); }
+    if (reqUpd || (!lastUpd && ms > 20000) || (lastUpd && ms - lastUpd >= 6UL * 3600 * 1000)) {
+      reqUpd = false; lastUpd = ms; updRes = checkUpdate() ? 1 : 2;
+    }
+    vTaskDelay(pdMS_TO_TICKS(2));
+  }
+}
+
+// หยุด/เริ่มงานเน็ต (ใช้ตอนตั้ง WiFi และตอน OTA) · รอให้งานเน็ตวางมือจริงก่อนกลับ
+void pauseNet(bool p) {
+  netPause = p;
+  if (p) { uint32_t t = millis(); while (!netIdle && millis() - t < 12000) delay(20); }
+}
+
+// ---------------- ฝั่งจอ: รับข้อมูลจากงานเน็ต ----------------
+uint32_t seenSeq = 0, lastTick = 0;
+bool dirtyChart = false, dirtyStatus = false, dirtyHdr = false;
+void applyNet() {
+  bool got = false;
+  if (ndReady && xSemaphoreTake(mx, 0) == pdTRUE) {
+    if (ND.tf == tfIdx) { memcpy(&D, &ND, sizeof(Data)); got = true; }
+    ndReady = false;
+    xSemaphoreGive(mx);
+  }
+  uint32_t ms = millis();
+  if (got) { haveData = true; lastOk = ms; }
+  bool moved = perpSeq != seenSeq;
+  if (moved) seenSeq = perpSeq;
+  if (got || moved || ms - lastTick >= 1000) {  // ทุกครั้งที่ราคาเปลี่ยน + ทุกวินาที (ขึ้นแท่งใหม่ตามเวลา)
+    lastTick = ms;
+    if (haveData) { tickCandle(); evalAlerts(); }
+    if (got || moved) { dirtyChart = dirtyStatus = dirtyHdr = true; }
+  }
 }
 
 // อัปเดตแท่งปัจจุบันด้วยราคาสด และเปิดแท่งใหม่เมื่อครบเวลา
@@ -834,19 +933,12 @@ void tickCandle() {
 void handleMainTap(int x, int y) {
   if (y >= yTool) {
     for (int i = 0; i < 8; i++) if (x >= tbX[i] - 1 && x <= tbX[i] + tbW[i] + 1) {
-      if (i < 4) { if (tfIdx != i) { tfIdx = i; prefs.putInt("tf", tfIdx); haveData = false; nzst = 0; panBars = 0; yShift = 0; lastFetch = 0; drawToolbar(); drawChart(); } }
+      if (i < 4) { if (tfIdx != i) { tfIdx = i; prefs.putInt("tf", tfIdx); haveData = false; nzst = 0; panBars = 0; yShift = 0; reqFetch = true; drawToolbar(); drawChart(); } }
       else if (i == 4) { if (zoomIdx < 5) { zoomIdx++; prefs.putInt("zm", zoomIdx); drawToolbar(); drawChart(); } }  // − = เห็นแท่งมากขึ้น
       else if (i == 5) { if (zoomIdx > 0) { zoomIdx--; prefs.putInt("zm", zoomIdx); drawToolbar(); drawChart(); } }  // + = ขยาย
       else if (i == 6) {
-        if (WiFi.status() == WL_CONNECTED) {
-          lastFetch = millis();
-          bool ok = fetchData();
-          if (ok) { lastOk = millis(); tickCandle(); evalAlerts(); }
-          if (haveData && pollPerp()) { tickCandle(); evalAlerts(); }
-          drawMain();
-        } else {
-          drawStatus();
-        }
+        reqFetch = true;  // งานเน็ตดึงให้ทันที (ไม่ค้างจอ)
+        drawMain();
       }
       else { sc = SC_MENU; drawMenu(); }
       return;
@@ -917,6 +1009,8 @@ void setup() {
   delay(900);
 
   perpCli.setInsecure();
+  mx = xSemaphoreCreateMutex();
+  xTaskCreatePinnedToCore(netTask, "net", 16384, nullptr, 1, nullptr, 0);  // งานเน็ตบนแกน 0
   configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com");  // เวลาไทย
   battPct = readBatt();
   WiFi.setAutoReconnect(true);
@@ -925,44 +1019,49 @@ void setup() {
   else openWifi();
 }
 
-uint32_t lastHdr = 0, lastPerp = 0;
+uint32_t lastHdr = 0, lastDraw = 0;
 void loop() {
   int32_t x, y;
   serviceAlerts();
+  applyNet();
   static uint32_t lastPow = 0;
   if (millis() - lastPow >= 500) { lastPow = millis(); updateScreenPower(); }
   if (scrOff) {
-    // จอดับ: แตะที่ไหนก็ได้ = เปิด (ปิดเอง → เปิดถาวร, ปิดตามเวลา → เปิด 5 นาที) · ยังดึงราคาและแจ้งเตือนต่อ
+    // จอดับ: แตะที่ไหนก็ได้ = เปิด (ปิดเอง → เปิดถาวร, ปิดตามเวลา → เปิด 5 นาที) · งานเน็ตยังดึงราคา แจ้งเตือนยังทำงาน
     if (tapped(x, y)) { if (manualOff) manualOff = false; else wakeUntil = millis() + 5UL * 60 * 1000; while (lcd.getTouch(&x, &y)) delay(20); wasDown = false; updateScreenPower(); return; }  // รอปล่อยนิ้ว ไม่ให้แตะนี้ไปกดปุ่ม
-    uint32_t ms = millis();
-    bool online = WiFi.status() == WL_CONNECTED;
-    if (online && (lastFetch == 0 || ms - lastFetch >= FETCH_MS)) { lastFetch = ms; if (fetchData()) { lastOk = millis(); tickCandle(); evalAlerts(); } }
-    if (online && haveData && ms - lastPerp >= 1000) { lastPerp = ms; if (pollPerp()) { tickCandle(); evalAlerts(); } }
     delay(10);
     return;
   }
   if (sc == SC_WIFI) { if (tapped(x, y)) handleWifiTap(x, y); delay(10); return; }
   if (sc == SC_KB) { if (tapped(x, y)) handleKbTap(x, y); delay(10); return; }
-  if (sc == SC_MENU) { if (tapped(x, y)) handleMenuTap(x, y); delay(10); return; }
+  if (sc == SC_MENU) {
+    if (tapped(x, y)) handleMenuTap(x, y);
+    if (sc == SC_MENU && menuWaitUpd && updRes) {  // ผลเช็กอัปเดตจากงานเน็ต
+      menuWaitUpd = false; drawMenu();
+      if (updRes == 2 || !newVer[0]) {
+        int bh = (H - 36) / MENU_N - 5;
+        button(8, 28 + 4 * (bh + 5), W - 16, bh, updRes == 1 ? "UP TO DATE" : "CHECK FAILED", C_PANEL, updRes == 1 ? C_UP : C_DN, C_LINE);
+      }
+    }
+    delay(10);
+    return;
+  }
 
   handleTouchMain();
   // Touch can switch SC_MAIN to SC_MENU; never redraw chart over the menu in this loop.
   if (sc != SC_MAIN) { delay(5); return; }
-  if (tDown) { delay(5); return; }  // กำลังลาก: ไม่ดึงข้อมูลแทรก
+  if (tDown) { delay(2); return; }  // กำลังลาก: handleTouchMain วาดเอง
   uint32_t ms = millis();
-  bool online = WiFi.status() == WL_CONNECTED;
-  if (online && (lastFetch == 0 || ms - lastFetch >= FETCH_MS)) {
-    lastFetch = ms;
-    if (fetchData()) { lastOk = millis(); tickCandle(); evalAlerts(); drawStatus(); drawChart(); }
-    drawHeader();
+  // วาดเฉพาะเมื่อข้อมูลเปลี่ยน · สูงสุด ~7 ครั้ง/วินาที
+  if ((dirtyChart || dirtyStatus) && ms - lastDraw >= 150) {
+    lastDraw = ms;
+    if (dirtyChart) drawChart();
+    if (dirtyStatus) drawStatus();
+    dirtyChart = dirtyStatus = false;
   }
-  if (online && haveData && ms - lastPerp >= 1000) {  // ราคาสดทุก 1 วินาที
-    lastPerp = ms;
-    if (pollPerp()) { tickCandle(); evalAlerts(); drawChart(); drawHeader(); lastHdr = ms; }
+  if ((dirtyHdr && ms - lastHdr >= 150) || ms - lastHdr >= 1000) {
+    if (ms - lastHdr >= 1000) battPct = readBatt();
+    lastHdr = ms; dirtyHdr = false; drawHeader();
   }
-  if (online && (lastUpdCheck == 0 || ms - lastUpdCheck >= 6UL * 3600 * 1000) && ms > 20000) {  // เช็กเวอร์ชันใหม่ตอนเปิดเครื่องและทุก 6 ชม.
-    lastUpdCheck = ms; checkUpdate(); drawHeader();
-  }
-  if (ms - lastHdr >= 1000) { lastHdr = ms; battPct = readBatt(); drawHeader(); }
-  delay(5);
+  delay(2);
 }
