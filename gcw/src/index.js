@@ -248,8 +248,44 @@ async function tgCall(env, method, body) {
 
 export class OptState {
   constructor(state, env) { this.state = state; this.env = env; }
+  // ---------- เปิดใช้งานจอ ----------
+  async actGet(id) {
+    if (!/^[0-9A-F]{12}$/.test(id || '')) return { error: 'bad id' };
+    const dev = await this.state.storage.get('dev') || {};
+    let d = dev[id];
+    const now = Math.floor(Date.now() / 1000);
+    if (!d) {
+      const used = new Set(Object.values(dev).map(x => x.code));
+      let code; do { code = 'GX-' + (1000 + (crypto.getRandomValues(new Uint16Array(1))[0] % 9000)); } while (used.has(code));
+      d = dev[id] = { code, st: 'pending', first: now };
+    }
+    d.last = now;
+    await this.state.storage.put('dev', dev);
+    return { st: d.st, code: d.code, ...(d.st === 'ok' ? { tok: d.tok } : {}) };
+  }
+  async actCheck(id, tok) {
+    const dev = await this.state.storage.get('dev') || {}, d = dev[id];
+    const ok = !!(d && d.st === 'ok' && tok && d.tok === tok);
+    if (d) { const now = Math.floor(Date.now() / 1000); if (!d.last || now - d.last > 300) { d.last = now; await this.state.storage.put('dev', dev); } }
+    return { ok };
+  }
+  async actAdmin(b) {
+    const dev = await this.state.storage.get('dev') || {};
+    if (b.a === 'list') return { list: Object.entries(dev).map(([id, d]) => ({ id, code: d.code, st: d.st, name: d.name || '', first: d.first, last: d.last })).sort((x, y) => (y.last || 0) - (x.last || 0)) };
+    const d = dev[b.id]; if (!d) return { error: 'no device' };
+    if (b.a === 'ok') { d.st = 'ok'; d.tok = rhex(16); }
+    else if (b.a === 'off') { d.st = 'off'; delete d.tok; }
+    else if (b.a === 'name') d.name = String(b.v || '').slice(0, 40);
+    else if (b.a === 'del') delete dev[b.id];
+    else return { error: 'bad action' };
+    await this.state.storage.put('dev', dev);
+    return { ok: true };
+  }
   async fetch(req) {
     const u = new URL(req.url);
+    if (u.pathname === '/act') return new Response(JSON.stringify(await this.actGet(u.searchParams.get('id'))));
+    if (u.pathname === '/actchk') return new Response(JSON.stringify(await this.actCheck(u.searchParams.get('id'), u.searchParams.get('tok'))));
+    if (u.pathname === '/actadm') return new Response(JSON.stringify(await this.actAdmin(await req.json().catch(() => ({})))));
     if (u.pathname === '/pushkey') return new Response(JSON.stringify({ key: (await this.vapid()).pub }));
     if (u.pathname === '/pushsub') return new Response(JSON.stringify(await this.pushSub(await req.json().catch(() => null))));
     if (u.pathname === '/pushtest') { // ส่งทดสอบเฉพาะเครื่องที่ขอ
@@ -523,6 +559,43 @@ export function miniPayload(s, gf, nowSec, bs = 60, off = null) {
   };
 }
 const MINI_TF = { '1': 60, '5': 300, '15': 900, '60': 3600 };
+// ข่าวแดง USD 3 รายการถัดไปภายใน 24 ชม. → [[วินาที, ชื่อ ≤28 ตัว ASCII], ...] (จอไม่มีฟอนต์ไทย)
+export function miniNews(events, nowMs) {
+  return (events || []).filter(e => e.c === 'USD' && (e.i || 'H') === 'H').map(e => ({ ms: Date.parse(e.date), t: String(e.title || '') }))
+    .filter(e => isFinite(e.ms) && e.ms > nowMs - 5 * 60e3 && e.ms - nowMs <= 24 * 3600e3).sort((a, b) => a.ms - b.ms).slice(0, 3)
+    .map(e => [Math.floor(e.ms / 1000), e.t.replace(/[^\x20-\x7e]/g, '').slice(0, 28)]);
+}
+async function newsEvents() {
+  const ck = new Request('https://cache.local/news'), cache = caches.default;
+  const hit = await cache.match(ck); if (hit) return (await hit.json()).events || [];
+  try {
+    const r = await fetch('https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-pro/main/news.json?t=' + Math.floor(Date.now() / 600e3));
+    if (!r.ok) return [];
+    const j = await r.json();
+    await cache.put(ck, new Response(JSON.stringify({ events: j.events || [] }), { headers: { 'cache-control': 'public, max-age=600' } }));
+    return j.events || [];
+  } catch (e) { return []; }
+}
+// ผลวิเคราะห์ dashboard (ds) แบบย่อสำหรับจอ: เฉพาะตัวเลข (ข้อความไทยแสดงบนจอไม่ได้)
+export function miniDash(A) {
+  if (!A) return null;
+  return { u: String(A.updated || '').replace(/[^\x20-\x7e]/g, '').slice(0, 20), tr: A.trend || 'side', sc: Math.max(-100, Math.min(100, Math.round(Number(A.score) || 0))),
+    g: Math.max(0, Math.min(100, Math.round(Number(A.gauge) || 50))),
+    lv: (A.levels || []).map(l => [Number(l.p), String(l.k || '').slice(0, 1), Math.max(1, Math.min(3, Number(l.s) || 1))]).filter(l => isFinite(l[0])).sort((a, b) => b[0] - a[0]).slice(0, 8) };
+}
+const SHEET_API = 'https://script.google.com/macros/s/AKfycbwQrp29KWhUCVO0ojjS73SiLtDKe1QKx69KOOF90QQOlV3csHXqxfOGUYKYw2D6nZp0tw/exec';
+// ---------- เปิดใช้งานจอทีละเครื่อง ----------
+const ADMIN_HTML = `<!doctype html><html lang="th"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>OI Gold Pro Mini · เครื่อง</title>
+<style>body{font:15px system-ui,sans-serif;background:#0b1020;color:#e6e9f2;margin:0;padding:16px}h1{font-size:18px;color:#e0b44c}input,button{font:inherit;padding:8px 10px;border-radius:8px;border:1px solid #1f2a46;background:#121a30;color:#e6e9f2}button{cursor:pointer}.ok{color:#2fbf8f}.pending{color:#e0b44c}.off{color:#e5576b}table{width:100%;border-collapse:collapse;margin-top:12px}td,th{padding:8px 6px;border-bottom:1px solid #1f2a46;text-align:left;font-size:14px}.b{background:#e0b44c;color:#1a1405;border:0}.r{background:#e5576b;color:#fff;border:0}small{color:#8a93ab}</style></head><body>
+<h1>OI Gold Pro Mini · อนุมัติเครื่อง</h1><div><input id="k" type="password" placeholder="รหัสแอดมิน (MINI_ADMIN)" style="width:220px"> <button onclick="load()">เข้า</button></div>
+<p><small>จอที่ยังไม่อนุมัติจะแสดงรหัสเปิดใช้งาน เช่น GX-1234 · กดอนุมัติให้ตรงกับรหัสบนจอ</small></p><div id="o"></div>
+<script>const K=()=>document.getElementById('k').value;try{document.getElementById('k').value=localStorage.getItem('mk')||''}catch(e){}
+const T=s=>s?new Date(s*1000).toLocaleString('th-TH'):'-';
+async function api(a,id,v){const r=await fetch('/mini/admin/api',{method:'POST',headers:{'content-type':'application/json'},body:JSON.stringify({key:K(),a,id,v})});return r.json()}
+async function load(){try{localStorage.setItem('mk',K())}catch(e){}const j=await api('list');const o=document.getElementById('o');if(j.error){o.textContent='ผิดพลาด: '+j.error;return}
+o.innerHTML='<div>บังคับเปิดใช้งาน: <b>'+(j.auth?'เปิด':'ปิด (ทุกเครื่องใช้ได้)')+'</b></div><table><tr><th>รหัส</th><th>ชื่อ</th><th>สถานะ</th><th>ล่าสุด</th><th></th></tr>'+j.list.map(d=>'<tr><td><b>'+d.code+'</b><br><small>'+d.id+'</small></td><td><input value="'+(d.name||'').replace(/"/g,'')+'" onchange="api(\'name\',\''+d.id+'\',this.value)" style="width:110px"></td><td class="'+d.st+'">'+({ok:'ใช้ได้',pending:'รออนุมัติ',off:'ปิด'})[d.st]+'</td><td><small>'+T(d.last)+'</small></td><td>'+(d.st!=='ok'?'<button class="b" onclick="api(\'ok\',\''+d.id+'\').then(load)">อนุมัติ</button> ':'<button class="r" onclick="api(\'off\',\''+d.id+'\').then(load)">ปิด</button> ')+'<button onclick="if(confirm(\'ลบ?\'))api(\'del\',\''+d.id+'\').then(load)">ลบ</button></td></tr>').join('')+'</table>'}
+</script></body></html>`;
+const rhex = n => [...crypto.getRandomValues(new Uint8Array(n))].map(b => b.toString(16).padStart(2, '0')).join('');
 const marketOpen = now => { const d = new Date(now), wd = d.getUTCDay(), h = d.getUTCHours(); if (wd === 6) return false; if (wd === 0 && h < 22) return false; if (wd === 5 && h >= 22) return false; return true; };
 
 export default {
@@ -545,20 +618,62 @@ export default {
         return res;
       } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
     }
+    if (url.pathname.startsWith('/mini/')) {
+      const J = (o, st = 200) => new Response(JSON.stringify(o), { status: st, headers: { ...CORS, 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' } });
+      if (!env || !env.OPT) return J({ error: 'no OPT binding' }, 500);
+      const stub = env.OPT.get(env.OPT.idFromName('main'));
+      if (url.pathname === '/mini/act') {  // จอขอสถานะ/รหัสเปิดใช้งาน
+        const r = await (await stub.fetch('https://do/act?id=' + encodeURIComponent(url.searchParams.get('id') || ''))).json();
+        return J({ ...r, auth: env.MINI_AUTH === '1' });
+      }
+      if (url.pathname === '/mini/admin') return new Response(ADMIN_HTML, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
+      if (url.pathname === '/mini/admin/api' && request.method === 'POST') {
+        const b = await request.json().catch(() => ({}));
+        if (!env.MINI_ADMIN) return J({ error: 'ยังไม่ได้ตั้ง MINI_ADMIN ใน Cloudflare' });
+        if (b.key !== env.MINI_ADMIN) return J({ error: 'รหัสแอดมินไม่ถูก' }, 403);
+        const r = await (await stub.fetch('https://do/actadm', { method: 'POST', body: JSON.stringify(b) })).json();
+        return J(b.a === 'list' ? { ...r, auth: env.MINI_AUTH === '1' } : r);
+      }
+      if (url.pathname === '/mini/dash') {
+        if (env.MINI_AUTH === '1') { const c = await (await stub.fetch(`https://do/actchk?id=${encodeURIComponent(url.searchParams.get('id') || '')}&tok=${encodeURIComponent(url.searchParams.get('tok') || '')}`)).json(); if (!c.ok) return J({ error: 'auth' }, 401); }
+        if (!env.DASH_CODE) return J({ error: 'DASH_CODE not set' });
+        const ck = new Request(url.origin + '/mini/dash'), cache = caches.default;
+        const hit = await cache.match(ck); if (hit) return hit;
+        try {
+          const r = await fetch(`${SHEET_API}?api=data&sym=gold&code=${encodeURIComponent(env.DASH_CODE)}&t=${Date.now()}`);
+          const d = await r.json();
+          if (d.error) return J({ error: 'sheet ' + d.error });
+          let A = null; try { A = d.cfg && d.cfg.dash ? JSON.parse(d.cfg.dash) : null; } catch (e) {}
+          const out = miniDash(A);
+          if (!out) return J({ error: 'no dash' });
+          const res = new Response(JSON.stringify(out), { headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=300' } });
+          await cache.put(ck, res.clone());
+          return res;
+        } catch (e) { return J({ error: String(e.message || e) }, 502); }
+      }
+      return J({ error: 'not found' }, 404);
+    }
     if (url.pathname === '/mini') {
       // จอ OI Gold Pro Mini · แคช 15 วินาที (หลายจอเรียกพร้อมกันได้ไม่หนัก)
       const tf = MINI_TF[url.searchParams.get('tf')] ? url.searchParams.get('tf') : '1';
+      // บังคับเปิดใช้งาน (ตั้ง MINI_AUTH=1 ใน Cloudflare): ต้องแนบ id + tok ที่อนุมัติแล้ว
+      if (env && env.OPT && env.MINI_AUTH === '1') {
+        const c = await (await env.OPT.get(env.OPT.idFromName('main')).fetch(`https://do/actchk?id=${encodeURIComponent(url.searchParams.get('id') || '')}&tok=${encodeURIComponent(url.searchParams.get('tok') || '')}`)).json();
+        if (!c.ok) return new Response(JSON.stringify({ error: 'auth' }), { status: 401, headers: { ...CORS, 'content-type': 'application/json' } });
+      }
       const ck = new Request(url.origin + '/mini?tf=' + tf), cache = caches.default;
       const hit = await cache.match(ck); if (hit) return hit;
       const hdr = { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=15' };
       try {
         let s = null;
         if (env && env.OPT) { s = await (await env.OPT.get(env.OPT.idFromName('main')).fetch('https://do/get')).json(); }
-        const [a, b1, pp] = await Promise.allSettled([tvBars('BLACKBULL:GOLD.F', tf, 120), tf === '1' ? Promise.resolve(null) : tvBars('BLACKBULL:GOLD.F', '1', 12), tvBars('BYBIT:XAUUSDT.P', '1', 12)]);
+        const [a, b1, pp, nw] = await Promise.allSettled([tvBars('BLACKBULL:GOLD.F', tf, 120), tf === '1' ? Promise.resolve(null) : tvBars('BLACKBULL:GOLD.F', '1', 12), tvBars('BYBIT:XAUUSDT.P', '1', 12), newsEvents()]);
         const gf = a.status === 'fulfilled' ? a.value : null, g1 = tf === '1' ? gf : (b1.status === 'fulfilled' ? b1.value : null);
         const nowS = Math.floor(Date.now() / 1000);
         const off = g1 && pp.status === 'fulfilled' && pp.value ? liveOffset(g1, pp.value, nowS) : null;
-        const res = new Response(JSON.stringify(miniPayload(s, gf, nowS, MINI_TF[tf], off)), { headers: hdr });
+        const pl = miniPayload(s, gf, nowS, MINI_TF[tf], off);
+        pl.nx = nw.status === 'fulfilled' ? miniNews(nw.value, Date.now()) : [];
+        const res = new Response(JSON.stringify(pl), { headers: hdr });
         await cache.put(ck, res.clone());
         return res;
       } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }

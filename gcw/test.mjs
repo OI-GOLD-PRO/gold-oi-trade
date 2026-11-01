@@ -1,4 +1,4 @@
-import worker, { maxPain, miniPayload, alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset, applyCmeOI, tvTradeDate } from './src/index.js';
+import worker, { miniNews, miniDash, maxPain, miniPayload, alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset, applyCmeOI, tvTradeDate } from './src/index.js';
 const arr = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const mk = (n, step) => ({ chart: { result: [{ timestamp: arr(n, i => 1792700000 + i * step), indicators: { quote: [{ open: arr(n, i => 4000 + i), high: arr(n, i => 4001 + i), low: arr(n, i => 3999 + i), close: arr(n, i => i === 3 ? null : 4000.5 + i) }] } }] } });
 let calls = [];
@@ -60,6 +60,26 @@ if (mp.off !== 3.2 || mp.lt !== 1000 + 44 * 60) throw new Error('mini off/lt');
 if (mp.p !== 4014.4 || mp.c.length !== 40 || mp.ct !== 1300 || mp.b.length !== 45 || mp.b[44][3] !== 4014.4 || mp.s.length !== 2 || mp.s[0][0] !== 4000 || mp.s[0][6] !== 1 || mp.s[0][7] !== 1 || mp.s[1][5] !== 1 || mp.mp !== 4000 || mp.gm !== 3990.4 || mp.z.length !== 2 || mp.z[0][3] !== 'P' || mp.z[1][3] !== 'C' || mp.pw !== 4000 || mp.cw !== 4050) throw new Error('mini ' + JSON.stringify(mp));
 const mp0 = miniPayload(null, null, 4000); if (mp0.p !== null || mp0.z.length) throw new Error('mini empty');
 console.log('mini ok', JSON.stringify(mp).length, 'bytes');
+const mn = miniNews([{ c: 'USD', i: 'H', date: '2026-11-07T08:30:00-05:00', title: 'Non-Farm Employment Change' }, { c: 'USD', i: 'M', date: '2026-11-07T09:00:00-05:00', title: 'x' }, { c: 'EUR', i: 'H', date: '2026-11-07T08:00:00-05:00', title: 'y' }, { c: 'USD', i: 'H', date: '2026-11-09T08:30:00-05:00', title: 'far' }], Date.parse('2026-11-07T10:00:00Z'));
+if (mn.length !== 1 || mn[0][1] !== 'Non-Farm Employment Change' || mn[0][0] !== Date.parse('2026-11-07T13:30:00Z') / 1000) throw new Error('miniNews ' + JSON.stringify(mn));
+const md = miniDash({ trend: 'up', score: 140, gauge: 62, updated: '01/11 21:30 น.', levels: [{ p: 4000, k: 'S', s: 2 }, { p: 4050, k: 'R', s: 3 }] });
+if (md.sc !== 100 || md.g !== 62 || md.lv[0][0] !== 4050 || md.lv[1][1] !== 'S' || /[^\x20-\x7e]/.test(md.u)) throw new Error('miniDash ' + JSON.stringify(md));
+let rr = await worker.fetch(new Request('https://x/mini/act?id=ABC'), {}); if (rr.status !== 500) throw new Error('act without binding');
+console.log('mini news/dash ok');
+const { OptState } = await import('./src/index.js');
+{ const m = new Map(); const st = { storage: { get: async k => m.get(k), put: async (k, v) => m.set(k, JSON.parse(JSON.stringify(v))) } };
+const o = new OptState(st, {});
+const id = 'A1B2C3D4E5F6';
+let r = await o.actGet(id);
+if (r.st !== 'pending' || !/^GX-\d{4}$/.test(r.code)) throw 1;
+if ((await o.actCheck(id, 'x')).ok) throw 5;
+await o.actAdmin({ a: 'ok', id }); r = await o.actGet(id);
+if (r.st !== 'ok' || !r.tok) throw 2;
+if (!(await o.actCheck(id, r.tok)).ok) throw 3;
+await o.actAdmin({ a: 'off', id }); if ((await o.actCheck(id, r.tok)).ok) throw 4;
+if ((await o.actGet('bad')).error !== 'bad id') throw 6;
+console.log('act ok'); }
+
 console.log('ALL OK');
 
 // OI จาก CME แทน TradingView เมื่อวันเทรดใหม่กว่า
