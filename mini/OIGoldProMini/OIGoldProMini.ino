@@ -18,7 +18,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.5.2"
+#define FW_VER "0.5.3"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -54,6 +54,7 @@ public:
       _touch.config(c); _panel.setTouch(&_touch); }
     setPanel(&_panel);
   }
+  void setWriteFreq(uint32_t f) { auto c = _bus.config(); c.freq_write = f; _bus.config(c); }  // เรียกก่อน init()
 };
 
 LGFX lcd;
@@ -103,6 +104,7 @@ volatile bool ndReady = false, reqFetch = false, reqUpd = false, netPause = fals
 volatile int updRes = 0;
 volatile int miniErr = 1;           // ผลดึง /mini ล่าสุด: 1 ยังไม่เคย, 0 สำเร็จ, รหัส HTTP หรือ -100 เชื่อมต่อไม่ได้ / -200 JSON เสีย / -300 Worker แจ้ง error
 volatile uint32_t miniOkAt = 0;
+volatile bool mktOpen = true;  // จาก /mini (งานเน็ตใช้ตัดสินว่าจะดึงราคา Bybit ไหม)
 volatile float perp = NAN; volatile uint32_t perpAt = 0, perpSeq = 0;
   // ผลเช็กอัปเดต: 0 รอ, 1 สำเร็จ, 2 ล้มเหลว
 bool haveData = false;
@@ -117,7 +119,8 @@ int beepLeft = 0; uint32_t nextBeep = 0; int beepFreq = 2000;
 // การตั้งค่า
 // ปิดจอ: manualOff = กดปิดจากเมนู · autoOff = 0 ไม่ปิดเอง, 1 ตลาดปิด, 2 ตลาดปิด+กลางคืน 00-07, 3 ตลาดปิด+กลางคืน 22-07
 bool manualOff = false, scrOff = false; int autoOff = 1; uint32_t wakeUntil = 0;
-const char *AUTO_N[4] = {"AUTO OFF: NEVER", "AUTO OFF: MKT CLOSED", "AUTO OFF: MKT+00-07", "AUTO OFF: MKT+22-07"};
+const char *AUTO_N[4] = {"OFF: NEVER", "OFF: MKT", "OFF: MKT+0-7", "OFF: MKT+22-7"};
+bool spi40 = false;  // ส่งภาพไปจอ 40MHz (ค่าเริ่ม 27MHz) · แตะจอค้างตอนเปิดเครื่อง = กลับ 27MHz
 int rotIdx = 1; bool muted = false; int brightIdx = 0; int tfIdx = 0; int zoomIdx = 2;
 const uint8_t BRIGHT[3] = {220, 110, 35};
 const char *TF_Q[4] = {"1", "5", "15", "60"};
@@ -202,7 +205,7 @@ bool fetchMini(int tf) {
   NT.F = jf(doc["F"]); NT.open = jf(doc["open"]); NT.em = jf(doc["em"]);
   NT.itd = jf(doc["itd"]); NT.gm = jf(doc["gm"]); NT.mp = jf(doc["mp"]);
   strlcpy(NT.exp, doc["exp"] | "", sizeof(NT.exp));
-  NT.mkt = doc["mkt"] | true;
+  NT.mkt = doc["mkt"] | true; mktOpen = NT.mkt;
   NT.nz = 0;
   for (JsonVariant v : doc["z"].as<JsonArray>()) {
     if (NT.nz >= 12) break;
@@ -661,7 +664,7 @@ void drawMenu() {
   lcd.fillScreen(C_BG);
   lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG);
   lcd.drawString("OI GOLD PRO MINI  v" FW_VER, 8, 6);
-  { char b[48]; snprintf(b, sizeof(b), "data %d  px %s  heap %uk/%uk", miniErr, okf(perp) && millis() - perpAt < 6000 ? "ok" : "--", (unsigned)(ESP.getFreeHeap() / 1024), (unsigned)(ESP.getMaxAllocHeap() / 1024));
+  { char b[48]; snprintf(b, sizeof(b), "d%d %s %u/%uk", miniErr, !mktOpen ? "cls" : okf(perp) && millis() - perpAt < 6000 ? "px" : "--", (unsigned)(ESP.getFreeHeap() / 1024), (unsigned)(ESP.getMaxAllocHeap() / 1024));
     lcd.setFont(&fonts::Font0); lcd.setTextColor(C_DIM, C_BG); lcd.setTextDatum(top_right); lcd.drawString(b, W - 6, 10); lcd.setTextDatum(top_left); }
   int bw = W - 16, hw = (bw - 6) / 2, bh = (H - 36) / MENU_N - 5, y = 28;
   const char *rot[4] = {"ROT: PORT", "ROT: LAND", "ROT: PORT 180", "ROT: LAND 180"};
@@ -670,7 +673,8 @@ void drawMenu() {
   button(14 + hw, y, hw, bh, muted ? "SOUND: OFF" : "SOUND: ON", C_PANEL, muted ? C_DN : C_UP, C_LINE); y += bh + 5;
   button(8, y, hw, bh, br[brightIdx], C_PANEL, C_TEXT, C_LINE);
   button(14 + hw, y, hw, bh, "SCREEN OFF", C_PANEL, C_GOLD, C_LINE); y += bh + 5;
-  button(8, y, bw, bh, AUTO_N[autoOff], C_PANEL, autoOff ? C_TEXT : C_DIM, C_LINE); y += bh + 5;
+  button(8, y, hw, bh, AUTO_N[autoOff], C_PANEL, autoOff ? C_TEXT : C_DIM, C_LINE);
+  button(14 + hw, y, hw, bh, spi40 ? "SPEED: 40MHz" : "SPEED: 27MHz", C_PANEL, spi40 ? C_GOLD : C_TEXT, C_LINE); y += bh + 5;
   button(8, y, bw, bh, "WIFI SETUP", C_PANEL, C_TEXT, C_LINE); y += bh + 5;
   char u[32];
   if (newVer[0]) snprintf(u, sizeof(u), "UPDATE TO v%s", newVer); else strcpy(u, "CHECK FOR UPDATE");
@@ -686,6 +690,11 @@ void handleMenuTap(int x, int y) {
   else if (i == 0) { muted = !muted; prefs.putBool("mute", muted); if (muted) beepLeft = 0; else tone(SPK, 2000, 80); drawMenu(); }
   else if (i == 1 && !right) { brightIdx = (brightIdx + 1) % 3; prefs.putInt("br", brightIdx); lcd.setBrightness(BRIGHT[brightIdx]); drawMenu(); }
   else if (i == 1) { manualOff = true; wakeUntil = 0; sc = SC_MAIN; setScreen(true); }  // แตะจอเพื่อเปิด
+  else if (i == 2 && right) {  // เปลี่ยนความเร็วส่งภาพ → รีสตาร์ท (ภาพเพี้ยน: แตะจอค้างตอนเปิดเครื่องเพื่อกลับ 27MHz)
+    spi40 = !spi40; prefs.putBool("spi40", spi40);
+    lcd.fillScreen(C_BG); lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG); lcd.drawString("restarting...", 8, 8);
+    delay(400); ESP.restart();
+  }
   else if (i == 2) { autoOff = (autoOff + 1) & 3; prefs.putInt("ao", autoOff); wakeUntil = millis() + 5000; drawMenu(); }
   else if (i == 3) openWifi();
   else if (i == 4) {
@@ -849,7 +858,8 @@ void handleKbTap(int x, int y) {
 // v0.5: ดึงข้อมูลทั้งหมดในงานแยกบนแกน 0 → จอ/สัมผัสบนแกน 1 ไม่ต้องรอเน็ต
 // ราคาสด: REST ของ Bybit ทุก 1 วินาที (เชื่อมต่อค้างไว้) · v0.5.0 ลอง WebSocket แล้วกราฟไม่ขึ้น/เช็กอัปเดตไม่ได้บนบอร์ดจริง จึงเอาออก
 static const char *PERP_URL = "https://api.bybit.com/v5/market/tickers?category=linear&symbol=XAUUSDT";
-bool perpFresh() { return okf(perp) && okf(D.off) && millis() - perpAt < 6000; }
+// ตลาด GC ปิด: Bybit ยังซื้อขายแต่ offset ค้างจากก่อนปิด → ไม่ใช้ แสดงราคาปิด Gold.F จาก /mini แทน
+bool perpFresh() { return haveData && D.mkt && okf(perp) && okf(D.off) && millis() - perpAt < 6000; }
 float livePrice() { return perpFresh() ? perp + D.off : (haveData ? D.p : NAN); }
 
 void setPerp(float v) { if (v > 0) { if (v != perp) { perp = v; perpSeq++; } perpAt = millis(); } }
@@ -884,7 +894,8 @@ void netTask(void *) {
       if (failF) perpCli.stop(); else freeTlsIfLow();  // ดึงไม่ได้รอบก่อน → ปิดการเชื่อมต่อราคาให้หน่วยความจำว่างก่อน
       if (fetchMini(tfIdx)) { miniErr = 0; miniOkAt = millis(); failF = 0; } else failF++;
     }
-    if (millis() - lastRest >= 1000) { lastRest = millis(); pollPerpRest(); }
+    if (mktOpen && millis() - lastRest >= 1000) { lastRest = millis(); pollPerpRest(); }
+    else if (!mktOpen) perpCli.stop();
     if (reqUpd || (!lastUpd && ms > 20000) || (lastUpd && ms - lastUpd >= 6UL * 3600 * 1000)) {
       reqUpd = false; lastUpd = ms;
       perpCli.stop();
@@ -1003,6 +1014,8 @@ void setup() {
   zoomIdx = prefs.getInt("zm", 2); if (zoomIdx < 0 || zoomIdx > 5) zoomIdx = 2;
   D.off = NAN;
 
+  spi40 = prefs.getBool("spi40", false);
+  lcd.setWriteFreq(spi40 ? 40000000 : 27000000);
   lcd.init();
   lcd.setTouchCalibrate(calData);
   lcd.setBrightness(BRIGHT[brightIdx]);
@@ -1016,7 +1029,15 @@ void setup() {
   lcd.setFont(&fonts::Font2); lcd.setTextColor(C_TEXT, C_BG);
   lcd.drawString("MINI  v" FW_VER, W / 2, H / 2 + 20);
   lcd.setTextDatum(top_left);
-  delay(900);
+  // แตะจอค้างตอนเปิดเครื่อง = กลับไปใช้ 27MHz (เผื่อ 40MHz แล้วภาพเพี้ยน)
+  { uint32_t t0 = millis(); int32_t tx, ty; bool hit = false;
+    while (millis() - t0 < 900) { if (lcd.getTouch(&tx, &ty)) hit = true; delay(20); }
+    if (hit && spi40) {
+      spi40 = false; prefs.putBool("spi40", false);
+      lcd.fillScreen(C_BG); lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG); lcd.drawString("SPEED reset to 27MHz", 8, 8);
+      delay(800); ESP.restart();
+    }
+  }
 
   perpCli.setInsecure();
   mx = xSemaphoreCreateMutex();
