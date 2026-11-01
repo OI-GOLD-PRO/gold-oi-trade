@@ -610,13 +610,15 @@ export default {
         return J(MINI_MANIFEST(v));
       }
       if (url.pathname === '/mini/dash') {
-        { const c = await checkCode(url.searchParams.get('code')); if (!c.ok) return J({ error: 'auth', reason: c.reason }, c.reason === 'server' ? 503 : 401); }
-        if (!env.DASH_CODE) return J({ error: 'DASH_CODE not set' });
+        const uc = String(url.searchParams.get('code') || '').trim();
+        { const c = await checkCode(uc); if (!c.ok) return J({ error: 'auth', reason: c.reason }, c.reason === 'server' ? 503 : 401); }
+        // อ่านชีตด้วยรหัสของจอเอง (ผ่านการตรวจแล้ว) · ไม่ต้องตั้ง DASH_CODE (ถ้าตั้งไว้ใช้ตัวนั้นก่อน)
+        const sheetCode = env.DASH_CODE || uc;
         const ck = new Request(url.origin + '/mini/dash'), cache = caches.default;
         const hit = await cache.match(ck); if (hit) return hit;
         try {
-          const r = await fetch(`${SHEET_API}?api=data&sym=gold&code=${encodeURIComponent(env.DASH_CODE)}&t=${Date.now()}`);
-          const d = await r.json();
+          const r = await fetch(`${SHEET_API}?api=data&sym=gold&code=${encodeURIComponent(sheetCode)}&t=${Date.now()}`);
+          let d; try { d = JSON.parse(await r.text()); } catch (e) { return J({ error: 'sheet HTTP ' + r.status }); }
           if (d.error) return J({ error: 'sheet ' + d.error });
           let A = null; try { A = d.cfg && d.cfg.dash ? JSON.parse(d.cfg.dash) : null; } catch (e) {}
           const out = miniDash(A);

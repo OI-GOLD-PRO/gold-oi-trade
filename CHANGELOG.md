@@ -19,6 +19,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Worker /mini/dash — 2026-11-02 — Claude
+- ไฟล์: gcw/src/index.js
+- แก้อะไร: ผู้ใช้แจ้ง Dashboard บนจอไม่ขึ้น (ยังไม่ได้ตั้ง secret DASH_CODE) → /mini/dash อ่านชีตด้วยรหัสแอปที่จอส่งมา (ผ่าน checkCode แล้ว) · DASH_CODE ไม่จำเป็นแล้ว (ถ้าตั้งไว้ใช้ก่อน) · คำตอบ Apps Script ที่ไม่ใช่ JSON → error "sheet HTTP xxx"
+- ระวัง: ผลแคชร่วมกัน 5 นาที (ข้อมูลเหมือนกันทุกรหัส)
+
 ### Mini v0.7.0 + Worker — 2026-11-01 — Claude
 - ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino, gcw/src/index.js, gcw/src/flash.js, gcw/test.mjs, mini/HANDOFF.md
 - แก้อะไร (ผู้ใช้ขอ): เข้าใช้จอด้วย **รหัสเดียวกับแอป OI Gold Pro** และบังคับทุกจอ · เอาระบบรหัส GX + /mini/act + /mini/admin + MINI_ADMIN/MINI_AUTH ออก · Worker: `checkCode` (Apps Script `?api=login`, แคช 10 นาที/ไม่ผ่าน 2 นาที, Apps Script ล่ม = 503 ไม่แคช), `/mini/login` (ลองตัวพิมพ์ใหญ่/เล็ก), `/mini` และ `/mini/dash` ต้องมี `code=` · จอ: ไม่มีรหัส → หน้าใส่รหัสหลังต่อ WiFi · 401 → กลับหน้าใส่รหัสเอง · MENU → APP CODE (แสดงวันหมดอายุ) เปลี่ยนรหัส · Preferences `code`, `cexp`

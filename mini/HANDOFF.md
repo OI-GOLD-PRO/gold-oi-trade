@@ -175,11 +175,11 @@ Bybit REST ทุก 1 วินาที (งานเน็ตแกน 0) ┘
 | Endpoint | ใช้ทำอะไร |
 |---|---|
 | `GET /mini/login?code=` | จอตรวจรหัสตอนผู้ใช้พิมพ์ → `{ok, reason: invalid\|expired\|server, exp, code}` (ลองตัวพิมพ์ใหญ่/เล็กแบบแอป · `code` = แบบที่ใช้ได้จริง) |
-| `GET /mini/dash?code=` | ผลวิเคราะห์ ds แบบตัวเลข `{u, tr, sc, g, lv:[[p,'R'\|'S'\|'P',ความแข็ง1-3]]}` · Worker อ่าน Apps Script `?api=data&sym=gold&code=DASH_CODE` · แคช 5 นาที |
+| `GET /mini/dash?code=` | ผลวิเคราะห์ ds แบบตัวเลข `{u, tr, sc, g, lv:[[p,'R'\|'S'\|'P',ความแข็ง1-3]]}` · Worker อ่าน Apps Script `?api=data&sym=gold&code=<DASH_CODE หรือรหัสของจอ>` · แคช 5 นาที |
 | `GET /mini/flash` | หน้าเว็บติดตั้งเฟิร์มแวร์ (ESP Web Tools) · manifest `/mini/flash/manifest.json` ชี้ `mini/dist/factory.bin` |
 
 **Cloudflare secrets ของ Worker `gc-yahoo`** (ตั้งที่ Workers → gc-yahoo → Settings → Variables and Secrets · `keep_vars = true` จะไม่ลบตอน deploy):
-- `DASH_CODE` — รหัสเข้าแอป OI Gold Pro ที่ Worker ใช้อ่าน dashboard
+- `DASH_CODE` — (ไม่จำเป็นตั้งแต่ 2026-11-02) ถ้าไม่ตั้ง /mini/dash ใช้รหัสแอปของจอที่ส่งมาอ่านชีต
 - (v0.6 เคยมี `MINI_ADMIN` / `MINI_AUTH` + หน้า /mini/admin + รหัส GX — **เอาออกใน v0.7** ใช้รหัสแอปแทน)
 
 ฟังก์ชันใน `gcw/src/index.js`: `miniPayload()`, `strikeTable()`, `maxPain()`, ตัว route `if (url.pathname === '/mini')`
