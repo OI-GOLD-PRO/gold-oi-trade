@@ -20,7 +20,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.7.2"
+#define FW_VER "0.7.3"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -1524,6 +1524,7 @@ void setup() {
   if (!ss.length()) openWifi();
   else if (connectWifi(ss.c_str(), pw.c_str(), 10000, true) || !wifiUserTap) finishWifi();
   else openWifi();
+  wakeUntil = millis() + 60000;  // เปิดเครื่องตอนตลาดปิด/ตั้งเวลาปิดจอ: ให้จอติดก่อน 1 นาทีแล้วค่อยดับ
 }
 
 uint32_t lastHdr = 0, lastDraw = 0;

@@ -19,6 +19,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.7.3 — 2026-11-02 — Claude
+- ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino
+- แก้อะไร (ผู้ใช้ขอ): เปิดเครื่องช่วงตลาดปิด (AUTO OFF) จอดับทันที → ตั้ง `wakeUntil = millis() + 60000` ท้าย setup ให้จอติด 1 นาทีก่อนดับ
+- ระวัง: -
+
 ### Mini v0.7.2 + Worker — 2026-11-02 — Claude
 - ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino, gcw/src/index.js, gcw/test.mjs, mini/HANDOFF.md
 - แก้อะไร (ผู้ใช้แจ้ง): (1) IV ไม่ตรง — เดิมใช้ IV ของ TradingView (ข้อมูลเพี้ยนกับสัญญารายวัน) → คำนวณเองด้วย Black-76 แบบ live.js ของแอป (`smileIV`: mid bid/ask ถ้า spread แคบ ไม่งั้นราคาล่าสุด, F จาก put-call parity, IV ฝั่ง OTM, T ณ เวลาที่ poll) (2) **SD = ส่วนเบี่ยงเบนมาตรฐานของ OI** (ผู้ใช้กำหนด) → `distSD` ค่ากลางถ่วงน้ำหนัก OI ± SD (`os`), ของ Volume (`vs`), `sd` = SD ของ OI · หน้า 1 เปลี่ยนป้ายเป็น "OI 1SD" (3) หน้า 2 เส้น IV โค้งแบบ CME — fit กำลังสองรอบ F (±4%) ส่ง `sm` = [F, a, b, c] จอวาดโค้ง + จุด IV จริง (4) หน้า 2/3 กราฟเต็มจอ (แกนนอน = strike ทั้งหมดที่ส่งมา)
