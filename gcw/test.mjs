@@ -1,4 +1,4 @@
-import worker, { loginCode, checkCode, miniNews, miniDash, maxPain, miniPayload, alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset, applyCmeOI, tvTradeDate } from './src/index.js';
+import worker, { atmIv, dealerScore, loginCode, checkCode, miniNews, miniDash, maxPain, miniPayload, alertZones, evalAlerts, newsDue, alertText, walls, agg4h, accumulate, expiryTs, straddle, gammaFlip, levelOffset, liveOffset, applyCmeOI, tvTradeDate } from './src/index.js';
 const arr = (n, f) => Array.from({ length: n }, (_, i) => f(i));
 const mk = (n, step) => ({ chart: { result: [{ timestamp: arr(n, i => 1792700000 + i * step), indicators: { quote: [{ open: arr(n, i => 4000 + i), high: arr(n, i => 4001 + i), low: arr(n, i => 3999 + i), close: arr(n, i => i === 3 ? null : 4000.5 + i) }] } }] } });
 let calls = [];
@@ -74,6 +74,11 @@ if (md.sc !== 100 || md.g !== 62 || md.lv[0][0] !== 4050 || md.lv[1][1] !== 'S' 
   L = await checkCode('', fk); if (L.ok || L.reason !== 'missing') throw new Error('login empty');
   L = await checkCode('x', async () => { throw new Error('down'); }); if (L.reason !== 'server') throw new Error('login server');
   console.log('login ok'); }
+{ const rr = [{ k: 4000, t: 'C', iv: 0.2, oi: 100, vol: 50 }, { k: 4000, t: 'P', iv: 0.22, oi: 300, vol: 80 }, { k: 4050, t: 'C', iv: 0.18, oi: 50, vol: 5 }];
+  if (atmIv(rr, 4004) !== 21) throw new Error('atmIv ' + atmIv(rr, 4004));
+  const dA = dealerScore(rr, 4010, 3990, 20, 1000 + 3600, 1000 * 1000), dC = dealerScore(rr, 3970, 3990, 20, 1000 + 3600, 1000 * 1000);
+  if (!dA || dA[1] !== 'A' || !dC || dC[1] !== 'C') throw new Error('dealer ' + JSON.stringify([dA, dC]));
+  console.log('iv/dealer ok', dA, dC); }
 console.log('mini news/dash ok');
 
 

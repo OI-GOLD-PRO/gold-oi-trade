@@ -487,13 +487,43 @@ export function maxPain(rows) {
 // z = [strike, lo, hi, 'C'|'P'|'V', callOI, putOI] โซนแจ้งเตือน (กติกาเดียวกับแอป/Telegram)
 export function strikeTable(rows, F, win = 80) {
   const by = new Map();
-  rows.forEach(r => { if (F && Math.abs(r.k - F) > F * 0.1) return; const o = by.get(r.k) || { k: r.k, c: 0, p: 0, vc: 0, vp: 0 }; if (r.t === 'C') { o.c = r.oi || 0; o.vc += r.vol || 0; } else { o.p = r.oi || 0; o.vp += r.vol || 0; } by.set(r.k, o); });
+  rows.forEach(r => { if (F && Math.abs(r.k - F) > F * 0.1) return; const o = by.get(r.k) || { k: r.k, c: 0, p: 0, vc: 0, vp: 0, ivC: null, ivP: null }; if (r.t === 'C') { o.c = r.oi || 0; o.vc += r.vol || 0; if (r.iv > 0) o.ivC = r.iv; } else { o.p = r.oi || 0; o.vp += r.vol || 0; if (r.iv > 0) o.ivP = r.iv; } by.set(r.k, o); });
   const all = [...by.values()];
   const rank = f => { const m = new Map(); all.filter(o => o[f] > 0).sort((a, b) => b[f] - a[f]).slice(0, 10).forEach((o, i) => m.set(o.k, i + 1)); return m; };
   const rC = rank('c'), rP = rank('p');
   const topV = new Set(all.filter(o => o.vc + o.vp > 0).sort((a, b) => (b.vc + b.vp) - (a.vc + a.vp)).slice(0, 5).map(o => o.k));
   return all.filter(o => !F || Math.abs(o.k - F) <= win).sort((a, b) => a.k - b.k)
-    .map(o => [o.k, Math.round(o.c), Math.round(o.p), Math.round(o.vc), Math.round(o.vp), rC.get(o.k) || 0, rP.get(o.k) || 0, topV.has(o.k) ? 1 : 0]);
+    .map(o => { const iv = F && o.k < F ? (o.ivP || o.ivC) : (o.ivC || o.ivP);  // IV ฝั่ง OTM (แบบ smile)
+      return [o.k, Math.round(o.c), Math.round(o.p), Math.round(o.vc), Math.round(o.vp), rC.get(o.k) || 0, rP.get(o.k) || 0, topV.has(o.k) ? 1 : 0, iv ? Math.round(iv * 1000) : 0]; });  // [8] = IV % × 10
+}
+// ATM IV (%) = เฉลี่ย IV Call/Put ของ strike ใกล้ราคาที่สุดที่มี IV
+export function atmIv(rows, F) {
+  if (!F) return null;
+  const by = new Map(); rows.forEach(r => { if (r.iv > 0) { const a = by.get(r.k) || []; a.push(r.iv); by.set(r.k, a); } });
+  const ks = [...by.keys()].sort((a, b) => Math.abs(a - F) - Math.abs(b - F));
+  if (!ks.length) return null;
+  const a = by.get(ks[0]); return Math.round(a.reduce((x, y) => x + y, 0) / a.length * 1000) / 10;
+}
+// Dealer รับ/ไล่ (แบบ dealer.js ในแอป แต่ไม่มีส่วน Big Traders): gamma เทียบ flip + แรงตรึง strike OI หนา × ใกล้หมดอายุ × ความหนาแน่น vol/OI
+export function dealerScore(rows, P, flip, em, expTs, nowMs) {
+  if (!P) return null;
+  em = em > 0 ? em : 25;
+  const parts = [];
+  if (flip) parts.push({ v: Math.tanh((P - flip) / Math.max(3, em * 0.25)), w: 0.4 });
+  const by = new Map(); rows.forEach(r => { const o = by.get(r.k) || { k: r.k, oi: 0, vol: 0 }; o.oi += r.oi || 0; o.vol += r.vol || 0; by.set(r.k, o); });
+  const all = [...by.values()], maxAll = Math.max(1, ...all.map(o => o.oi));
+  const near = all.filter(o => Math.abs(o.k - P) <= em && o.oi > 0).sort((a, b) => b.oi - a.oi);
+  if (near.length) {
+    const top = near[0], d = Math.abs(top.k - P), prox = Math.exp(-Math.pow(d / 5, 2)), size = Math.min(1, top.oi / maxAll);
+    const hrs = expTs ? (expTs * 1000 - nowMs) / 3600e3 : 24, tf = hrs <= 0 ? 0 : hrs <= 6 ? 1 : hrs <= 24 ? 0.6 : 0.3;
+    parts.push({ v: prox * size * tf, w: 0.25 });
+  }
+  if (!parts.length) return null;
+  let S = parts.reduce((a, p) => a + p.w * p.v, 0) / parts.reduce((a, p) => a + p.w, 0);
+  const n10 = all.filter(o => Math.abs(o.k - P) <= 10), oi10 = n10.reduce((a, o) => a + o.oi, 0), vol10 = n10.reduce((a, o) => a + o.vol, 0);
+  if (oi10 > 0) S *= Math.max(0.6, Math.min(1.3, 0.6 + vol10 / oi10));
+  S = Math.max(-1, Math.min(1, S));
+  return [Math.round(S * 100), S >= 0.2 ? 'A' : S <= -0.2 ? 'C' : 'N'];  // A = รับ (absorb), C = ไล่ (chase), N = กลาง
 }
 export function miniPayload(s, gf, nowSec, bs = 60, off = null) {
   const r1 = x => x == null || !isFinite(x) ? null : Math.round(x * 10) / 10;
@@ -520,6 +550,9 @@ export function miniPayload(s, gf, nowSec, bs = 60, off = null) {
     exp: s && s.expTs ? bkk(s.expTs).slice(5) : null, root: s ? s.root : null,
     upd: s ? s.updated || null : null, mkt: marketOpen(nowSec * 1000),
     s: ref ? strikeTable(rows, ref) : [],
+    iv: ref ? atmIv(rows, ref) : null,
+    sd: (() => { const iv = ref ? atmIv(rows, ref) : null; if (!iv || !s || !s.expTs) return null; const T = Math.max((s.expTs - nowSec) / (365 * 86400), 1 / (365 * 24)); return r1(ref * iv / 100 * Math.sqrt(T)); })(),
+    dl: ref && s ? dealerScore(rows, ref, s.itd || (m && m.M) || null, s.em || s.openEM, s.expTs, nowSec * 1000) : null,
     z,
   };
 }

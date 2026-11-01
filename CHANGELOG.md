@@ -19,6 +19,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.7.1 + Worker — 2026-11-02 — Claude
+- ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino, gcw/src/index.js, gcw/test.mjs, mini/HANDOFF.md
+- แก้อะไร (ผู้ใช้ขอ): Dashboard หน้า 1 เพิ่ม **Dealer** (รับ/ไล่ แบบ dealer.js แต่ไม่รวม Big Traders) + **ATM IV** + **1SD** · ปุ่มล่าง CLOSE / < PREV / NEXT > · **หน้า 2** = แท่ง OI ราย strike (Call/Put) + เส้น IV (smile ฝั่ง OTM) + แถบ ±1/±2 SD แบบ CME QuikStrike · **หน้า 3** = แท่ง Volume วันนี้ราย strike + แถบ SD · Worker /mini เพิ่ม `iv` (ATM IV %), `sd` (1SD $ = F × IV × √T ถึงหมดอายุ), `dl` ([คะแนน −100..100, 'A'|'C'|'N']) และ `s[i][8]` = IV % × 10
+- ระวัง: Dealer บนจอใช้ราคา Gold.F จาก Worker (ทุก 15 วิ) · flip = gmf itd (ถ้าไม่มีใช้ gmf M) · ยังไม่ได้ทดสอบบนบอร์ดจริง
+
 ### Worker /mini/dash — 2026-11-02 (2) — Claude
 - ไฟล์: gcw/src/index.js
 - แก้อะไร: จอขึ้น "sheet auth" → ลองรหัสของจอก่อน แล้วค่อย DASH_CODE (เดิมใช้ DASH_CODE ก่อน ถ้าตั้งผิดจะไม่ผ่าน) · ข้อความ error บอกว่าตัวไหนไม่ผ่าน "(code)" / "(DASH_CODE)"
