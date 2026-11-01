@@ -19,6 +19,19 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.6.0 + Worker — 2026-11-01 — Claude
+- ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino, gcw/src/index.js, gcw/src/flash.js (ใหม่), gcw/test.mjs, mini/HANDOFF.md
+- แก้อะไร (ผู้ใช้เลือกข้อ 1–5, 8, 9, 10):
+  1. แจ้งเตือนข่าวแดง USD ก่อน 10 นาที + นับถอยหลังบนแถบสถานะ (/mini เพิ่ม `nx`)
+  2. ทะลุโซนยืนยันด้วยราคาปิด M5 ให้ตรงแอป/Telegram
+  3. หน้า Dashboard (แตะแถบหัว หรือเมนู) — คะแนนเทรนด์ ทิศ เข็มวัด แนวสำคัญของ ds + Max Pain/gmf/EM/CW/PW · Worker `/mini/dash` อ่านชีตด้วย secret `DASH_CODE`
+  4. เส้น Call Wall / Put Wall + ป้ายบนแกนราคา
+  5. แตะค้างบนกราฟ = เส้นเล็ง (ราคา, OHLC/เวลาแท่ง, OI strike ใกล้สุด)
+  8. หน้า ALERT SOUNDS: ระดับเสียง 4 ระดับ + เลือกเสียงต่อชนิด (OFF/BEEP/CHIME/ALARM) ด้วย LEDC (เลิกใช้ tone())
+  9. เปิดใช้งานต่อเครื่อง: `/mini/act` ให้รหัส GX-xxxx ต่อ MAC · หน้าแอดมิน `/mini/admin` (secret `MINI_ADMIN`) · บังคับเมื่อตั้ง `MINI_AUTH=1` · จอแสดงรหัสในเมนู และหน้าขออนุมัติเมื่อโดน 401
+  10. หน้าเว็บติดตั้งเฟิร์มแวร์ `/mini/flash` (ESP Web Tools + mini/dist/factory.bin)
+- ระวัง: ยังไม่ได้ทดสอบบนบอร์ดจริง · เมนูเปลี่ยนเป็น 2 คอลัมน์ทุกแถว · LEDC ต้องรองรับทั้ง core 2 (CI) และ core 3 (Arduino IDE ผู้ใช้ 3.3.x) ด้วย `#if ESP_ARDUINO_VERSION_MAJOR >= 3` · ยังไม่ได้ตั้ง secrets ใน Cloudflare (Dashboard จะขึ้น "DASH_CODE not set" จนกว่าจะตั้ง)
+
 ### Mini v0.5.5 — 2026-11-01 — Claude
 - ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino
 - แก้อะไร: เอาที่ว่างด้านขวา 22% ของกราฟออก (ผู้ใช้ขอ — เดิมใส่ไว้ตอนยังลากเลื่อนกราฟไม่ได้) แท่งเทียนใช้ความกว้างเต็ม PW − 4

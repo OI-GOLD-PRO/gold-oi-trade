@@ -1,4 +1,5 @@
 import { newVapid, sendPush } from './push.js';
+import { MINI_FLASH_PAGE, MINI_MANIFEST } from './flash.js';
 // Worker: ดึงแท่งราคา GC=F (ทองฟิวเจอร์) จาก Yahoo ให้แอป OI Gold Pro เรียกตรง (เปิด CORS) ไม่ต้องรอ GitHub Actions
 // GET /?tf=1m|5m|15m|30m|1h|4h|1d   ->   {"symbol":"GC=F","updated":<วินาที>,"bars":{"<tf>":[[t,o,h,l,c],...]}}   (t = วินาที)
 const PLAN = {
@@ -625,6 +626,11 @@ export default {
       if (url.pathname === '/mini/act') {  // จอขอสถานะ/รหัสเปิดใช้งาน
         const r = await (await stub.fetch('https://do/act?id=' + encodeURIComponent(url.searchParams.get('id') || ''))).json();
         return J({ ...r, auth: env.MINI_AUTH === '1' });
+      }
+      if (url.pathname === '/mini/flash') return new Response(MINI_FLASH_PAGE, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'public, max-age=300' } });
+      if (url.pathname === '/mini/flash/manifest.json') {
+        let v = null; try { v = (await (await fetch('https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/version.json?t=' + Math.floor(Date.now() / 300e3))).json()).v; } catch (e) {}
+        return J(MINI_MANIFEST(v));
       }
       if (url.pathname === '/mini/admin') return new Response(ADMIN_HTML, { headers: { 'content-type': 'text/html; charset=utf-8', 'cache-control': 'no-store' } });
       if (url.pathname === '/mini/admin/api' && request.method === 'POST') {

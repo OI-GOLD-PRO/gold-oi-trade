@@ -65,6 +65,7 @@ if (mn.length !== 1 || mn[0][1] !== 'Non-Farm Employment Change' || mn[0][0] !==
 const md = miniDash({ trend: 'up', score: 140, gauge: 62, updated: '01/11 21:30 น.', levels: [{ p: 4000, k: 'S', s: 2 }, { p: 4050, k: 'R', s: 3 }] });
 if (md.sc !== 100 || md.g !== 62 || md.lv[0][0] !== 4050 || md.lv[1][1] !== 'S' || /[^\x20-\x7e]/.test(md.u)) throw new Error('miniDash ' + JSON.stringify(md));
 let rr = await worker.fetch(new Request('https://x/mini/act?id=ABC'), {}); if (rr.status !== 500) throw new Error('act without binding');
+{ const { MINI_MANIFEST } = await import('./src/flash.js'); const mf = MINI_MANIFEST('0.6.0'); if (mf.builds[0].chipFamily !== 'ESP32' || !/factory\.bin$/.test(mf.builds[0].parts[0].path)) throw new Error('manifest'); }
 console.log('mini news/dash ok');
 const { OptState } = await import('./src/index.js');
 { const m = new Map(); const st = { storage: { get: async k => m.get(k), put: async (k, v) => m.set(k, JSON.parse(JSON.stringify(v))) } };

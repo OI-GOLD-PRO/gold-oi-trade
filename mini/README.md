@@ -17,5 +17,7 @@
 เอกสารส่งต่องาน: [HANDOFF.md](HANDOFF.md) · บันทึกการแก้: [/CHANGELOG.md](../CHANGELOG.md)
 
 GitHub Actions คอมไพล์ด้วย PlatformIO ทุกครั้งที่แก้ `mini/` และเก็บไฟล์ `dist/factory.bin`
+- ติดตั้งครั้งแรกโดยไม่ใช้ Arduino IDE: เปิด https://gc-yahoo.oigoldpro.workers.dev/mini/flash ใน Chrome/Edge บนคอม
+- อนุมัติจอ: https://gc-yahoo.oigoldpro.workers.dev/mini/admin (ต้องตั้ง secret MINI_ADMIN)
 - อัปเดตผ่าน WiFi: Actions วาง `dist/firmware.bin` + `dist/version.json` · จอเช็กตอนเปิดเครื่องและทุก 6 ชม. (ลูกศรทองในแถบหัว) · MENU → UPDATE · เปลี่ยน `FW_VER` ทุกครั้งที่ออกเวอร์ชันใหม่
 - ปิดจอ: MENU → SCREEN OFF (แตะจอ = เปิด) · AUTO OFF: ตลาดปิด (ส. 05:00–จ. 05:00) / +กลางคืน 00–07 / +22–07 (แตะ = เปิด 5 นาที) · จอดับยังดึงราคา แจ้งเตือนจะเปิดจอ 60 วินาที
