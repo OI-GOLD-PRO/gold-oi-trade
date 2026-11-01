@@ -3,7 +3,7 @@
 > สำหรับผู้พัฒนาร่วม (Claude / ChatGPT / คน) อ่านไฟล์นี้ให้จบก่อนแก้อะไรก็ตาม
 > **กติกาสำคัญ:** แก้เสร็จทุกครั้งต้องจดลง [`/CHANGELOG.md`](../CHANGELOG.md) (ดูหัวข้อ 11) — ไม่จด = อีกฝั่งไม่รู้ และอาจแก้ทับกัน
 >
-> อัปเดตเอกสารล่าสุด: 2026-11-01 · เฟิร์มแวร์ปัจจุบัน **v0.5.0** (ดูรายการล่าสุดใน CHANGELOG เสมอ) · `/mini` API **v2**
+> อัปเดตเอกสารล่าสุด: 2026-11-01 · เฟิร์มแวร์ปัจจุบัน **v0.5.2** (ดูรายการล่าสุดใน CHANGELOG เสมอ) · `/mini` API **v2**
 
 ---
 
@@ -128,9 +128,9 @@ Cloudflare Worker gc-yahoo  ── Durable Object "OptState" (สัญญาว
         ▼
 ESP32 ดึงทุก 15 วินาที ─────────────┐
                                      ├─► ราคาสด = Bybit lastPrice + off
-Bybit WebSocket (ส่งมาเองเมื่อราคาเปลี่ยน) ┘     (อัปเดตแท่งปัจจุบัน + เปิดแท่งใหม่เองตามเวลา NTP)
-  wss://stream.bybit.com/v5/public/linear  topic tickers.XAUUSDT  (ping {"op":"ping"} ทุก 20 วินาที)
-  สำรอง: ถ้า WebSocket หลุดเกิน 8 วินาที → REST https://api.bybit.com/v5/market/tickers?category=linear&symbol=XAUUSDT ทุก 2 วินาที
+Bybit REST ทุก 1 วินาที (งานเน็ตแกน 0) ┘     (อัปเดตแท่งปัจจุบัน + เปิดแท่งใหม่เองตามเวลา NTP)
+  https://api.bybit.com/v5/market/tickers?category=linear&symbol=XAUUSDT  (เชื่อมต่อค้างไว้ · ปิดก่อนดึง /mini ถ้าหน่วยความจำเหลือน้อย)
+  หมายเหตุ: v0.5.0 ลอง WebSocket แล้วบนบอร์ดจริงกราฟไม่ขึ้น → เอาออกใน v0.5.2
 ```
 
 - **ราคาที่แสดง** = `livePrice()` → ถ้า Bybit สด (ข้อความล่าสุด <6 วินาที) และมี `off` ใช้ `perp + off`, ไม่งั้นใช้ `p` จาก Worker
@@ -171,13 +171,13 @@ Bybit WebSocket (ส่งมาเองเมื่อราคาเปลี
 
 ## 7. สถาปัตยกรรมเฟิร์มแวร์ (`OIGoldProMini.ino`)
 
-ไลบรารี: **LovyanGFX** (จอ+สัมผัส, sprite: กราฟ 8-bit, แถบหัว 16-bit, แถบสถานะ 8-bit → ไม่กระพริบ), **ArduinoJson v7**, **WebSockets** (Markus Sattler, `links2004/WebSockets`), ESP32 core: WiFi, WiFiClientSecure (`setInsecure()`), HTTPClient, HTTPUpdate, Preferences, FreeRTOS
+ไลบรารี: **LovyanGFX** (จอ+สัมผัส, sprite: กราฟ 8-bit, แถบสถานะ 8-bit · แถบหัววาดเฉพาะส่วนที่เปลี่ยนด้วย text padding → ไม่กระพริบ), **ArduinoJson v7**, ESP32 core: WiFi, WiFiClientSecure (`setInsecure()`), HTTPClient, HTTPUpdate, Preferences, FreeRTOS
 
 ### สองแกน (ตั้งแต่ v0.5.0)
-- **แกน 0 — `netTask`** (stack 16KB): WebSocket Bybit, ดึง `/mini` (`fetchMini` → แปลงลง `NT` → ล็อก `mx` → คัดลอกไป `ND`, `ndReady = true`), REST สำรอง, เช็กอัปเดต (`reqUpd` → `updRes`)
+- **แกน 0 — `netTask`** (stack 12KB): ราคา Bybit REST ทุก 1 วินาที, ดึง `/mini` (`fetchMini` → แปลงลง `NT` → ล็อก `mx` → คัดลอกไป `ND`, `ndReady = true`), เช็กอัปเดต (`reqUpd` → `updRes`)
 - **แกน 1 — `loop()`**: สัมผัส, วาด, แจ้งเตือน, LED/เสียง · `applyNet()` รับ `ND` → `D` (ทิ้งถ้า `ND.tf != tfIdx`), ดู `perpSeq` ว่าราคาเปลี่ยนไหม แล้วตั้งธง `dirty*`
 - **ห้ามวาดจอ/อ่านสัมผัสจาก `netTask`** และ **ห้ามแก้ `D` จาก `netTask`** (D เป็นของแกน 1)
-- ตั้ง WiFi และ OTA ต้อง `pauseNet(true)` ก่อน (หยุดงานเน็ต + ปิด WebSocket) แล้ว `pauseNet(false)` หลังเสร็จ
+- ตั้ง WiFi และ OTA ต้อง `pauseNet(true)` ก่อน (หยุดงานเน็ต + ปิดการเชื่อมต่อ) แล้ว `pauseNet(false)` หลังเสร็จ
 - ธงสื่อสาร (volatile): `reqFetch` (ขอดึงทันที เช่น เปลี่ยน TF/ปุ่มรีเฟรช), `reqUpd`, `updRes`, `netPause`, `netIdle`, `ndReady`
 
 ### หน้าจอ (`enum Screen`)
@@ -204,9 +204,8 @@ Bybit WebSocket (ส่งมาเองเมื่อราคาเปลี
 ### งานเน็ต `netTask` แกน 0
 | งาน | ความถี่ |
 |---|---|
-| `ws.loop()` + ping | ทุก ~2 ms · ping ทุก 20 s |
-| ดึง `/mini` | 15 s (`FETCH_MS`) หรือทันทีเมื่อ `reqFetch` |
-| REST สำรอง | ทุก 2 s เฉพาะตอน WebSocket หลุดเกิน 8 s |
+| ราคา Bybit (REST) | ทุก 1 s |
+| ดึง `/mini` | 15 s (`FETCH_MS`) หรือทันทีเมื่อ `reqFetch` · ล้มเหลว → ลองใหม่ทุก 5 s |
 | เช็กเวอร์ชันใหม่ | หลังเปิดเครื่อง 20 s + ทุก 6 ชม. หรือเมื่อ `reqUpd` |
 
 ระหว่างนิ้วกดค้าง (`tDown`) loop ไม่วาดอัตโนมัติ (`handleTouchMain` วาดเองทุก 60 ms) · ตอนจอดับ งานเน็ตยังทำงาน และ `applyNet()` ยังเช็กแจ้งเตือน แต่ไม่วาด
@@ -248,7 +247,7 @@ Bybit WebSocket (ส่งมาเองเมื่อราคาเปลี
 ## 8. Build / ติดตั้ง / ออกเวอร์ชัน
 
 ### ผู้ใช้ติดตั้งครั้งแรก (USB)
-Arduino IDE 2.x · Board: **esp32 by Espressif** → **ESP32 Dev Module** · Partition Scheme: **Minimal SPIFFS (1.9MB APP with OTA)** (สำคัญ — ไม่งั้นไม่มีที่ OTA) · Libraries: **LovyanGFX**, **ArduinoJson**, **WebSockets** (by Markus Sattler) · เปิด `mini/OIGoldProMini/OIGoldProMini.ino` (ต้องมี `logo.h` ในโฟลเดอร์เดียวกัน) → Upload · ถ้าค้าง "Connecting…" กด BOOT ค้าง
+Arduino IDE 2.x · Board: **esp32 by Espressif** → **ESP32 Dev Module** · Partition Scheme: **Minimal SPIFFS (1.9MB APP with OTA)** (สำคัญ — ไม่งั้นไม่มีที่ OTA) · Libraries: **LovyanGFX**, **ArduinoJson** · เปิด `mini/OIGoldProMini/OIGoldProMini.ino` (ต้องมี `logo.h` ในโฟลเดอร์เดียวกัน) → Upload · ถ้าค้าง "Connecting…" กด BOOT ค้าง
 
 ### CI (GitHub Actions)
 - push ที่แตะ `mini/**` → `build-mini-firmware.yml`: PlatformIO (`espressif32@6.9.0`, `min_spiffs.csv`) คอมไพล์ → สร้าง `dist/firmware.bin`, `dist/factory.bin`, `dist/version.json` (อ่านเลขจาก `#define FW_VER`) → bot commit `"Mini firmware build [skip ci]"`
@@ -274,7 +273,7 @@ Arduino IDE 2.x · Board: **esp32 by Espressif** → **ESP32 Dev Module** · Par
 3. ห้ามแก้ไฟล์ใน `mini/dist/` ด้วยมือ
 4. สีและคำศัพท์ต้องตรงแอป: Call = เขียว = แนวต้าน, Put = แดง = แนวรับ, ชื่อ "gmf itd" (สัญญาวันนี้) และ "gmf M" (ทุกสัญญา ≤30 วัน), Max Pain บานเย็น
 5. ข้อความบนจอเป็นภาษาอังกฤษ (ฟอนต์ในตัวไม่มีไทย) · คอมเมนต์ในโค้ดเป็นภาษาไทยได้ (สไตล์เดิมของ repo)
-6. หน่วยความจำ: ESP32 ไม่มี PSRAM — sprite กราฟ 8-bit ≈ 55–61KB + แถบหัว 16-bit ≈ 17KB + แถบสถานะ ≈ 5KB และมีการเชื่อมต่อ TLS พร้อมกัน 2 ทาง (WebSocket + `/mini`, ~40KB ต่อทาง) — ระวังเพิ่ม buffer ใหญ่ / JSON ใหญ่ (`/mini` ควร < 8 KB) · `doUpdate()` หยุดงานเน็ตและลบ sprite ทั้งหมดก่อนดาวน์โหลด
+6. หน่วยความจำ: ESP32 ไม่มี PSRAM — sprite กราฟ 8-bit ≈ 55–61KB + แถบสถานะ ≈ 5KB + stack งานเน็ต 12KB และการเชื่อมต่อ TLS ~40KB ต่อทาง (บทเรียน v0.5.0: TLS 2 ทาง + sprite แถบหัว 16-bit + WebSocket = หน่วยความจำไม่พอ กราฟไม่ขึ้น) — ระวังเพิ่ม buffer ใหญ่ / JSON ใหญ่ (`/mini` ควร < 8 KB) · `doUpdate()` หยุดงานเน็ตและลบ sprite ทั้งหมดก่อนดาวน์โหลด
 7. อย่าใช้ `delay()` ยาวในลูปหลัก (สัมผัส/LED/เสียงจะค้าง)
 8. ค่าคาลิเบรตสัมผัส และ `Panel_ILI9341` อย่าเปลี่ยนโดยไม่ได้ทดสอบบนบอร์ดจริง
 9. ก่อนตอบผู้ใช้ว่า "เสร็จ" ให้ดูว่า CI build ผ่าน

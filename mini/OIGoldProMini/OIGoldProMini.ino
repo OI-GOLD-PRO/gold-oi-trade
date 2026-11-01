@@ -1,11 +1,11 @@
 // OI Gold Pro Mini — จอ ESP32 CYD 2.8" (ESP32-2432S028 รุ่น 2 USB, ชิปจอ ILI9341)
-// กราฟแท่งเทียน GC1 (Gold.F, ราคาสดจาก Bybit XAUUSDT + offset ผ่าน WebSocket) + OI/Volume ราย strike แบบแอป OI Gold Pro (Call เขียว แนวต้าน · Put แดง แนวรับ)
+// กราฟแท่งเทียน GC1 (Gold.F, ราคาสดจาก Bybit XAUUSDT + offset ทุก 1 วินาทีจากงานเน็ตแกน 0) + OI/Volume ราย strike แบบแอป OI Gold Pro (Call เขียว แนวต้าน · Put แดง แนวรับ)
 // เส้น gmf itd / gmf M / Max Pain / Expected Move · โซน OI 10 อันดับ · แจ้งเตือนเข้าโซน/ทะลุโซน
 // ข้อมูลจาก Worker: https://gc-yahoo.oigoldpro.workers.dev/mini?tf=1|5|15|60 (อัปเดตทุก 15 วินาที)
 //
 // Arduino IDE:  Board = ESP32 Dev Module
 //               Partition Scheme = Minimal SPIFFS (1.9MB APP with OTA)
-// Libraries:    LovyanGFX, ArduinoJson (v7), WebSockets (Markus Sattler)
+// Libraries:    LovyanGFX, ArduinoJson (v7)
 // v0.5: งานเน็ตทั้งหมดอยู่บนแกน 0 (netTask) · จอ/สัมผัส/แจ้งเตือนอยู่บนแกน 1 (loop) · ส่งข้อมูลผ่าน ND + mutex
 
 #include <WiFi.h>
@@ -14,12 +14,11 @@
 #include <HTTPUpdate.h>
 #include <Preferences.h>
 #include <ArduinoJson.h>
-#include <WebSocketsClient.h>
 #include <LovyanGFX.hpp>
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.5.1"
+#define FW_VER "0.5.2"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -59,9 +58,8 @@ public:
 
 LGFX lcd;
 LGFX_Sprite spr(&lcd);   // กราฟ (8-bit)
-LGFX_Sprite hspr(&lcd);  // แถบหัว (16-bit)
 LGFX_Sprite sspr(&lcd);  // แถบสถานะ (8-bit)
-bool hOk = false, sOk = false;
+bool sOk = false;
 Preferences prefs;
 
 const int LED_R = 4, LED_G = 16, LED_B = 17;  // LED RGB หลังบอร์ด (LOW = ติด)
@@ -104,9 +102,8 @@ SemaphoreHandle_t mx;
 volatile bool ndReady = false, reqFetch = false, reqUpd = false, netPause = false, netIdle = false;
 volatile int updRes = 0;
 volatile int miniErr = 1;           // ผลดึง /mini ล่าสุด: 1 ยังไม่เคย, 0 สำเร็จ, รหัส HTTP หรือ -100 เชื่อมต่อไม่ได้ / -200 JSON เสีย / -300 Worker แจ้ง error
-volatile uint32_t miniOkAt = 0, wsRetryAt = 0;
+volatile uint32_t miniOkAt = 0;
 volatile float perp = NAN; volatile uint32_t perpAt = 0, perpSeq = 0;
-volatile bool wsUp = false; uint32_t wsDownAt = 0, wsPingAt = 0;
   // ผลเช็กอัปเดต: 0 รอ, 1 สำเร็จ, 2 ล้มเหลว
 bool haveData = false;
 uint32_t lastOk = 0;
@@ -136,7 +133,7 @@ const int HDR = 26, STAT = 16, TB = 24;
 int yChart, hChart, yTool;
 
 void tickCandle(); void evalAlerts(); bool checkUpdate(); void pauseNet(bool p);
-void doUpdate(); void drawStatus(); void drawWifi(); void drawKb(); void drawMain(); void drawHeader(); void drawMenu(); void openWifi();
+void doUpdate(); void drawStatus(); void drawWifi(); void drawKb(); void drawMain(); void drawHeader(bool full = false); void drawMenu(); void openWifi();
 float livePrice(); bool perpFresh();
 
 // ---------------- เครื่องมือทั่วไป ----------------
@@ -172,10 +169,9 @@ void applyRotation(int r) {
   yChart = HDR + STAT;
   yTool = H - TB;
   hChart = yTool - yChart;
-  spr.deleteSprite(); hspr.deleteSprite(); sspr.deleteSprite();
+  spr.deleteSprite(); sspr.deleteSprite();
   spr.setColorDepth(8);
   spr.createSprite(W, hChart);
-  hspr.setColorDepth(16); hOk = hspr.createSprite(W, HDR) != nullptr;
   sspr.setColorDepth(8);  sOk = sspr.createSprite(W, STAT) != nullptr;
 }
 
@@ -304,40 +300,45 @@ void drawBattIcon(LovyanGFX &g, int x, int y, uint16_t bg) {  // กรอบ 22
   }
 }
 
-// แถบหัว/แถบสถานะวาดลง sprite แล้วส่งทีเดียว → ไม่กระพริบเวลาราคาเปลี่ยนถี่ (ถ้าหน่วยความจำไม่พอ วาดลงจอตรง)
-void drawHeader() {
-  LovyanGFX &g = hOk ? (LovyanGFX &)hspr : (LovyanGFX &)lcd;
-  g.fillRect(0, 0, W, HDR, C_PANEL);
-  g.drawFastHLine(0, HDR - 1, W, C_LINE);
-  g.pushImage(2, 2, LOGO_W, LOGO_H, (const lgfx::rgb565_t *)LOGO);
+// แถบหัว: full = วาดพื้น/โลโก้ใหม่ทั้งแถบ · ปกติวาดเฉพาะส่วนที่เปลี่ยน (ตัวหนังสือมี padding ทับของเดิม → ไม่กระพริบ ไม่ต้องใช้ sprite)
+// แถบสถานะวาดลง sprite 8-bit (ถ้าหน่วยความจำไม่พอ วาดลงจอตรง)
+void drawHeader(bool full) {
+  LovyanGFX &g = lcd;
   char buf[24];
   int x = LOGO_W + 5;
-  g.setFont(&fonts::Font2); g.setTextColor(C_DIM, C_PANEL);
+  if (full) {
+    g.fillRect(0, 0, W, HDR, C_PANEL);
+    g.drawFastHLine(0, HDR - 1, W, C_LINE);
+    g.pushImage(2, 2, LOGO_W, LOGO_H, (const lgfx::rgb565_t *)LOGO);
+  }
+  g.setFont(&fonts::Font2); g.setTextColor(C_DIM, C_PANEL); g.setTextPadding(0);
   g.drawString("GC1", x, 6); x += g.textWidth("GC1") + 4;
   g.setFont(&fonts::Font4); g.setTextColor(C_GOLD, C_PANEL);
+  int pw = g.textWidth("0000.0");
   float P = livePrice();
   if (okf(P)) snprintf(buf, sizeof(buf), "%.1f", P); else strcpy(buf, "----.-");
-  g.drawString(buf, x, 1); x += g.textWidth(buf) + 4;
+  g.setTextPadding(pw); g.drawString(buf, x, 1); x += pw + 4;
   // จุดสถานะสด (เขียว = ราคาสด, ทอง = ข้อมูลช้า, แดง = ไม่มีข้อมูล)
   bool fresh = perpFresh();
   uint16_t dc = !haveData ? C_DN : fresh ? C_CALL : (millis() - lastOk > 60000 ? C_DN : C_GOLD);
   g.fillCircle(x + 2, 13, 3, dc); x += 9;
+  g.setFont(&fonts::Font2); g.setTextPadding(g.textWidth("+000.0"));
   if (LS && haveData && okf(P) && okf(D.open)) {
     float ch = P - D.open; snprintf(buf, sizeof(buf), "%+.1f", ch);
-    g.setFont(&fonts::Font2); g.setTextColor(ch >= 0 ? C_UP : C_DN, C_PANEL); g.drawString(buf, x, 6);
-  }
+    g.setTextColor(ch >= 0 ? C_UP : C_DN, C_PANEL); g.drawString(buf, x, 6);
+  } else if (LS) { g.setTextColor(C_DIM, C_PANEL); g.drawString(" ", x, 6); }
+  g.setTextPadding(0);
   // ขวา: เวลา · WiFi · แบต
   int bx = W - 27; drawBattIcon(g, bx, 8, C_PANEL);
   drawWifiIcon(g, bx - 13, 19, C_PANEL);
   struct tm t;
   if (getLocalTime(&t, 0)) strftime(buf, sizeof(buf), "%H:%M", &t); else strcpy(buf, "--:--");
   g.setFont(&fonts::Font2); g.setTextColor(C_TEXT, C_PANEL); g.setTextDatum(top_right);
-  g.drawString(buf, bx - 25, 6); g.setTextDatum(top_left);
+  g.setTextPadding(g.textWidth("00:00")); g.drawString(buf, bx - 25, 6); g.setTextPadding(0); g.setTextDatum(top_left);
   if (newVer[0]) {  // มีเวอร์ชันใหม่: ลูกศรทองหน้าเวลา (MENU → UPDATE)
-    int ax = bx - 25 - g.textWidth(buf) - 10;
+    int ax = bx - 25 - g.textWidth("00:00") - 10;
     g.fillTriangle(ax, 6, ax - 5, 12, ax + 5, 12, C_GOLD); g.fillRect(ax - 2, 12, 5, 6, C_GOLD);
   }
-  if (hOk) hspr.pushSprite(0, 0);
 }
 
 void drawStatus() {
@@ -413,7 +414,7 @@ void drawDiag() {
   snprintf(b, sizeof(b), "data: %s %d", miniErr == 0 ? "OK" : miniErr == 1 ? "waiting" : "ERROR", miniErr);
   spr.setTextColor(miniErr > 1 || miniErr < 0 ? C_DN : C_DIM); spr.drawString(b, 8, y); y += 12;
   spr.setTextColor(C_DIM);
-  snprintf(b, sizeof(b), "price ws: %s  %s", wsUp ? "UP" : "down", okf(perp) ? "has price" : "no price");
+  snprintf(b, sizeof(b), "price: %s", !okf(perp) ? "no price" : millis() - perpAt < 6000 ? "live" : "stale");
   spr.drawString(b, 8, y); y += 12;
   snprintf(b, sizeof(b), "heap %uk  max %uk", (unsigned)(ESP.getFreeHeap() / 1024), (unsigned)(ESP.getMaxAllocHeap() / 1024));
   spr.drawString(b, 8, y); y += 12;
@@ -567,7 +568,7 @@ void drawToolbar() {
 
 void drawMain() {
   lcd.fillScreen(C_BG);
-  drawHeader(); drawStatus(); drawChart(); drawToolbar();
+  drawHeader(true); drawStatus(); drawChart(); drawToolbar();
 }
 
 // ---------------- เปิด/ปิดจอ ----------------
@@ -635,7 +636,7 @@ void doUpdate() {
   lcd.setTextDatum(top_left);
   otaBar(0, 1);
   pauseNet(true);       // หยุดงานเน็ต + ปิด WebSocket ก่อน
-  spr.deleteSprite(); hspr.deleteSprite(); sspr.deleteSprite(); hOk = sOk = false;  // คืนหน่วยความจำให้การดาวน์โหลด
+  spr.deleteSprite(); sspr.deleteSprite(); sOk = false;  // คืนหน่วยความจำให้การดาวน์โหลด
   perpCli.stop();
   WiFiClientSecure cli; cli.setInsecure();
   httpUpdate.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
@@ -660,7 +661,7 @@ void drawMenu() {
   lcd.fillScreen(C_BG);
   lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG);
   lcd.drawString("OI GOLD PRO MINI  v" FW_VER, 8, 6);
-  { char b[48]; snprintf(b, sizeof(b), "data %d  ws %s  heap %uk/%uk", miniErr, wsUp ? "up" : "dn", (unsigned)(ESP.getFreeHeap() / 1024), (unsigned)(ESP.getMaxAllocHeap() / 1024));
+  { char b[48]; snprintf(b, sizeof(b), "data %d  px %s  heap %uk/%uk", miniErr, okf(perp) && millis() - perpAt < 6000 ? "ok" : "--", (unsigned)(ESP.getFreeHeap() / 1024), (unsigned)(ESP.getMaxAllocHeap() / 1024));
     lcd.setFont(&fonts::Font0); lcd.setTextColor(C_DIM, C_BG); lcd.setTextDatum(top_right); lcd.drawString(b, W - 6, 10); lcd.setTextDatum(top_left); }
   int bw = W - 16, hw = (bw - 6) / 2, bh = (H - 36) / MENU_N - 5, y = 28;
   const char *rot[4] = {"ROT: PORT", "ROT: LAND", "ROT: PORT 180", "ROT: LAND 180"};
@@ -846,69 +847,50 @@ void handleKbTap(int x, int y) {
 
 // ---------------- งานเน็ต (แกน 0) ----------------
 // v0.5: ดึงข้อมูลทั้งหมดในงานแยกบนแกน 0 → จอ/สัมผัสบนแกน 1 ไม่ต้องรอเน็ต
-// ราคาสด: WebSocket ของ Bybit (ส่งมาเองเมื่อราคาเปลี่ยน) · ถ้า WebSocket หลุดเกิน 8 วินาที ใช้ REST ทุก 2 วินาทีแทน
+// ราคาสด: REST ของ Bybit ทุก 1 วินาที (เชื่อมต่อค้างไว้) · v0.5.0 ลอง WebSocket แล้วกราฟไม่ขึ้น/เช็กอัปเดตไม่ได้บนบอร์ดจริง จึงเอาออก
 static const char *PERP_URL = "https://api.bybit.com/v5/market/tickers?category=linear&symbol=XAUUSDT";
-WebSocketsClient ws;
 bool perpFresh() { return okf(perp) && okf(D.off) && millis() - perpAt < 6000; }
 float livePrice() { return perpFresh() ? perp + D.off : (haveData ? D.p : NAN); }
 
 void setPerp(float v) { if (v > 0) { if (v != perp) { perp = v; perpSeq++; } perpAt = millis(); } }
 
-void wsEvent(WStype_t type, uint8_t *payload, size_t len) {
-  if (type == WStype_CONNECTED) {
-    wsUp = true; wsPingAt = millis();
-    ws.sendTXT("{\"op\":\"subscribe\",\"args\":[\"tickers.XAUUSDT\"]}");
-  } else if (type == WStype_DISCONNECTED) {
-    if (wsUp) wsDownAt = millis();
-    wsUp = false;
-  } else if (type == WStype_TEXT) {
-    const char *s = (const char *)payload;
-    if (!strstr(s, "tickers.XAUUSDT")) return;
-    const char *k = strstr(s, "\"lastPrice\":\"");
-    if (k) setPerp(atof(k + 13));
-    else if (okf(perp)) perpAt = millis();  // ข้อความ delta ที่ราคาไม่เปลี่ยน = ยังสดอยู่
-  }
-}
-
 bool pollPerpRest() {
   HTTPClient http; http.setReuse(true); http.setTimeout(2500);
   if (!http.begin(perpCli, PERP_URL)) return false;
   int code = http.GET();
-  if (code != 200) { http.end(); return false; }
+  if (code != 200) { http.end(); perpCli.stop(); return false; }
   String s = http.getString(); http.end();
   int i = s.indexOf("\"lastPrice\":\""); if (i < 0) return false;
   setPerp(s.substring(i + 13).toFloat());
   return true;
 }
 
+// ก่อนเปิดการเชื่อมต่อเข้ารหัสใหม่: ถ้าหน่วยความจำก้อนใหญ่สุดเหลือน้อย ปิดการเชื่อมต่อราคาที่ค้างไว้ก่อน
+void freeTlsIfLow() { if (ESP.getMaxAllocHeap() < 45000) perpCli.stop(); }
+
 void netTask(void *) {
-  ws.onEvent(wsEvent);
-  ws.setReconnectInterval(3000);
-  bool wsBegun = false;
-  uint32_t lastF = 0, lastRest = 0, lastUpd = 0;
+  uint32_t lastF = 0, lastRest = 0, lastUpd = 0; int failF = 0;
   for (;;) {
     if (netPause || WiFi.status() != WL_CONNECTED) {
-      if (wsBegun) { ws.disconnect(); wsBegun = false; wsUp = false; }
+      perpCli.stop();
       netIdle = netPause;
       vTaskDelay(pdMS_TO_TICKS(50));
       continue;
     }
     netIdle = false;
-    if (!wsBegun && ESP.getMaxAllocHeap() > 45000 && millis() >= wsRetryAt) { ws.beginSSL("stream.bybit.com", 443, "/v5/public/linear"); wsBegun = true; wsDownAt = millis(); }
-    ws.loop();
     uint32_t ms = millis();
-    if (wsUp && ms - wsPingAt >= 20000) { wsPingAt = ms; ws.sendTXT("{\"op\":\"ping\"}"); }  // Bybit ตัดถ้าไม่ ping
-    if (reqFetch || !lastF || ms - lastF >= FETCH_MS) {
+    if (reqFetch || !lastF || ms - lastF >= (failF ? 5000 : FETCH_MS)) {
       reqFetch = false; lastF = ms;
-      // หน่วยความจำไม่พอเปิดการเชื่อมต่อเข้ารหัสทางที่ 2 → ปิด WebSocket ชั่วคราว (ราคาใช้ REST แทน) ให้ข้อมูลกราฟมาก่อน
-      if (wsBegun && ESP.getMaxAllocHeap() < 40000) { ws.disconnect(); wsBegun = false; wsUp = false; wsDownAt = millis(); wsRetryAt = millis() + 60000; }
-      if (fetchMini(tfIdx)) { miniErr = 0; miniOkAt = millis(); }
+      if (failF) perpCli.stop(); else freeTlsIfLow();  // ดึงไม่ได้รอบก่อน → ปิดการเชื่อมต่อราคาให้หน่วยความจำว่างก่อน
+      if (fetchMini(tfIdx)) { miniErr = 0; miniOkAt = millis(); failF = 0; } else failF++;
     }
-    if (!wsUp && millis() - wsDownAt > 8000 && millis() - lastRest >= 2000) { lastRest = millis(); pollPerpRest(); }
+    if (millis() - lastRest >= 1000) { lastRest = millis(); pollPerpRest(); }
     if (reqUpd || (!lastUpd && ms > 20000) || (lastUpd && ms - lastUpd >= 6UL * 3600 * 1000)) {
-      reqUpd = false; lastUpd = ms; updRes = checkUpdate() ? 1 : 2;
+      reqUpd = false; lastUpd = ms;
+      perpCli.stop();
+      updRes = checkUpdate() ? 1 : 2;
     }
-    vTaskDelay(pdMS_TO_TICKS(2));
+    vTaskDelay(pdMS_TO_TICKS(20));
   }
 }
 
@@ -1038,7 +1020,7 @@ void setup() {
 
   perpCli.setInsecure();
   mx = xSemaphoreCreateMutex();
-  xTaskCreatePinnedToCore(netTask, "net", 16384, nullptr, 1, nullptr, 0);  // งานเน็ตบนแกน 0
+  xTaskCreatePinnedToCore(netTask, "net", 12288, nullptr, 1, nullptr, 0);  // งานเน็ตบนแกน 0
   configTime(7 * 3600, 0, "pool.ntp.org", "time.google.com");  // เวลาไทย
   battPct = readBatt();
   WiFi.setAutoReconnect(true);
