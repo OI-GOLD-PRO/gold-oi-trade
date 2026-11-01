@@ -18,7 +18,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.5.4"
+#define FW_VER "0.5.5"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -470,8 +470,8 @@ void drawChart() {
   if (okf(D.gm)) { int y = Y(D.gm); hDash(0, PW, y, C_GMM, 6, 2); addTag(y, D.gm, C_GMM); }
   if (okf(D.itd)) { int y = Y(D.itd); hDash(0, PW, y, C_GMI, 6, 2); addTag(y, D.itd, C_GMI); }
 
-  // แท่งเทียน · เว้นที่ว่างด้านขวา 22% ให้แท่งปัจจุบันไม่ชิดขอบ (แบบแอป)
-  float cw = (PW * 0.78f) / n; lastCW = cw;
+  // แท่งเทียนเต็มความกว้าง (v0.5.5 ผู้ใช้ขอเอาที่เว้นขวา 22% ออก เพราะลากเลื่อนกราฟได้แล้ว)
+  float cw = (float)(PW - 4) / n; lastCW = cw;
   int bw = max(1, (int)(cw * 0.7f));
   for (int i = 0; i < n; i++) {
     float *b = D.b[first + i];
