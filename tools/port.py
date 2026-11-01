@@ -9,11 +9,22 @@ APP_VER = sys.argv[2] if len(sys.argv) > 2 else "0.3.00"
 s = src
 
 
+DRY = bool(os.environ.get("PORT_DRY"))
+FAILS = []
+
+
+def fail(msg):
+    if DRY:
+        FAILS.append(msg)
+    else:
+        raise SystemExit(msg)
+
+
 def rep(old, new):
     global s
     n = s.count(old)
     if n != 1:
-        raise SystemExit(f"anchor found {n}x (expected 1): {old[:90]!r}")
+        return fail(f"anchor found {n}x (expected 1): {old[:90]!r}")
     s = s.replace(old, new)
 
 
@@ -21,7 +32,7 @@ def rep_re(pattern, new):
     global s
     s2, n = re.subn(pattern, new, s, count=1, flags=re.S)
     if n != 1:
-        raise SystemExit(f"regex anchor not found: {pattern[:90]!r}")
+        return fail(f"regex anchor not found: {pattern[:90]!r}")
     s = s2
 
 
@@ -34,7 +45,8 @@ rep('href="icon-180.png"', 'href="icon/apple-touch-icon.png"')
 rep('content="OI Gold Pro"', 'content="OI Trade"')
 rep('<h1>OI Gold</h1>', '<h1>OI Trade</h1>')
 rep('ใส่รหัสผ่านเพื่อเข้าดูกราฟ', 'ใส่รหัสเข้าแอปเทรด')
-rep('</style>\n</head>', '</style>\n<link rel="stylesheet" href="trade.css">\n</head>')
+# V3+: OI Gold Pro adds v3-premium.css / v33-luxury.css (layout shell for its own header); the trade app keeps the base styles + trade.css
+rep_re(r'</style>\n(?:<link rel="stylesheet" href="v3[^"]*">\n)*</head>', '</style>\n<link rel="stylesheet" href="trade.css">\n</head>')
 rep_re(r"const APP_VER = '[^']*';", f"const APP_VER = '{APP_VER}'; // based on OI Gold Pro V{src_ver}")
 # own localStorage keys (same origin as OI Gold Pro)
 s = re.sub(r"localStorage\.(getItem|setItem|removeItem)\('oi_", r"localStorage.\1('oit_", s)
@@ -47,23 +59,30 @@ rep('''  </div>
   <iframe id="paneB" title="กราฟที่ 2" hidden></iframe>
 
 <script>
-(function () {''', '''  </div>
+''', '''  </div>
   <div id="acct"></div>
   <div id="ticket"></div>
   <div id="sheet" hidden></div>
   </div>
 
 <script>
-(function () {''')
+''')
 rep('''    <button class="icon" id="layBtn" aria-label="เลย์เอาต์กราฟ: 1 กราฟ / บนล่าง / ซ้ายขวา">▭</button>\n''', '')
 # (source dash.js = market-analysis dashboard: not ported; the trade app's own dash.js is the P/L dashboard)
-rep_re(r'<script src="goldscalp\.js"></script>\n(?:<script src="cotgroups\.js[^"]*"></script>\n)?<script src="dash\.js[^"]*"></script>\n<script src="live\.js[^"]*"></script>\n<script src="intraday\.js[^"]*"></script>\n<script src="aitray\.js[^"]*"></script>\n</body>', '''<script src="trade.js"></script>
+rep_re(r'<script src="goldscalp\.js"></script>\n.*?</body>', '''<script src="trade.js"></script>
 <script src="dash.js"></script>
 <script src="goldscalp.js"></script>
 <script src="live.js"></script>
 <script src="intraday.js"></script>
+<script src="bigtrade.js"></script>
+<script src="dealer.js"></script>
+<script src="ivbadge.js"></script>
+<script src="oistep.js"></script>
+<script src="squeeze.js"></script>
 <script src="cotgroups.js"></script>
 </body>''')
+# not ported (dashboard / AI text / luxury shell / Apps-Script data): colorize.js, quant.js, aitray.js, v33-luxury.js, historical-oi.js
+rep('<div class="row"><button data-oih="1">Historical OI Zones</button></div>', '')
 # (source aitray.js = secret AI price-action tray via the owner's Apps Script: not ported)
 # single chart only: no 2nd-chart layout
 rep_re(r"  // ---- เลย์เอาต์ 2 กราฟ: กราฟที่ 2 = iframe.*?\n  let SYM = 'gold';", "  const EMBED = false, PSFX = '', LAY = '';\n  let SYM = 'gold';")
@@ -84,7 +103,7 @@ rep("    oi = calcOI({ levels, cfg: lastCfg });", "    oi = calcOI({ levels, cfg
 rep("`offset <b>${(-adj).toFixed(2)}</b>`", "`GC−โบรก <b>${gcOff() >= 0 ? '+' : ''}${gcOff().toFixed(2)}</b>`")
 # live Yahoo pairing compares against the GC offset (gAdj), not the broker shift (adj)
 if s.count("Math.abs(-off - adj) >= 0.01") != 2:
-    raise SystemExit("live offset anchors changed")
+    fail("live offset anchors changed")
 s = s.replace("Math.abs(-off - adj) >= 0.01", "Math.abs(-off - gAdj) >= 0.01")
 rep_re(r"  function applyAdj\(next\) \{\n.*?\n  \}\n",
        '''  // gAdj = perp − GC (ใช้แปลง strike ของ OI), adj = perp − ราคาโบรก (ใช้เลื่อนกราฟ)
@@ -176,6 +195,9 @@ rep("      const yg = series.priceToCoordinate(g.p);", "      const gp = g.p - g
 rep("ctx.fillText(g.p.toFixed(2), bx + (axW - 1) / 2, by + bh / 2 + .5);", "ctx.fillText(gp.toFixed(2), bx + (axW - 1) / 2, by + bh / 2 + .5);")
 rep("ctx.fillText(`${g.lab} ${g.p.toFixed(1)}`,", "ctx.fillText(`${g.lab} ${gp.toFixed(1)}`,")
 
+if DRY:
+    print("\n".join(FAILS) or "ALL ANCHORS OK")
+    sys.exit(0)
 out = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "index.html")
 open(out, "w", encoding="utf-8").write(s)
 print(f"ported OI Gold Pro V{src_ver} → trade app V{APP_VER}")
@@ -203,7 +225,8 @@ if os.path.exists(live_src):
     lrep("`EM บน ${(c.openF + c.openEM).toFixed(1)}`", "`EM บน ${(c.openF + c.openEM - G()).toFixed(1)}`")
     lrep("`EM ล่าง ${(c.openF - c.openEM).toFixed(1)}`", "`EM ล่าง ${(c.openF - c.openEM - G()).toFixed(1)}`")
     lrep("      const px = O.lastClose;\n", "      const px = O.lastClose + G();\n")
-    lrep("const y = series.priceToCoordinate(s.k);", "const y = series.priceToCoordinate(s.k - G());")
+    lrep("series.priceToCoordinate(r ? r.price : s.k)", "series.priceToCoordinate(r ? r.price : s.k - G())")
+    lrep("fetch('cme_oi.json?t=' +", "fetch('https://oi-gold-pro.github.io/gold-oi-pro/cme_oi.json?t=' +")
     lrep("badges.push(O.lastClose >= gm.p ?", "badges.push(O.lastClose + G() >= gm.p ?")
     open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "live.js"), "w", encoding="utf-8").write(l)
     print("live.js copied from OI Gold Pro (scale-adjusted)")
@@ -233,3 +256,31 @@ if os.path.exists(cg_src):
     import shutil
     shutil.copyfile(cg_src, os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "cotgroups.js"))
     print("cotgroups.js copied from OI Gold Pro")
+
+
+# V4: chart modules added by OI Gold Pro (Big Traders, Dealer Hedge, IV badge, OI 3-step, Gamma Squeeze).
+# They read O.oi (rows already rebased to the broker scale) and O.lastClose (broker scale); the ones that compare the
+# price with GC-scale levels (gmf / walls) get a G() shift. Storage keys are renamed so the two apps do not share state.
+SRC_DIR = os.path.dirname(os.path.abspath(sys.argv[1]))
+OUT_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..")
+G_DEF = "  const G = () => (O && O.gcOff ? O.gcOff() : 0); // GC − โบรก\n"
+def port_mod(name, subs, g=False):
+    f = os.path.join(SRC_DIR, name)
+    if not os.path.exists(f):
+        print(f"{name}: not in source, skipped"); return
+    m = open(f, encoding="utf-8").read()
+    for old, new in subs:
+        if m.count(old) != 1:
+            raise SystemExit(f"{name} anchor found {m.count(old)}x: {old[:80]!r}")
+        m = m.replace(old, new)
+    if g:
+        if m.count("  const O = window.OI;\n") != 1:
+            raise SystemExit(f"{name}: const O anchor")
+        m = m.replace("  const O = window.OI;\n", "  const O = window.OI;\n" + G_DEF)
+    open(os.path.join(OUT_DIR, name), "w", encoding="utf-8").write(m)
+    print(f"{name} copied from OI Gold Pro")
+port_mod("bigtrade.js", [("const KEY = 'oi_bigtr'", "const KEY = 'oit_bigtr'"), ("const CKEY = 'oi_bigtr_cache'", "const CKEY = 'oit_bigtr_cache'")])
+port_mod("dealer.js", [("const KEY = 'oi_dealer'", "const KEY = 'oit_dealer'"), ("const P = O.lastClose; if (P === null || !isFinite(P)) return null;", "const P = O.lastClose === null ? null : O.lastClose + G(); if (P === null || !isFinite(P)) return null;")], g=True)
+port_mod("ivbadge.js", [("const HKEY = 'oi_iv_hist2'", "const HKEY = 'oit_iv_hist2'"), ("localStorage.removeItem('oi_iv_hist')", "localStorage.removeItem('oit_iv_hist')")])
+port_mod("oistep.js", [("const KEY = 'oi_step3'", "const KEY = 'oit_step3'")])
+port_mod("squeeze.js", [("const P = O.lastClose; if (P === null || !isFinite(P)) return null;", "const P = O.lastClose === null ? null : O.lastClose + G(); if (P === null || !isFinite(P)) return null;")], g=True)

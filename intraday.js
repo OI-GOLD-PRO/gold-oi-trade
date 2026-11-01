@@ -8,7 +8,7 @@
   'use strict';
   const O = window.OI;
   const G = () => (O && O.gcOff ? O.gcOff() : 0); // GC − โบรก
-  if (!O || !O.hooks || O.sym !== 'gold') return;
+  if (!O || !O.hooks || !(O.sym === 'gold' || O.sym === 'gcy')) return;
   const $ = id => document.getElementById(id);
   const TZ = 7 * 3600, SESS = 5 * 3600; // แกนเวลาของกราฟเป็นเวลาไทย · วันเทรดเริ่ม 05:00
   const DEF = { on: false, sig: true, nb: 15, na: 30 };
@@ -139,8 +139,10 @@
       const k = last.time + ':' + last.dir;
       if (lastSigKey && k !== lastSigKey) {
         const txt = `${last.dir > 0 ? '▲ Long' : '▼ Short'}${last.star ? ' ★' : ''} @ ${last.e.toFixed(2)} · TP1 ${last.t1.toFixed(2)} · TP2 ${last.t2.toFixed(2)} · SL ${last.sl.toFixed(2)}`;
-        if (O.showToast) O.showToast('🎯 OI Intraday: ' + txt);
-        if (O.beep) O.beep();
+        if (!window.OIAlerts || OIAlerts.on('intraday')) {
+          if (O.showToast) O.showToast('🎯 OI Intraday: ' + txt);
+          if (O.beep) O.beep();
+        }
         try { navigator.vibrate && navigator.vibrate([200, 100, 200]); } catch (e) {}
       }
       lastSigKey = k;
@@ -233,5 +235,6 @@
     });
   }
   if (cfg.on) { setTimeout(() => { lastKey = ''; compute(); }, 3000); }
+  if (window.OIAlerts) OIAlerts.reg('intraday', 'ลูกศร OI Intraday (M15/H1)', { desc: 'สัญญาณ Long/Short ใหม่ พร้อม Entry / TP / SL', active: () => cfg.on && cfg.sig });
   window.OI_intraday = { get cfg() { return cfg; }, get result() { return R; } };
 })();
