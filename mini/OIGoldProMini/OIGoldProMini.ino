@@ -18,7 +18,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.5.3"
+#define FW_VER "0.5.4"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -715,7 +715,8 @@ bool kbShift = false, kbSym = false;
 void openWifi() {
   sc = SC_WIFI;
   pauseNet(true);  // สแกน/เชื่อม WiFi ใหม่ระหว่างงานเน็ตทำงานไม่ได้
-  lcd.setRotation(1); W = lcd.width(); H = lcd.height();  // ตั้งค่า WiFi ใช้แนวนอนเสมอ
+  // ตั้งค่า WiFi ใช้แนวนอนเสมอ · หันด้านเดียวกับที่ผู้ใช้ตั้งไว้ (ROT 180 → แนวนอนกลับหัว) ไม่งั้นภาพกลับหัวและแตะไม่ตรง
+  lcd.setRotation(rotIdx >= 2 ? 3 : 1); W = lcd.width(); H = lcd.height();
   lcd.fillScreen(C_BG);
   lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG);
   lcd.drawString("Scanning WiFi...", 8, 8);
@@ -787,7 +788,9 @@ void drawKb() {
 
 void kbAdd(char c) { if (passLen < 63) { pass[passLen++] = c; pass[passLen] = 0; drawKbText(); } }
 
+bool wifiUserTap = false;  // ผู้ใช้แตะจอระหว่างรอเชื่อม WiFi = อยากเปลี่ยน WiFi
 bool connectWifi(const char *ssid, const char *pw, uint32_t ms, bool showUi) {
+  wifiUserTap = false;
   if (showUi) {
     lcd.fillScreen(C_BG); lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG);
     char t[56]; snprintf(t, sizeof(t), "Connecting %s", ssid); lcd.drawString(t, 8, 8);
@@ -799,7 +802,7 @@ bool connectWifi(const char *ssid, const char *pw, uint32_t ms, bool showUi) {
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < ms) {
     if (showUi) {
       lcd.fillCircle(12 + ((millis() - t0) / 500 % 20) * 14, 60, 4, C_GOLD);
-      if (tapped(x, y)) return false;
+      if (tapped(x, y)) { wifiUserTap = true; return false; }
     }
     delay(50);
   }
@@ -1046,7 +1049,9 @@ void setup() {
   battPct = readBatt();
   WiFi.setAutoReconnect(true);
   String ss = prefs.getString("ssid", ""), pw = prefs.getString("pass", "");
-  if (ss.length() && connectWifi(ss.c_str(), pw.c_str(), 15000, true)) finishWifi();
+  // มี WiFi ที่บันทึกไว้: เชื่อมไม่ทันก็เข้าหน้ากราฟเลย (loop ลองเชื่อมใหม่ให้เอง) · ไปหน้าเลือก WiFi เฉพาะตอนผู้ใช้แตะจอ หรือยังไม่เคยตั้ง
+  if (!ss.length()) openWifi();
+  else if (connectWifi(ss.c_str(), pw.c_str(), 10000, true) || !wifiUserTap) finishWifi();
   else openWifi();
 }
 
@@ -1055,6 +1060,18 @@ void loop() {
   int32_t x, y;
   serviceAlerts();
   applyNet();
+  { // WiFi หลุด/เชื่อมไม่ติดตอนเปิดเครื่อง: ลองเชื่อมใหม่ทุก 20 วินาที (ไม่ค้างจอ)
+    static uint32_t offSince = 0, lastRe = 0;
+    if (sc == SC_WIFI || sc == SC_KB || WiFi.status() == WL_CONNECTED) offSince = 0;
+    else {
+      if (!offSince) offSince = millis();
+      if (millis() - offSince > 15000 && millis() - lastRe > 20000) {
+        lastRe = millis();
+        String ss = prefs.getString("ssid", ""), pw = prefs.getString("pass", "");
+        if (ss.length()) { WiFi.disconnect(); WiFi.begin(ss.c_str(), pw.c_str()); }
+      }
+    }
+  }
   static uint32_t lastPow = 0;
   if (millis() - lastPow >= 500) { lastPow = millis(); updateScreenPower(); }
   if (scrOff) {
