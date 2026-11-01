@@ -19,6 +19,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.5.1 — 2026-11-01 — Claude
+- ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino
+- แก้อะไร: ผู้ใช้แจ้ง v0.5.0 กราฟไม่ขึ้น (ยังไม่รู้สาเหตุแน่ชัด สงสัยหน่วยความจำไม่พอเปิด TLS 2 ทาง) · ถ้าหน่วยความจำก้อนใหญ่สุด < 40KB ตอนจะดึง /mini → ปิด WebSocket 60 วินาที (ราคาใช้ REST) · เปิด WebSocket เฉพาะเมื่อ max alloc > 45KB · หน้าวินิจฉัยบนกราฟตอนไม่มีข้อมูล (WiFi, ผล /mini `miniErr`, สถานะ WebSocket, heap) + บรรทัดวินิจฉัยในหัวเมนู
+- ระวัง: miniErr: 1 ยังไม่เคยดึง, 0 สำเร็จ, รหัส HTTP, -100 เชื่อมต่อไม่ได้, -200 JSON เสีย, -300 Worker แจ้ง error · รอรูปหน้าวินิจฉัยจากผู้ใช้
+
 ### Mini v0.5.0 — 2026-11-01 — Claude
 - ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino, mini/platformio.ini (เพิ่ม links2004/WebSockets), mini/HANDOFF.md
 - แก้อะไร: แก้จอหน่วง — ย้ายงานเน็ตทั้งหมดไป FreeRTOS task บนแกน 0 (`netTask`), จอ/สัมผัสอยู่แกน 1 ไม่ต้องรอเน็ตอีก · ราคา Bybit เปลี่ยนจาก REST ทุก 1 วินาทีเป็น WebSocket `tickers.XAUUSDT` (REST สำรองเมื่อหลุด >8 วินาที) · วาดเฉพาะเมื่อข้อมูลเปลี่ยน (≤7 ครั้ง/วินาที) · แถบหัว/แถบสถานะวาดผ่าน sprite ไม่กระพริบ · ปุ่ม Refresh และเช็กอัปเดตในเมนูไม่ค้างจอแล้ว · fetchData → fetchMini (เรียกจากงานเน็ตเท่านั้น)

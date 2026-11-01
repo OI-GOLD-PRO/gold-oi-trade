@@ -19,7 +19,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.5.0"
+#define FW_VER "0.5.1"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -102,7 +102,12 @@ Data D;                  // ของจอ (แกน 1) เท่านั้�
 Data ND;                 // งานเน็ตเขียนเสร็จแล้ววางไว้ที่นี่ (ล็อก mx)
 SemaphoreHandle_t mx;
 volatile bool ndReady = false, reqFetch = false, reqUpd = false, netPause = false, netIdle = false;
-volatile int updRes = 0;  // ผลเช็กอัปเดต: 0 รอ, 1 สำเร็จ, 2 ล้มเหลว
+volatile int updRes = 0;
+volatile int miniErr = 1;           // ผลดึง /mini ล่าสุด: 1 ยังไม่เคย, 0 สำเร็จ, รหัส HTTP หรือ -100 เชื่อมต่อไม่ได้ / -200 JSON เสีย / -300 Worker แจ้ง error
+volatile uint32_t miniOkAt = 0, wsRetryAt = 0;
+volatile float perp = NAN; volatile uint32_t perpAt = 0, perpSeq = 0;
+volatile bool wsUp = false; uint32_t wsDownAt = 0, wsPingAt = 0;
+  // ผลเช็กอัปเดต: 0 รอ, 1 สำเร็จ, 2 ล้มเหลว
 bool haveData = false;
 uint32_t lastOk = 0;
 
@@ -180,14 +185,14 @@ bool fetchMini(int tf) {
   WiFiClientSecure cli; cli.setInsecure();
   HTTPClient http; http.setTimeout(9000);
   String url = String(DATA_URL) + TF_Q[tf];
-  if (!http.begin(cli, url)) return false;
+  if (!http.begin(cli, url)) { miniErr = -100; return false; }
   int code = http.GET();
-  if (code != 200) { http.end(); return false; }
+  if (code != 200) { http.end(); miniErr = code; return false; }
   String body = http.getString();
   http.end();
   JsonDocument doc;
-  if (deserializeJson(doc, body)) return false;
-  if (!doc["error"].isNull()) return false;
+  if (deserializeJson(doc, body)) { miniErr = -200; return false; }
+  if (!doc["error"].isNull()) { miniErr = -300; return false; }
 
   NT.tf = tf;
   NT.p = jf(doc["p"]); NT.bs = doc["bs"] | 60; NT.lt = doc["lt"] | 0; NT.off = jf(doc["off"]);
@@ -397,9 +402,27 @@ const int AX = 38;               // แกนราคาขวา
 int panBars = 0; float yShift = 0;  // เลื่อนกราฟ: ย้อนหลังกี่แท่ง / เลื่อนราคาขึ้นลง
 float lastPPP = 0.1f, lastCW = 6;   // ราคาต่อพิกเซล / ความกว้างแท่ง (ใช้ตอนลาก)
 
+// หน้าวินิจฉัยตอนยังไม่มีข้อมูลกราฟ (บอกว่าติดตรงไหน)
+void drawDiag() {
+  char b[48]; int y = 8;
+  spr.setFont(&fonts::Font2); spr.setTextDatum(top_left);
+  spr.setTextColor(C_GOLD); spr.drawString(haveData ? "no candles" : "loading data...", 8, y); y += 20;
+  spr.setFont(&fonts::Font0); spr.setTextColor(C_DIM);
+  if (WiFi.status() == WL_CONNECTED) snprintf(b, sizeof(b), "WiFi OK  %d dBm", WiFi.RSSI()); else strcpy(b, "WiFi: not connected");
+  spr.drawString(b, 8, y); y += 12;
+  snprintf(b, sizeof(b), "data: %s %d", miniErr == 0 ? "OK" : miniErr == 1 ? "waiting" : "ERROR", miniErr);
+  spr.setTextColor(miniErr > 1 || miniErr < 0 ? C_DN : C_DIM); spr.drawString(b, 8, y); y += 12;
+  spr.setTextColor(C_DIM);
+  snprintf(b, sizeof(b), "price ws: %s  %s", wsUp ? "UP" : "down", okf(perp) ? "has price" : "no price");
+  spr.drawString(b, 8, y); y += 12;
+  snprintf(b, sizeof(b), "heap %uk  max %uk", (unsigned)(ESP.getFreeHeap() / 1024), (unsigned)(ESP.getMaxAllocHeap() / 1024));
+  spr.drawString(b, 8, y); y += 12;
+  spr.drawString("v" FW_VER "  (photo this & send)", 8, y);
+}
+
 void drawChart() {
   spr.fillScreen(C_BG);
-  if (!haveData || !D.nb) { spr.pushSprite(0, yChart); return; }
+  if (!haveData || !D.nb) { drawDiag(); spr.pushSprite(0, yChart); return; }
   const int PW = W - AX;
   float P = livePrice();
   int n = min(ZOOM[zoomIdx], D.nb);
@@ -637,6 +660,8 @@ void drawMenu() {
   lcd.fillScreen(C_BG);
   lcd.setFont(&fonts::Font2); lcd.setTextColor(C_GOLD, C_BG);
   lcd.drawString("OI GOLD PRO MINI  v" FW_VER, 8, 6);
+  { char b[48]; snprintf(b, sizeof(b), "data %d  ws %s  heap %uk/%uk", miniErr, wsUp ? "up" : "dn", (unsigned)(ESP.getFreeHeap() / 1024), (unsigned)(ESP.getMaxAllocHeap() / 1024));
+    lcd.setFont(&fonts::Font0); lcd.setTextColor(C_DIM, C_BG); lcd.setTextDatum(top_right); lcd.drawString(b, W - 6, 10); lcd.setTextDatum(top_left); }
   int bw = W - 16, hw = (bw - 6) / 2, bh = (H - 36) / MENU_N - 5, y = 28;
   const char *rot[4] = {"ROT: PORT", "ROT: LAND", "ROT: PORT 180", "ROT: LAND 180"};
   const char *br[3] = {"BRIGHT: HIGH", "BRIGHT: MID", "BRIGHT: LOW"};
@@ -824,8 +849,6 @@ void handleKbTap(int x, int y) {
 // ราคาสด: WebSocket ของ Bybit (ส่งมาเองเมื่อราคาเปลี่ยน) · ถ้า WebSocket หลุดเกิน 8 วินาที ใช้ REST ทุก 2 วินาทีแทน
 static const char *PERP_URL = "https://api.bybit.com/v5/market/tickers?category=linear&symbol=XAUUSDT";
 WebSocketsClient ws;
-volatile float perp = NAN; volatile uint32_t perpAt = 0, perpSeq = 0;
-volatile bool wsUp = false; uint32_t wsDownAt = 0, wsPingAt = 0;
 bool perpFresh() { return okf(perp) && okf(D.off) && millis() - perpAt < 6000; }
 float livePrice() { return perpFresh() ? perp + D.off : (haveData ? D.p : NAN); }
 
@@ -871,11 +894,16 @@ void netTask(void *) {
       continue;
     }
     netIdle = false;
-    if (!wsBegun) { ws.beginSSL("stream.bybit.com", 443, "/v5/public/linear"); wsBegun = true; wsDownAt = millis(); }
+    if (!wsBegun && ESP.getMaxAllocHeap() > 45000 && millis() >= wsRetryAt) { ws.beginSSL("stream.bybit.com", 443, "/v5/public/linear"); wsBegun = true; wsDownAt = millis(); }
     ws.loop();
     uint32_t ms = millis();
     if (wsUp && ms - wsPingAt >= 20000) { wsPingAt = ms; ws.sendTXT("{\"op\":\"ping\"}"); }  // Bybit ตัดถ้าไม่ ping
-    if (reqFetch || !lastF || ms - lastF >= FETCH_MS) { reqFetch = false; lastF = ms; fetchMini(tfIdx); }
+    if (reqFetch || !lastF || ms - lastF >= FETCH_MS) {
+      reqFetch = false; lastF = ms;
+      // หน่วยความจำไม่พอเปิดการเชื่อมต่อเข้ารหัสทางที่ 2 → ปิด WebSocket ชั่วคราว (ราคาใช้ REST แทน) ให้ข้อมูลกราฟมาก่อน
+      if (wsBegun && ESP.getMaxAllocHeap() < 40000) { ws.disconnect(); wsBegun = false; wsUp = false; wsDownAt = millis(); wsRetryAt = millis() + 60000; }
+      if (fetchMini(tfIdx)) { miniErr = 0; miniOkAt = millis(); }
+    }
     if (!wsUp && millis() - wsDownAt > 8000 && millis() - lastRest >= 2000) { lastRest = millis(); pollPerpRest(); }
     if (reqUpd || (!lastUpd && ms > 20000) || (lastUpd && ms - lastUpd >= 6UL * 3600 * 1000)) {
       reqUpd = false; lastUpd = ms; updRes = checkUpdate() ? 1 : 2;
