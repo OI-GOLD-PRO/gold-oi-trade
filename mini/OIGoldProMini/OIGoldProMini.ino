@@ -19,7 +19,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.6.0"
+#define FW_VER "0.6.1"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -479,7 +479,9 @@ const int AX = 38;               // แกนราคาขวา
 int panBars = 0; float yShift = 0;  // เลื่อนกราฟ: ย้อนหลังกี่แท่ง / เลื่อนราคาขึ้นลง
 float lastPPP = 0.1f, lastCW = 6;   // ราคาต่อพิกเซล / ความกว้างแท่ง (ใช้ตอนลาก)
 
-float chLo = 0, chHi = 1, chCW = 6; int chFirst = 0, chN = 1; bool chartNoPush = false;  // สเกลกราฟล่าสุด (ใช้กับเส้นเล็ง)
+float chLo = 0, chHi = 1, chCW = 6; int chFirst = 0, chN = 1;  // สเกลกราฟล่าสุด (ใช้กับเส้นเล็ง)
+bool crossOn = false; int crossX = 0, crossY = 0;              // เส้นเล็ง: แตะ 1 ครั้ง = แสดง/ซ่อน · ลากตอนแสดงอยู่ = เลื่อนเส้นเล็ง
+void overlayCross();
 // หน้าวินิจฉัยตอนยังไม่มีข้อมูลกราฟ (บอกว่าติดตรงไหน)
 void drawDiag() {
   char b[48]; int y = 8;
@@ -508,16 +510,17 @@ void drawDiag() {
 
 void drawChart() {
   spr.fillScreen(C_BG);
-  if (!haveData || !D.nb) { drawDiag(); if (!chartNoPush) spr.pushSprite(0, yChart); return; }
+  if (!haveData || !D.nb) { drawDiag(); spr.pushSprite(0, yChart); return; }
   const int PW = W - AX;
   float P = livePrice();
   int n = min(ZOOM[zoomIdx], D.nb);
-  panBars = max(0, min(panBars, D.nb - n));
+  // panBars > 0 = ดูย้อนหลัง · < 0 = ลากกราฟไปซ้าย เว้นที่ว่างด้านขวา (สูงสุด 80% ของจอ)
+  panBars = max(-(n * 4 / 5), min(panBars, D.nb - n));
   int last = D.nb - 1 - panBars, first = last - n + 1;
   // ช่วงราคาจากแท่งที่มองเห็น (แบบแอป) + การเลื่อนขึ้นลงด้วยนิ้ว
   float lo = 1e9, hi = -1e9;
-  for (int i = first; i <= last; i++) { lo = min(lo, D.b[i][2]); hi = max(hi, D.b[i][1]); }
-  if (!panBars && okf(P)) { lo = min(lo, P); hi = max(hi, P); }
+  for (int i = max(0, first); i <= min(last, D.nb - 1); i++) { lo = min(lo, D.b[i][2]); hi = max(hi, D.b[i][1]); }
+  if (panBars <= 0 && okf(P)) { lo = min(lo, P); hi = max(hi, P); }
   float span = max(hi - lo, 6.0f), mid = (lo + hi) / 2;
   lo = mid - span * 0.6f + yShift; hi = mid + span * 0.6f + yShift;
   lastPPP = (hi - lo) / (hChart - 1);
@@ -560,6 +563,7 @@ void drawChart() {
   float cw = (float)(PW - 4) / n; lastCW = cw; chCW = cw;
   int bw = max(1, (int)(cw * 0.7f));
   for (int i = 0; i < n; i++) {
+    if (first + i < 0 || first + i >= D.nb) continue;  // ช่องว่างด้านขวา (ลากไปซ้าย)
     float *b = D.b[first + i];
     int x = (int)(i * cw + cw / 2);
     uint16_t c = b[3] >= b[0] ? C_UP : C_DN;
@@ -604,23 +608,25 @@ void drawChart() {
     snprintf(buf, sizeof(buf), "%.1f", P);
     spr.setTextColor(C_BG); spr.drawString(buf, PW + 3, max(6, yp));
   }
-  // เลื่อนกราฟอยู่: ป้ายบอกวิธีกลับ (แตะแกนราคา)
+  if (crossOn) overlayCross();
+  // เลื่อนกราฟอยู่: ปุ่ม AUTO (แตะป้ายนี้หรือแกนราคา = กลับอัตโนมัติ)
   if (panBars || fabsf(yShift) > 0.01f) {
     spr.fillRoundRect(PW - 50, 2, 48, 12, 3, C_PANEL);
     spr.setTextColor(C_GOLD); spr.setTextDatum(middle_center); spr.drawString("AUTO >", PW - 26, 8);
   }
   spr.setTextDatum(top_left);
-  if (!chartNoPush) spr.pushSprite(0, yChart);
+  spr.pushSprite(0, yChart);
 }
-// ---------------- เส้นเล็ง (แตะค้างบนกราฟ) ----------------
-void drawCross(int x, int y) {
+// ---------------- เส้นเล็ง (แตะ 1 ครั้งบนกราฟ แบบแอป) ----------------
+// วาดทับ sprite กราฟก่อน push (drawChart เรียก) · ข้อมูลอัปเดตแล้วเส้นเล็งยังอยู่ที่เดิม
+void overlayCross() {
   if (!haveData || !D.nb) return;
   const int PW = W - AX;
-  chartNoPush = true; drawChart(); chartNoPush = false;
+  int x = max(0, min(PW - 1, crossX)), y = crossY;
   int yy = max(0, min(hChart - 1, y - yChart));
   float price = chHi - yy * (chHi - chLo) / (hChart - 1);
   int i = max(0, min(chN - 1, (int)(x / chCW)));
-  int bi = chFirst + i; float *b = D.b[bi];
+  int bi = chFirst + i; bool hasBar = bi >= 0 && bi < D.nb; float *b = hasBar ? D.b[bi] : nullptr;
   int bx = (int)(i * chCW + chCW / 2);
   for (int yv = 0; yv < hChart; yv += 4) spr.drawFastVLine(bx, yv, 2, C_TEXT);
   for (int xv = 0; xv < PW; xv += 4) spr.drawFastHLine(xv, yy, 2, C_TEXT);
@@ -629,20 +635,24 @@ void drawCross(int x, int y) {
   spr.fillRect(PW + 1, max(0, yy - 6), AX - 1, 13, C_TEXT);
   snprintf(s, sizeof(s), "%.1f", price); spr.setTextColor(C_BG); spr.drawString(s, PW + 3, max(6, yy));
   // กล่องข้อมูล: เวลาแท่ง OHLC + OI strike ใกล้สุด
-  uint32_t bt = D.lt ? D.lt - (uint32_t)(D.nb - 1 - bi) * D.bs + 7 * 3600 : 0;
+  uint32_t bt = (D.lt && hasBar) ? D.lt - (uint32_t)(D.nb - 1 - bi) * D.bs + 7 * 3600 : 0;
   int ks = -1; for (int j = 0; j < D.ns; j++) if (ks < 0 || fabsf(D.s[j].k - price) < fabsf(D.s[ks].k - price)) ks = j;
-  int bw = 150, bh = ks >= 0 ? 46 : 34, boxX = x < PW / 2 ? PW - bw - 4 : 4, boxY = 4;
+  int bw = 150, bh = (hasBar ? 34 : 4) + (ks >= 0 ? 12 : 0), boxX = x < PW / 2 ? PW - bw - 4 : 4, boxY = 4;
   spr.fillRoundRect(boxX, boxY, bw, bh, 4, C_PANEL); spr.drawRoundRect(boxX, boxY, bw, bh, 4, C_LINE);
   spr.setTextDatum(top_left);
+  int ly = boxY + 4;
+  if (hasBar) {
   snprintf(s, sizeof(s), "%02lu:%02lu  O %.1f", (unsigned long)((bt / 3600) % 24), (unsigned long)((bt / 60) % 60), b[0]);
   spr.setTextColor(C_TEXT); spr.drawString(s, boxX + 5, boxY + 4);
   snprintf(s, sizeof(s), "H %.1f  L %.1f", b[1], b[2]); spr.setTextColor(C_DIM); spr.drawString(s, boxX + 5, boxY + 15);
   snprintf(s, sizeof(s), "C %.1f", b[3]); spr.setTextColor(b[3] >= b[0] ? C_UP : C_DN); spr.drawString(s, boxX + 5, boxY + 26);
+  ly = boxY + 36;
+  }
   if (ks >= 0) {
     Strike &k = D.s[ks];
-    snprintf(s, sizeof(s), "%.0f Call %ld Put %ld", k.k, k.c, k.p); spr.setTextColor(C_GOLD); spr.drawString(s, boxX + 5, boxY + 36);
+    snprintf(s, sizeof(s), "%.0f Call %ld Put %ld", k.k, k.c, k.p); spr.setTextColor(C_GOLD); spr.drawString(s, boxX + 5, ly);
   }
-  spr.pushSprite(0, yChart);
+  spr.setTextDatum(top_left);
 }
 
 // แถบล่าง: ไทม์เฟรม · ซูม · รีเฟรช · ตั้งค่า
@@ -1281,22 +1291,30 @@ void handleMainTap(int x, int y) {
     alertUntil = 0; ledUntil = 0; stopSound(); setLed(0); drawStatus(); return;
   }
   if (y < HDR) { openDash(); return; }  // แตะแถบหัว = หน้า Dashboard
-  if (y >= yChart && x >= W - AX) { panBars = 0; yShift = 0; drawChart(); }  // แตะแกนราคา = กลับอัตโนมัติ
+  if (y >= yChart && y < yTool) {
+    const int PW = W - AX;
+    bool autoOn = panBars || fabsf(yShift) > 0.01f;
+    // แตะแกนราคา หรือแตะป้าย AUTO (มุมขวาบนของกราฟ, เผื่อขอบให้แตะง่าย) = กลับอัตโนมัติ
+    if (x >= PW || (autoOn && x >= PW - 62 && y - yChart <= 24)) { panBars = 0; yShift = 0; drawChart(); return; }
+    // แตะ 1 ครั้งบนกราฟ = แสดงเส้นเล็ง · แตะอีกครั้ง = ซ่อน
+    if (crossOn) crossOn = false; else { crossOn = true; crossX = x; crossY = y; }
+    drawChart();
+  }
 }
 
-bool tDown = false, tDrag = false, tCross = false; int32_t tx0, ty0; int panBars0; float yShift0; uint32_t lastDragDraw = 0, tDownAt = 0;
+bool tDown = false, tDrag = false; int32_t tx0, ty0; int panBars0; float yShift0; uint32_t lastDragDraw = 0;
 void handleTouchMain() {
   int32_t x, y;
   bool d = lcd.getTouch(&x, &y) > 0;
   if (d) {
-    if (!tDown) { tDown = true; tDrag = false; tCross = false; tDownAt = millis(); tx0 = x; ty0 = y; panBars0 = panBars; yShift0 = yShift; return; }
-    if (ty0 >= yChart && ty0 < yTool && tx0 < W - AX) {  // ลากบนกราฟ = เลื่อน (ซ้าย-ขวา = เวลา, ขึ้น-ลง = ราคา) · แตะค้าง 0.45 วิ = เส้นเล็ง
+    if (!tDown) { tDown = true; tDrag = false; tx0 = x; ty0 = y; panBars0 = panBars; yShift0 = yShift; return; }
+    if (ty0 >= yChart && ty0 < yTool && tx0 < W - AX) {  // ลากบนกราฟ = เลื่อน (ซ้าย-ขวา = เวลา, ขึ้น-ลง = ราคา) · ถ้าเส้นเล็งแสดงอยู่ = ลากเส้นเล็ง
       int dx = x - tx0, dy = y - ty0;
-      if (!tDrag && !tCross && (abs(dx) > 6 || abs(dy) > 6)) tDrag = true;
-      if (!tDrag && !tCross && millis() - tDownAt >= 450) tCross = true;
-      if (tCross && millis() - lastDragDraw > 50) { lastDragDraw = millis(); drawCross(x, y); }
-      else if (tDrag && millis() - lastDragDraw > 60) {
-        panBars = max(0, panBars0 + (int)roundf(dx / max(1.0f, lastCW)));
+      if (!tDrag && (abs(dx) > 6 || abs(dy) > 6)) tDrag = true;
+      if (tDrag && crossOn && millis() - lastDragDraw > 50) { lastDragDraw = millis(); crossX = x; crossY = y; drawChart(); }
+      else if (tDrag && !crossOn && millis() - lastDragDraw > 60) {
+        // ลากขวา = ดูย้อนหลัง · ลากซ้าย = เว้นที่ว่างด้านขวา (drawChart จำกัดช่วงเอง)
+        panBars = panBars0 + (int)roundf(dx / max(1.0f, lastCW));
         yShift = yShift0 + dy * lastPPP;
         lastDragDraw = millis();
         drawChart();
@@ -1304,8 +1322,7 @@ void handleTouchMain() {
     }
   } else if (tDown) {
     tDown = false;
-    if (tCross) { tCross = false; drawChart(); }  // ปล่อยนิ้ว = ซ่อนเส้นเล็ง
-    else if (!tDrag) handleMainTap(tx0, ty0);
+    if (!tDrag) handleMainTap(tx0, ty0);
   }
 }
 
