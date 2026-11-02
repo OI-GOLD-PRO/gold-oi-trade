@@ -41,7 +41,7 @@ export function agg4h(b1h) {
 }
 
 // ---------- ออปชันทองสัญญาที่หมดอายุวันนั้น จาก TradingView (ช้า 10 นาที) ----------
-// cron ทุก 2 นาที → Durable Object "OptState" ดึง IV/greeks (scanner) + volume/ราคาล่าสุด/bid/ask (quote stream)
+// cron ทุก 1 นาที (เดิม 2) → Durable Object "OptState" ดึง IV/greeks (scanner) + volume/ราคาล่าสุด/bid/ask (quote stream)
 // แล้วสะสม volume ที่เพิ่มขึ้นแต่ละรอบ: ราคาล่าสุดใกล้ ask = ซื้อ, ใกล้ bid = ขาย (ประมาณการ)
 // GET /opt → {root, exp, expTs, F, updated, polls, oiT, rows:[[k, 'C'|'P', iv, delta, gamma, bid, ask, last, vol, buy, sell, oi], ...]}
 const TVH = { 'user-agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130 Safari/537.36', origin: 'https://www.tradingview.com', referer: 'https://www.tradingview.com/' };

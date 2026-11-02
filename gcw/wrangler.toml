@@ -13,4 +13,4 @@ tag = "v1"
 new_sqlite_classes = ["OptState"]
 
 [triggers]
-crons = ["*/2 * * * *"]
+crons = ["* * * * *"]
