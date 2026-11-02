@@ -20,7 +20,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.7.5"
+#define FW_VER "0.7.6"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -492,7 +492,7 @@ int panBars = 0; float yShift = 0; bool panAuto = true;  // panAuto: โหม�
 float lastPPP = 0.1f, lastCW = 6;   // ราคาต่อพิกเซล / ความกว้างแท่ง (ใช้ตอนลาก)
 
 float chLo = 0, chHi = 1, chCW = 6; int chFirst = 0, chN = 1;  // สเกลกราฟล่าสุด (ใช้กับเส้นเล็ง)
-bool crossOn = false; int crossX = 0, crossY = 0;              // เส้นเล็ง: แตะ 1 ครั้ง = แสดง/ซ่อน · ลากตอนแสดงอยู่ = เลื่อนเส้นเล็ง
+bool crossOn = false; int crossX = 0, crossY = 0;              // เส้นเล็ง: ไอคอน + บนแถบล่าง = เปิด/ปิด · เปิดอยู่: แตะ/ลากบนกราฟ = ย้ายเส้นเล็ง
 void overlayCross();
 // หน้าวินิจฉัยตอนยังไม่มีข้อมูลกราฟ (บอกว่าติดตรงไหน)
 void drawDiag() {
@@ -666,13 +666,23 @@ void overlayCross() {
 }
 
 // แถบล่าง: ไทม์เฟรม · ซูม · รีเฟรช · ตั้งค่า
-int tbX[8], tbW[8];
+// ปุ่ม: 0-3 ไทม์เฟรม · 4 − · 5 + · 8 เส้นเล็ง (อยู่ถัดจาก +) · 6 รีเฟรช · 7 ตั้งค่า
+int tbX[9], tbW[9];
 void layoutToolbar() {
-  int g = 3, iconW = LS ? 28 : 24, zw = LS ? 30 : 25;
-  int tw = (W - 9 * g - 2 * iconW - 2 * zw) / 4, x = g;
+  int g = 3, iconW = LS ? 28 : 22, zw = LS ? 30 : 22;
+  int tw = (W - 10 * g - 3 * iconW - 2 * zw) / 4, x = g;
   for (int i = 0; i < 4; i++) { tbX[i] = x; tbW[i] = tw; x += tw + g; }
   for (int i = 4; i < 6; i++) { tbX[i] = x; tbW[i] = zw; x += zw + g; }
+  tbX[8] = x; tbW[8] = iconW; x += iconW + g;
   for (int i = 6; i < 8; i++) { tbX[i] = x; tbW[i] = iconW; x += iconW + g; }
+}
+void drawCrossIcon() {
+  int x = tbX[8], y = yTool + 3, w = tbW[8], h = TB - 5, cx = x + w / 2, cy = y + h / 2;
+  uint16_t bg = crossOn ? C_GOLD : C_PANEL, fg = crossOn ? hex(0x1a1405) : C_GOLD;
+  lcd.fillRoundRect(x, y, w, h, 3, bg);
+  if (!crossOn) lcd.drawRoundRect(x, y, w, h, 3, C_LINE);
+  lcd.drawFastHLine(cx - 8, cy, 17, fg); lcd.drawFastVLine(cx, cy - 8, 17, fg);
+  lcd.drawCircle(cx, cy, 4, fg);
 }
 void drawToolbarIcon(int idx, bool gear) {
   int x = tbX[idx], y = yTool + 3, w = tbW[idx], h = TB - 5;
@@ -704,6 +714,7 @@ void drawToolbar() {
   for (int i = 0; i < 4; i++) button(tbX[i], yTool + 3, tbW[i], TB - 5, TF_N[i], i == tfIdx ? C_GOLD : C_BG, i == tfIdx ? hex(0x1a1405) : C_DIM, i == tfIdx ? 0 : C_LINE);
   button(tbX[4], yTool + 3, tbW[4], TB - 5, "-", C_PANEL, zoomIdx < 5 ? C_TEXT : C_LINE, C_LINE);
   button(tbX[5], yTool + 3, tbW[5], TB - 5, "+", C_PANEL, zoomIdx > 0 ? C_TEXT : C_LINE, C_LINE);
+  drawCrossIcon();
   drawToolbarIcon(6, false);
   drawToolbarIcon(7, true);
 }
@@ -1423,10 +1434,15 @@ void tickCandle() {
 // ---------------- หน้าหลัก: แตะ / ลาก ----------------
 void handleMainTap(int x, int y) {
   if (y >= yTool) {
-    for (int i = 0; i < 8; i++) if (x >= tbX[i] - 1 && x <= tbX[i] + tbW[i] + 1) {
+    for (int i = 0; i < 9; i++) if (x >= tbX[i] - 1 && x <= tbX[i] + tbW[i] + 1) {
       if (i < 4) { if (tfIdx != i) { tfIdx = i; prefs.putInt("tf", tfIdx); haveData = false; nzst = 0; panAuto = true; yShift = 0; reqFetch = true; drawToolbar(); drawChart(); } }
       else if (i == 4) { if (zoomIdx < 5) { zoomIdx++; prefs.putInt("zm", zoomIdx); drawToolbar(); drawChart(); } }  // − = เห็นแท่งมากขึ้น
       else if (i == 5) { if (zoomIdx > 0) { zoomIdx--; prefs.putInt("zm", zoomIdx); drawToolbar(); drawChart(); } }  // + = ขยาย
+      else if (i == 8) {  // เปิด/ปิดเส้นเล็ง · เปิด = วางกลางกราฟ
+        crossOn = !crossOn;
+        if (crossOn) { crossX = (W - AX) / 2; crossY = (yChart + yTool) / 2; }
+        drawCrossIcon(); drawChart();
+      }
       else if (i == 6) {
         reqFetch = true;  // งานเน็ตดึงให้ทันที (ไม่ค้างจอ)
         drawMain();
@@ -1445,9 +1461,8 @@ void handleMainTap(int x, int y) {
     bool autoOn = !panAuto || fabsf(yShift) > 0.01f;
     // แตะแกนราคา หรือแตะป้าย AUTO (มุมขวาบนของกราฟ, เผื่อขอบให้แตะง่าย) = กลับอัตโนมัติ
     if (x >= PW || (autoOn && x >= PW - 62 && y - yChart <= 24)) { panAuto = true; yShift = 0; drawChart(); return; }
-    // แตะ 1 ครั้งบนกราฟ = แสดงเส้นเล็ง · แตะอีกครั้ง = ซ่อน
-    if (crossOn) crossOn = false; else { crossOn = true; crossX = x; crossY = y; }
-    drawChart();
+    // เส้นเล็งเปิดอยู่ (ไอคอน +): แตะ = ย้ายเส้นเล็งไปจุดที่แตะ · ปิดอยู่: แตะกราฟไม่มีอะไร
+    if (crossOn) { crossX = x; crossY = y; drawChart(); }
   }
 }
 
