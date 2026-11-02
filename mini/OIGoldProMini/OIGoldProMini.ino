@@ -20,7 +20,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.7.4"
+#define FW_VER "0.7.5"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -488,7 +488,7 @@ Tag tags[12]; int nTags;
 void addTag(int y, float v, uint16_t c) { if (y >= 0 && y < hChart && nTags < 12) tags[nTags++] = {y, v, c}; }
 
 const int AX = 38;               // แกนราคาขวา
-int panBars = 0; float yShift = 0;  // เลื่อนกราฟ: ย้อนหลังกี่แท่ง / เลื่อนราคาขึ้นลง
+int panBars = 0; float yShift = 0; bool panAuto = true;  // panAuto: โหมด AUTO = เว้นที่ว่างขวา ~15% ของแท่งที่เห็น (ลากแล้วชิดขวาได้)  // เลื่อนกราฟ: ย้อนหลังกี่แท่ง / เลื่อนราคาขึ้นลง
 float lastPPP = 0.1f, lastCW = 6;   // ราคาต่อพิกเซล / ความกว้างแท่ง (ใช้ตอนลาก)
 
 float chLo = 0, chHi = 1, chCW = 6; int chFirst = 0, chN = 1;  // สเกลกราฟล่าสุด (ใช้กับเส้นเล็ง)
@@ -524,6 +524,7 @@ void drawChart() {
   float P = livePrice();
   int n = min(ZOOM[zoomIdx], D.nb);
   // panBars > 0 = ดูย้อนหลัง · < 0 = ลากกราฟไปซ้าย เว้นที่ว่างด้านขวา (สูงสุด 80% ของจอ)
+  if (panAuto) panBars = -max(2, n * 15 / 100);
   panBars = max(-(n * 4 / 5), min(panBars, D.nb - n));
   int last = D.nb - 1 - panBars, first = last - n + 1;
   // ช่วงราคาจากแท่งที่มองเห็น (แบบแอป) + การเลื่อนขึ้นลงด้วยนิ้ว
@@ -619,7 +620,7 @@ void drawChart() {
   }
   if (crossOn) overlayCross();
   // เลื่อนกราฟอยู่: ปุ่ม AUTO (แตะป้ายนี้หรือแกนราคา = กลับอัตโนมัติ)
-  if (panBars || fabsf(yShift) > 0.01f) {
+  if (!panAuto || fabsf(yShift) > 0.01f) {
     spr.fillRoundRect(PW - 50, 2, 48, 12, 3, C_PANEL);
     spr.setTextColor(C_GOLD); spr.setTextDatum(middle_center); spr.drawString("AUTO >", PW - 26, 8);
   }
@@ -1412,7 +1413,7 @@ void tickCandle() {
       float *b = D.b[D.nb++];
       b[0] = b[1] = b[2] = b[3] = P;
       D.lt += D.bs;
-      if (panBars) panBars++;  // เลื่อนดูย้อนหลังอยู่: คงตำแหน่งเดิมไว้
+      if (!panAuto && panBars) panBars++;  // เลื่อนดูย้อนหลังอยู่: คงตำแหน่งเดิมไว้
     }
   }
   float *b = D.b[D.nb - 1];
@@ -1423,7 +1424,7 @@ void tickCandle() {
 void handleMainTap(int x, int y) {
   if (y >= yTool) {
     for (int i = 0; i < 8; i++) if (x >= tbX[i] - 1 && x <= tbX[i] + tbW[i] + 1) {
-      if (i < 4) { if (tfIdx != i) { tfIdx = i; prefs.putInt("tf", tfIdx); haveData = false; nzst = 0; panBars = 0; yShift = 0; reqFetch = true; drawToolbar(); drawChart(); } }
+      if (i < 4) { if (tfIdx != i) { tfIdx = i; prefs.putInt("tf", tfIdx); haveData = false; nzst = 0; panAuto = true; yShift = 0; reqFetch = true; drawToolbar(); drawChart(); } }
       else if (i == 4) { if (zoomIdx < 5) { zoomIdx++; prefs.putInt("zm", zoomIdx); drawToolbar(); drawChart(); } }  // − = เห็นแท่งมากขึ้น
       else if (i == 5) { if (zoomIdx > 0) { zoomIdx--; prefs.putInt("zm", zoomIdx); drawToolbar(); drawChart(); } }  // + = ขยาย
       else if (i == 6) {
@@ -1441,9 +1442,9 @@ void handleMainTap(int x, int y) {
   if (y < HDR) { openDash(); return; }  // แตะแถบหัว = หน้า Dashboard
   if (y >= yChart && y < yTool) {
     const int PW = W - AX;
-    bool autoOn = panBars || fabsf(yShift) > 0.01f;
+    bool autoOn = !panAuto || fabsf(yShift) > 0.01f;
     // แตะแกนราคา หรือแตะป้าย AUTO (มุมขวาบนของกราฟ, เผื่อขอบให้แตะง่าย) = กลับอัตโนมัติ
-    if (x >= PW || (autoOn && x >= PW - 62 && y - yChart <= 24)) { panBars = 0; yShift = 0; drawChart(); return; }
+    if (x >= PW || (autoOn && x >= PW - 62 && y - yChart <= 24)) { panAuto = true; yShift = 0; drawChart(); return; }
     // แตะ 1 ครั้งบนกราฟ = แสดงเส้นเล็ง · แตะอีกครั้ง = ซ่อน
     if (crossOn) crossOn = false; else { crossOn = true; crossX = x; crossY = y; }
     drawChart();
@@ -1462,7 +1463,7 @@ void handleTouchMain() {
       if (tDrag && crossOn && millis() - lastDragDraw > 50) { lastDragDraw = millis(); crossX = x; crossY = y; drawChart(); }
       else if (tDrag && !crossOn && millis() - lastDragDraw > 60) {
         // ลากขวา = ดูย้อนหลัง · ลากซ้าย = เว้นที่ว่างด้านขวา (drawChart จำกัดช่วงเอง)
-        panBars = panBars0 + (int)roundf(dx / max(1.0f, lastCW));
+        panAuto = false; panBars = panBars0 + (int)roundf(dx / max(1.0f, lastCW));
         yShift = yShift0 + dy * lastPPP;
         lastDragDraw = millis();
         drawChart();
