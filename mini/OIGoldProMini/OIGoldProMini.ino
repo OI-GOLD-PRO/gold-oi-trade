@@ -20,7 +20,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.7.3"
+#define FW_VER "0.7.4"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -132,6 +132,8 @@ uint32_t alertUntil = 0, ledUntil = 0; char alertTxt[40] = ""; uint16_t alertCol
 // ปิดจอ: manualOff = กดปิดจากเมนู · autoOff = 0 ไม่ปิดเอง, 1 ตลาดปิด, 2 ตลาดปิด+กลางคืน 00-07, 3 ตลาดปิด+กลางคืน 22-07
 bool manualOff = false, scrOff = false; int autoOff = 1; uint32_t wakeUntil = 0;
 const char *AUTO_N[4] = {"OFF: NEVER", "OFF: MKT", "OFF: MKT+0-7", "OFF: MKT+22-7"};
+bool wlow = true;  // ลดกำลังส่ง WiFi (11dBm) ลดไฟกระชาก — ใช้กับแบต/ไฟเลี้ยงอ่อน · ปรับที่หน้า WiFi ปุ่ม TX
+void applyTx() { WiFi.setTxPower(wlow ? WIFI_POWER_11dBm : WIFI_POWER_19_5dBm); }
 bool spi40 = false;  // ส่งภาพไปจอ 40MHz (ค่าเริ่ม 27MHz) · แตะจอค้างตอนเปิดเครื่อง = กลับ 27MHz
 int rotIdx = 1; bool muted = false; int brightIdx = 0; int tfIdx = 0; int zoomIdx = 2;
 const uint8_t BRIGHT[3] = {220, 110, 35};
@@ -1134,8 +1136,10 @@ void drawWifi() {
     lcd.setTextColor(C_DIM, C_PANEL); lcd.setTextDatum(top_right); lcd.drawString(b, W - 10, y + 3); lcd.setTextDatum(top_left);
   }
   if (!nNets) { lcd.setTextColor(C_DIM, C_BG); lcd.drawString("No networks found", 10, 40); }
-  button(4, H - 32, 150, 28, "RESCAN", C_PANEL, C_TEXT, C_LINE);
-  button(W - 154, H - 32, 150, 28, "BACK", C_PANEL, C_TEXT, C_LINE);
+  int bw3 = (W - 16) / 3;
+  button(4, H - 32, bw3, 28, "RESCAN", C_PANEL, C_TEXT, C_LINE);
+  button(8 + bw3, H - 32, bw3, 28, wlow ? "TX: LOW" : "TX: NORMAL", C_PANEL, wlow ? C_GOLD : C_TEXT, C_LINE);
+  button(12 + 2 * bw3, H - 32, bw3, 28, "BACK", C_PANEL, C_TEXT, C_LINE);
 }
 
 const char *KB_ROWS[2][4] = {
@@ -1188,7 +1192,7 @@ bool connectWifi(const char *ssid, const char *pw, uint32_t ms, bool showUi) {
     lcd.setTextColor(C_DIM, C_BG); lcd.drawString("tap screen to change WiFi", 8, 30);
   }
   WiFi.mode(WIFI_STA); WiFi.disconnect(); delay(100);
-  WiFi.begin(ssid, pw);
+  WiFi.begin(ssid, pw); applyTx();
   uint32_t t0 = millis(); int32_t x, y;
   while (WiFi.status() != WL_CONNECTED && millis() - t0 < ms) {
     if (showUi) {
@@ -1245,7 +1249,13 @@ void loginResult() {  // loop เรียกเมื่องานเน็�
 }
 
 void handleWifiTap(int x, int y) {
-  if (y >= H - 32) { if (x < 160) openWifi(); else finishWifi(); return; }
+  if (y >= H - 32) {
+    int bw3 = (W - 16) / 3;
+    if (x < 6 + bw3) openWifi();
+    else if (x < 10 + 2 * bw3) { wlow = !wlow; prefs.putBool("wlow", wlow); applyTx(); drawWifi(); }
+    else finishWifi();
+    return;
+  }
   int i = (y - 26) / 25;
   if (y >= 26 && i >= 0 && i < nNets) {
     strlcpy(selSsid, nets[i].ssid, 33);
@@ -1488,6 +1498,7 @@ void setup() {
   zoomIdx = prefs.getInt("zm", 2); if (zoomIdx < 0 || zoomIdx > 5) zoomIdx = 2;
   D.off = NAN;
 
+  wlow = prefs.getBool("wlow", true);
   spi40 = prefs.getBool("spi40", false);
   lcd.setWriteFreq(spi40 ? 40000000 : 27000000);
   lcd.init();
@@ -1540,7 +1551,7 @@ void loop() {
       if (millis() - offSince > 15000 && millis() - lastRe > 20000) {
         lastRe = millis();
         String ss = prefs.getString("ssid", ""), pw = prefs.getString("pass", "");
-        if (ss.length()) { WiFi.disconnect(); WiFi.begin(ss.c_str(), pw.c_str()); }
+        if (ss.length()) { WiFi.disconnect(); WiFi.begin(ss.c_str(), pw.c_str()); applyTx(); }
       }
     }
   }

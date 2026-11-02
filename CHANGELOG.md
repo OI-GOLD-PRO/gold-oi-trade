@@ -19,6 +19,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.7.4 — 2026-11-02 — Claude
+- ไฟล์: `mini/OIGoldProMini/OIGoldProMini.ino`
+- แก้อะไร: ลดกำลังส่ง WiFi เป็น 11dBm เป็นค่าเริ่ม (pref `wlow`, ค่าเริ่ม true) แก้จอหรี่เป็นจังหวะตอนตลาดเปิด (ดึงราคาทุก 1 วิ → ไฟกระชาก) เมื่อใช้แบตผ่านโมดูลชาร์จที่ไม่มีบูสต์ 5V · ปุ่ม `TX: LOW / TX: NORMAL` อยู่หน้า WIFI SETUP (ปุ่มกลางล่าง) · `applyTx()` เรียกหลัง `WiFi.begin` ทุกจุด
+- ระวัง: ถ้าเปลี่ยนเป็นโมดูลชาร์จ+บูสต์ 5V แล้ว กด TX: NORMAL ได้ (19.5dBm) · TX LOW สัญญาณอาจอ่อนลงถ้าเราเตอร์ไกล
+
 ### Mini v0.7.3 — 2026-11-02 — Claude
 - ไฟล์: mini/OIGoldProMini/OIGoldProMini.ino
 - แก้อะไร (ผู้ใช้ขอ): เปิดเครื่องช่วงตลาดปิด (AUTO OFF) จอดับทันที → ตั้ง `wakeUntil = millis() + 60000` ท้าย setup ให้จอติด 1 นาทีก่อนดับ
