@@ -23,6 +23,10 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### gcw + relay — 2026-11-04 — Claude (คู่กับ OI Gold Pro V4.9.24)
+- ไฟล์: gcw/src/index.js, relay/ (ใหม่: rt-relay.mjs, start-relay.bat, README.md)
+- แก้อะไร: Binance/Bitget บล็อก Cloudflare (403) → เพิ่ม `POST /rtpush` รับไม้จากมือถือ (🐋 เปิดอยู่) และเครื่องที่บ้าน (relay) · body `{src, via, tr:[[id,t,p,q,s]]}` · กันนับซ้ำด้วย id (เก็บ watermark ที่ `rt:push`) · กันข้อมูลปลอม: เวลา ≤ 15 นาที, ราคาห่างราคา Bybit ล่าสุด < 1.5%, 0<q<500, ≤ 20,000 ไม้/ครั้ง · `/retail` → `src` แสดงจำนวนไม้ที่ส่งมาใน 1 นาทีล่าสุด + `<src>_via`
+
 ### gcw — 2026-11-04 — Claude (คู่กับ OI Gold Pro V4.9.22)
 - ไฟล์: gcw/src/mix.js, gcw/src/index.js, gcw/test.mjs
 - แก้อะไร: `/retail` เก็บไม้รายย่อยละเอียด $0.1 (เดิม $1 · ถังเก่าเลขเต็มอ่านร่วมได้) + ส่ง `fine` / `freshFine` = แถว $0.1 [ราคา, ซื้อ, ขาย] ให้แอปรวมตามความละเอียดที่ตั้ง (0.1–2$) · โซน (`zones`, `trap`) ยังคิดทีละ $1 เหมือนเดิม

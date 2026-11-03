@@ -274,6 +274,7 @@ export class OptState {
     }
     if (u.pathname === '/poll') { const r = await this.poll(); return new Response(JSON.stringify(r)); }
     if (u.pathname === '/rtpoll') return new Response(JSON.stringify(await this.rtPoll()));
+    if (u.pathname === '/rtpush') return new Response(JSON.stringify(await this.rtPush(await req.json().catch(() => null))));
     if (u.pathname === '/rt') return new Response(JSON.stringify(await this.state.storage.get('rt:z') || { zones: [], ready: false }));
     if (u.pathname === '/trapfz') {
       // แผนกับดักที่ล็อกแล้ว: เครื่องแรกที่เห็นสัญญาณเป็นคนล็อก เครื่องอื่นใช้ตาม (ไม่ทับของเดิม)
@@ -294,6 +295,7 @@ export class OptState {
   async rtPoll() {
     const S = this.state.storage, now = Date.now(), st = await S.get('rt:st') || {};
     const trades = await pullTrades(st, now);
+    if (trades.length) st.lastPx = trades[trades.length - 1][1]; // V4.9.24 ราคาอ้างอิงตรวจไม้ที่ส่งมา
     const touched = {};
     for (const [t, p, q, s] of trades) {
       if (t < now - RT.KEEP) continue;
@@ -307,9 +309,29 @@ export class OptState {
     const z = retailZones(buckets, now);
     { const F = retailZones(buckets, now, RT_FRESH); z.fresh = F.zones; z.freshRows = F.rows || []; z.freshFine = F.fine || []; } // V4.9.18 ไม้สด 1 ชม. · V4.9.19 + แถว $1
     z.trap = retailZones(buckets, now, RT_TRAP).zones;   // ชุดเดิมให้ 💀 กับดัก (ไม่ส่งแถว)
-    z.updated = Math.floor(now / 1000); z.src = st.ok || {}; z.err = st.err || {};
+    z.updated = Math.floor(now / 1000); z.src = Object.assign({}, st.ok || {}); z.err = Object.assign({}, st.err || {});
+    { const P = await S.get('rt:push') || {}; Object.entries(P).forEach(([k, w]) => { if (w.at > now - 3 * 60e3) { z.src[k] = (w.n || []).filter(e => e[0] > now - 60e3).reduce((a, e) => a + e[1], 0); z.src[k + '_via'] = w.via || ''; delete z.err[k]; } }); } // V4.9.24 ไม้ที่มือถือ/relay ส่งมา
     await S.put('rt:st', st); await S.put('rt:z', z);
     return { added: trades.length, ok: st.ok, err: st.err, zones: z.zones.length };
+  }
+  // V4.9.24: รับไม้จากมือถือ (🐋 เปิดอยู่) / เครื่องที่บ้าน (relay) สำหรับตลาดที่บล็อก Cloudflare (Binance, Bitget)
+  //  body { src: 'binance'|'bitget', tr: [[id, t ms, p, q, s], ...] } · กันนับซ้ำด้วย id (รับเฉพาะ id ที่ใหม่กว่าที่เคยรับ)
+  //  กันข้อมูลปลอม: เวลาไม่เก่ากว่า 15 นาที · ราคาห่างราคาล่าสุดของ Bybit ไม่เกิน 1.5% · ขนาด 0 < q < 500 · ครั้งละไม่เกิน 20,000 ไม้
+  async rtPush(b) {
+    const SRC = ['binance', 'bitget'];
+    if (!b || !SRC.includes(b.src) || !Array.isArray(b.tr)) return { error: 'bad body' };
+    const S = this.state.storage, now = Date.now(), P = await S.get('rt:push') || {}, w = P[b.src] || { id: '', n: [] };
+    const st = await S.get('rt:st') || {}, ref = st.lastPx || null;
+    const big = x => String(x).replace(/^0+/, ''), gt = (a, c) => { a = big(a); c = big(c); return a.length !== c.length ? a.length > c.length : a > c; };
+    const ok = b.tr.slice(-20000).filter(x => Array.isArray(x) && x.length === 5 && /^\d{1,25}$/.test(String(x[0])) && x[1] > now - 15 * 60e3 && x[1] < now + 60e3 && x[3] > 0 && x[3] < 500 && (x[4] === 1 || x[4] === -1) && x[2] > 0 && (!ref || Math.abs(x[2] / ref - 1) < 0.015))
+      .filter(x => !w.id || gt(x[0], w.id)).sort((a, c) => gt(a[0], c[0]) ? 1 : -1);
+    if (!ok.length) return { added: 0, wm: w.id };
+    const touched = {};
+    for (const [, t, p, q, sd] of ok) { const tb = Math.floor(t / RT.BK) * RT.BK; if (!touched[tb]) touched[tb] = await S.get('rb:' + tb) || {}; rtAdd({ [tb]: touched[tb] }, t, p, q, sd); }
+    for (const tb of Object.keys(touched)) await S.put('rb:' + tb, touched[tb]);
+    w.id = String(ok[ok.length - 1][0]); w.at = now; w.via = String(b.via || '').slice(0, 20); w.n = (w.n || []).filter(e => e[0] > now - 5 * 60e3).concat([[now, ok.length]]);
+    P[b.src] = w; await S.put('rt:push', P);
+    return { added: ok.length, wm: w.id };
   }
   // รับคำสั่งจากแชท: /start = รับแจ้งเตือน, /stop = หยุด
   async tgLink(reply) {
@@ -726,6 +748,13 @@ export default {
       const res = new Response(JSON.stringify({ tf, src: ok.map(i => MIX_SRC[i].split(':')[0]), updated: Math.floor(Date.now() / 1000), bars }), { headers: H });
       await cache.put(ck, res.clone());
       return res;
+    }
+    if (url.pathname === '/rtpush' && request.method === 'POST') {
+      const H = { ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store' };
+      if (!env || !env.OPT) return new Response('{}', { status: 500, headers: H });
+      const body = await request.text(); if (body.length > 1.5e6) return new Response('{"error":"too big"}', { status: 413, headers: H });
+      const r = await env.OPT.get(env.OPT.idFromName('retail')).fetch('https://do/rtpush', { method: 'POST', body });
+      return new Response(await r.text(), { headers: H });
     }
     if (url.pathname === '/retail' || url.pathname === '/trapfz') {
       const H = { ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store' };
