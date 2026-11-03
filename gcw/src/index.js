@@ -1,5 +1,5 @@
-import { MIX_SRC, MIX_TF, mixBars, mixN, rtAdd, retailZones, pullTrades, RT } from './mix.js';
-export { mixBars, retailZones, rtAdd } from './mix.js';
+import { MIX_SRC, MIX_TF, mixBars, mixN, rtAdd, retailZones, pullTrades, RT, RT_FRESH, RT_TRAP } from './mix.js';
+export { mixBars, retailZones, rtAdd, RT_FAST, RT_FRESH, RT_TRAP } from './mix.js';
 import { newVapid, sendPush } from './push.js';
 import { MINI_FLASH_PAGE, MINI_MANIFEST } from './flash.js';
 // Worker: ดึงแท่งราคา GC=F (ทองฟิวเจอร์) จาก Yahoo ให้แอป OI Gold Pro เรียกตรง (เปิด CORS) ไม่ต้องรอ GitHub Actions
@@ -305,6 +305,8 @@ export class OptState {
     const all = await S.list({ prefix: 'rb:' }), buckets = {};
     for (const [k, v] of all) { const tb = +k.slice(3); if (tb < now - RT.KEEP) await S.delete(k); else buckets[tb] = v; }
     const z = retailZones(buckets, now);
+    z.fresh = retailZones(buckets, now, RT_FRESH).zones; // V4.9.18 ไม้สด 1 ชม.
+    z.trap = retailZones(buckets, now, RT_TRAP).zones;   // ชุดเดิมให้ 💀 กับดัก
     z.updated = Math.floor(now / 1000); z.src = st.ok || {}; z.err = st.err || {};
     await S.put('rt:st', st); await S.put('rt:z', z);
     return { added: trades.length, ok: st.ok, err: st.err, zones: z.zones.length };

@@ -23,6 +23,10 @@ export const mixN = n => n <= 5 ? 5 : n <= 300 ? 300 : n <= 1000 ? 1000 : 1500;
 
 // ---------- โซนรายย่อย ----------
 export const RT = { BK: 15 * 60e3, NC: 16, KEEP: 26 * 3600e3, HALF: 8 * 3600e3, NEUTRAL: [0.49, 0.51] };
+// V4.9.18: ชุดพารามิเตอร์โซน — FAST = โซนที่แสดง (ตามไม้ใหม่ไวขึ้น) · FRESH = ไม้สด 1 ชม. · TRAP = ชุดเดิมให้ 💀 กับดัก (ไม่เปลี่ยนกติกาที่ backtest ไว้)
+export const RT_FAST = { WIN: 8 * 3600e3, HALF: 2 * 3600e3, Z: 1.5, PEAK: 1.15, MAXZ: 6, MIN: 300 };
+export const RT_FRESH = { WIN: 3600e3, HALF: 3600e3, Z: 1.5, PEAK: 1.15, MAXZ: 3, MIN: 50 };
+export const RT_TRAP = { WIN: 24 * 3600e3, HALF: 8 * 3600e3, Z: 2, PEAK: 1.3, MAXZ: 4, MIN: 500 };
 // เพิ่มไม้ลงถัง: buckets = { [เวลาถัง 15 นาที]: { [ราคา $1]: [ซื้อ 16 ขนาด, ขาย 16, ซื้อ oz 16, ขาย oz 16] } }
 export function rtAdd(buckets, t, p, q, s) {
   if (!(q > 0) || !(p > 0) || !isFinite(t)) return false;
@@ -32,11 +36,11 @@ export function rtAdd(buckets, t, p, q, s) {
   return true;
 }
 // คำนวณโซน (เหมือน retail.js เดิม) + V4.9.15: ซื้อ 49–51% = สองฝั่ง เสมอ
-export function retailZones(buckets, now) {
-  const { BK, NC, HALF, NEUTRAL } = RT, cnt = new Float64Array(NC), lim = now - 24 * 3600e3;
+export function retailZones(buckets, now, opt = RT_FAST) {
+  const { BK, NC, NEUTRAL } = RT, { HALF, WIN, Z, PEAK, MAXZ, MIN } = opt, cnt = new Float64Array(NC), lim = now - WIN;
   let mnT = Infinity;
   Object.entries(buckets).forEach(([tb, B]) => { tb = +tb; if (tb < lim) return; mnT = Math.min(mnT, tb); Object.values(B).forEach(a => { for (let c = 0; c < NC; c++) cnt[c] += a[c] + a[NC + c]; }); });
-  const tot = cnt.reduce((x, y) => x + y, 0); if (tot < 500) return { zones: [], n: tot, hrs: 0, ready: false };
+  const tot = cnt.reduce((x, y) => x + y, 0); if (tot < MIN) return { zones: [], n: tot, hrs: 0, ready: false };
   let mc = 0, acc = 0; for (let c = 0; c < NC; c++) { acc += cnt[c]; if (acc >= tot / 2) { mc = c; break; } }
   const P = new Map(); let n = 0;
   Object.entries(buckets).forEach(([tb, B]) => {
@@ -52,17 +56,17 @@ export function retailZones(buckets, now) {
   const arr = []; for (let p = ks[0]; p <= ks[ks.length - 1]; p++) arr.push(Object.assign({ p }, P.get(p) || { b: 0, s: 0, qb: 0, qs: 0 }));
   const mean = arr.reduce((x, o) => x + o.b + o.s, 0) / Math.max(1, arr.filter(o => o.b + o.s > 0).length);
   const den = arr.map(o => o.b + o.s), sm = den.map((v, i) => v + 0.5 * ((den[i - 1] || 0) + (den[i + 1] || 0)));
-  const peaks = sm.map((v, i) => ({ v, i })).filter(x => x.v > 0 && x.v >= (sm[x.i - 1] || 0) && x.v >= (sm[x.i + 1] || 0) && den[x.i] >= mean * 1.3).sort((a, b) => b.v - a.v);
-  const pick = []; peaks.forEach(x => { if (pick.length < 4 && pick.every(y => Math.abs(y.i - x.i) >= 3)) pick.push(x); });
+  const peaks = sm.map((v, i) => ({ v, i })).filter(x => x.v > 0 && x.v >= (sm[x.i - 1] || 0) && x.v >= (sm[x.i + 1] || 0) && den[x.i] >= mean * PEAK).sort((a, b) => b.v - a.v);
+  const pick = []; peaks.forEach(x => { if (pick.length < MAXZ && pick.every(y => Math.abs(y.i - x.i) >= 3)) pick.push(x); });
   const zones = pick.map((x, r) => {
     let a = x.i, b = x.i; while (a > 0 && x.i - a < 2 && den[a - 1] >= den[x.i] * 0.6) a--; while (b < arr.length - 1 && b - x.i < 2 && den[b + 1] >= den[x.i] * 0.6) b++;
     let cb = 0, cs = 0, pq = 0, q = 0; for (let i = a; i <= b; i++) { const o = arr[i]; cb += o.b; cs += o.s; pq += o.p * (o.qb + o.qs); q += o.qb + o.qs; }
     const z = (cb - cs) / Math.sqrt(Math.max(1, cb + cs)), pct = cb / Math.max(1, cb + cs), pr = Math.round(pct * 100) / 100;
     const neutral = pr >= NEUTRAL[0] && pr <= NEUTRAL[1];
-    const side = neutral ? 0 : z >= 2 ? 1 : z <= -2 ? -1 : 0;
+    const side = neutral ? 0 : z >= Z ? 1 : z <= -Z ? -1 : 0;
     return { side, rank: r, lo: arr[a].p - 0.5, hi: arr[b].p + 0.5, avg: r2(q ? pq / q : arr[x.i].p), n: Math.round(cb + cs), pct: Math.round(pct * 1000) / 1000, z: Math.round(z * 100) / 100 };
   });
-  return { zones, n: Math.round(n), mc, maxSz: Math.pow(2, mc + 1) / 1000, hrs: Math.round(Math.min(24, (now - mnT) / 3600e3) * 10) / 10, ready: true };
+  return { zones, n: Math.round(n), mc, maxSz: Math.pow(2, mc + 1) / 1000, hrs: Math.round(Math.min(WIN / 3600e3, (now - mnT) / 3600e3) * 10) / 10, ready: true };
 }
 
 // ---------- ดึงไม้จริงจากแต่ละตลาด (ทำทุก 1 นาทีใน Durable Object) ----------

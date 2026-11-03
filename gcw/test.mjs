@@ -120,5 +120,14 @@ console.log('ALL OK');
   const B2 = {}; for (let i = 0; i < 3000; i++) rtAdd(B2, now - (i % 50) * 60e3, 4000 + (i % 3), 0.01, i % 100 < 60 ? 1 : -1);
   for (let i = 0; i < 400; i++) rtAdd(B2, now - 60e3, 3990 + (i % 20), 0.01, i % 2 ? 1 : -1);
   if (retailZones(B2, now).zones[0].side !== 1) throw new Error('60% buy');
+  // V4.9.18: FAST เปลี่ยนสีไวขึ้น (z 1.5) · TRAP คงชุดเดิม · FRESH เห็นเฉพาะไม้ 1 ชม.
+  const { RT_TRAP, RT_FRESH } = await import('./src/index.js');
+  if (retailZones(B2, now, RT_TRAP).zones[0].side !== 1) throw new Error('trap 60% buy');
+  const B3 = {}; for (let i = 0; i < 600; i++) rtAdd(B3, now - 30 * 60e3, 4010 + (i % 6), 0.01, i % 2 ? 1 : -1);
+  for (let i = 0; i < 600; i++) rtAdd(B3, now - 20 * 60e3, 4013, 0.01, i % 100 < 56 ? 1 : -1);
+  for (let i = 0; i < 2000; i++) rtAdd(B3, now - 5 * 3600e3, 3980 + (i % 30), 0.01, i % 2 ? 1 : -1);
+  const f = retailZones(B3, now, RT_FRESH);
+  if (!f.ready || !f.zones.length || f.zones.some(z => z.lo < 4005)) throw new Error('fresh 1h only ' + JSON.stringify(f));
+  if (retailZones(B3, now).zones.find(z => z.lo >= 4005 && z.side === 1) == null) throw new Error('fast 56%/600 should be Buy');
   console.log('mix/retail ok', top);
 }
