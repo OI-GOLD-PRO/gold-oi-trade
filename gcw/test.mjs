@@ -108,7 +108,7 @@ console.log('ALL OK');
 }
 // V4.9.15 แท่งรวม 3 แหล่ง + โซนรายย่อย
 {
-  const { mixBars, retailZones, rtAdd } = await import('./src/index.js');
+  const { mixBars, retailZones, rtAdd } = await import('./src/index.js'), { RT } = await import('./src/mix.js');
   const m = mixBars([[[60, 10, 12, 9, 11, 1]], [[60, 10.2, 12.4, 9.1, 11.2, 2]], [[60, 9.8, 11.8, 8.8, 10.9, 3], [120, 11, 11.5, 10.5, 11.1, 1]]]);
   if (m.length !== 2 || m[0][1] !== 10 || m[0][4] !== 11 || m[0][5] !== 6 || m[0][6] !== 3 || m[1][6] !== 1) throw new Error('mix ' + JSON.stringify(m));
   const now = Date.now(), B = {};
@@ -129,5 +129,9 @@ console.log('ALL OK');
   const f = retailZones(B3, now, RT_FRESH);
   if (!f.ready || !f.zones.length || f.zones.some(z => z.lo < 4005)) throw new Error('fresh 1h only ' + JSON.stringify(f));
   if (retailZones(B3, now).zones.find(z => z.lo >= 4005 && z.side === 1) == null) throw new Error('fast 56%/600 should be Buy');
+  // V4.9.22: เก็บละเอียด $0.1 + อ่านถังเก่าแบบเลขเต็มได้
+  const B4 = {}; for (let i = 0; i < 1000; i++) rtAdd(B4, now - 60e3, (i % 7 ? 3990 + (i % 9) : 4000.26 + (i % 5) * 0.1), 0.01, i % 2 ? 1 : -1);
+  B4[Math.floor((now - 120e3) / RT.BK) * RT.BK] = Object.assign(B4[Math.floor((now - 120e3) / RT.BK) * RT.BK] || {}, { 4005: (() => { const a = new Array(RT.NC * 4).fill(0); a[3] = 500; a[RT.NC + 3] = 100; return a; })() });
+  const z4 = retailZones(B4, now); if (!z4.fine || !z4.fine.find(r => r[0] === 4000.3) || !z4.fine.find(r => r[0] === 4005) || !z4.rows.find(r => r[0] === 4000)) throw new Error('fine ' + JSON.stringify(z4.fine));
   console.log('mix/retail ok', top);
 }

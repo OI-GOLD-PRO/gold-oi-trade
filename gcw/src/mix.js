@@ -30,7 +30,7 @@ export const RT_TRAP = { WIN: 24 * 3600e3, HALF: 8 * 3600e3, Z: 2, PEAK: 1.3, MA
 // เพิ่มไม้ลงถัง: buckets = { [เวลาถัง 15 นาที]: { [ราคา $1]: [ซื้อ 16 ขนาด, ขาย 16, ซื้อ oz 16, ขาย oz 16] } }
 export function rtAdd(buckets, t, p, q, s) {
   if (!(q > 0) || !(p > 0) || !isFinite(t)) return false;
-  const NC = RT.NC, c = Math.max(0, Math.min(NC - 1, Math.floor(Math.log2(q * 1000)))), tb = Math.floor(t / RT.BK) * RT.BK, pb = Math.round(p);
+  const NC = RT.NC, c = Math.max(0, Math.min(NC - 1, Math.floor(Math.log2(q * 1000)))), tb = Math.floor(t / RT.BK) * RT.BK, pb = (Math.round(p * 10) / 10).toFixed(1); // V4.9.22: เก็บละเอียด $0.1 (ของเดิมเป็นเลขเต็ม $1 อ่านร่วมได้)
   const B = buckets[tb] || (buckets[tb] = {}), a = B[pb] || (B[pb] = new Array(NC * 4).fill(0));
   const i = (s > 0 ? 0 : NC) + c; a[i] += 1; a[2 * NC + i] = Math.round((a[2 * NC + i] + q) * 1000) / 1000;
   return true;
@@ -42,14 +42,15 @@ export function retailZones(buckets, now, opt = RT_FAST) {
   Object.entries(buckets).forEach(([tb, B]) => { tb = +tb; if (tb < lim) return; mnT = Math.min(mnT, tb); Object.values(B).forEach(a => { for (let c = 0; c < NC; c++) cnt[c] += a[c] + a[NC + c]; }); });
   const tot = cnt.reduce((x, y) => x + y, 0); if (tot < MIN) return { zones: [], n: tot, hrs: 0, ready: false };
   let mc = 0, acc = 0; for (let c = 0; c < NC; c++) { acc += cnt[c]; if (acc >= tot / 2) { mc = c; break; } }
-  const P = new Map(); let n = 0;
+  const P = new Map(), FN = new Map(); let n = 0;
   Object.entries(buckets).forEach(([tb, B]) => {
     tb = +tb; if (tb < lim) return;
     const w = Math.pow(0.5, Math.max(0, now - tb - BK / 2) / HALF);
-    Object.entries(B).forEach(([pb, a]) => {
-      pb = +pb; let b = 0, s = 0, qb = 0, qs = 0;
+    Object.entries(B).forEach(([pk, a]) => {
+      const pf = Math.round(+pk * 10), pb = Math.round(+pk); let b = 0, s = 0, qb = 0, qs = 0;
       for (let c = 0; c <= mc; c++) { b += a[c]; s += a[NC + c]; qb += a[2 * NC + c]; qs += a[3 * NC + c]; }
       n += b + s; const o = P.get(pb) || { b: 0, s: 0, qb: 0, qs: 0 }; o.b += b * w; o.s += s * w; o.qb += qb * w; o.qs += qs * w; P.set(pb, o);
+      const f = FN.get(pf) || [0, 0]; f[0] += b * w; f[1] += s * w; FN.set(pf, f); // V4.9.22 ละเอียด $0.1
     });
   });
   const ks = [...P.keys()].sort((x, y) => x - y); if (ks.length < 5) return { zones: [], n, hrs: 0, ready: false };
@@ -68,7 +69,9 @@ export function retailZones(buckets, now, opt = RT_FAST) {
   });
   // V4.9.19: แถวละเอียดทีละ $1 ให้แอปวาดโปรไฟล์ (เดิมเห็นแค่โซนรวม ส่วนมากออกสองฝั่ง/เทา) — [ราคา, ซื้อ, ขาย] (ถ่วงน้ำหนักเวลาแล้ว)
   const rows = arr.filter(o => o.b + o.s > 0).map(o => [o.p, Math.round(o.b * 10) / 10, Math.round(o.s * 10) / 10]);
-  return { zones, rows, n: Math.round(n), mc, maxSz: Math.pow(2, mc + 1) / 1000, hrs: Math.round(Math.min(WIN / 3600e3, (now - mnT) / 3600e3) * 10) / 10, ready: true };
+  // V4.9.22: fine = แถวละเอียด $0.1 [ราคา, ซื้อ, ขาย] ให้แอปรวมตามความละเอียดที่ผู้ใช้ตั้ง (0.1–2$)
+  const fine = [...FN.entries()].filter(([, f]) => f[0] + f[1] > 0.05).sort((x, y) => x[0] - y[0]).map(([pf, f]) => [pf / 10, Math.round(f[0] * 10) / 10, Math.round(f[1] * 10) / 10]);
+  return { zones, rows, fine, n: Math.round(n), mc, maxSz: Math.pow(2, mc + 1) / 1000, hrs: Math.round(Math.min(WIN / 3600e3, (now - mnT) / 3600e3) * 10) / 10, ready: true };
 }
 
 // ---------- ดึงไม้จริงจากแต่ละตลาด (ทำทุก 1 นาทีใน Durable Object) ----------
