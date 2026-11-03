@@ -56,7 +56,7 @@ function thin(points, max) {
  * off: broker server time − UTC (seconds)
  */
 export function computeHistory(deals, equity, off, opts = {}) {
-  const maxList = opts.maxList || 300;
+  const maxList = opts.maxList || 1500;
   deals = [...deals].sort((a, b) => a.time - b.time || a.ticket - b.ticket);
   const utc = t => t - (off || 0);
 

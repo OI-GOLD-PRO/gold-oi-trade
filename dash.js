@@ -14,6 +14,46 @@
   const thTime = utc => new Date(utc * 1000).toLocaleTimeString('th-TH', { timeZone: 'Asia/Bangkok', hour: '2-digit', minute: '2-digit', hour12: false });
   const COL = { bal: '#b38a28', eq: '#2f86d0' }; // validated pair on the dark surface
 
+  // EA start date + starting capital (editable at the bottom of the dashboard; stored on this device)
+  const CFGK = 'oit_dash_cfg';
+  const cfg = { start: '2026-10-20', cap: 2500 };
+  try { Object.assign(cfg, JSON.parse(localStorage.getItem(CFGK) || '{}')); } catch (e) {}
+  const saveCfg = () => { try { localStorage.setItem(CFGK, JSON.stringify(cfg)); } catch (e) {} };
+  const startUtc = () => Math.floor(Date.parse(cfg.start + 'T00:00:00+07:00') / 1000) || 0;
+  let V = null; // H restricted to the days since the EA start
+  function view() {
+    const t0 = startUtc(), inT = t => t >= t0;
+    const trades = H.trades.filter(t => t.ct && inT(t.ct));
+    const chrono = trades.slice().reverse();
+    const daily = {}; Object.keys(H.daily).forEach(k => { if (k >= cfg.start) daily[k] = H.daily[k]; });
+    let wins = 0, losses = 0, gW = 0, gL = 0, best = null, worst = null, cw = 0, cl = 0, mcw = 0, mcl = 0, cum = 0, peak = 0, dd = 0, ddp = 0;
+    const sess = [['asia', 0, 7], ['london', 7, 13], ['ny', 13, 21], ['late', 21, 24]].map(([k, f, to]) => ({ k, f, to, n: 0, w: 0, net: 0 }));
+    const sides = { BUY: { n: 0, w: 0, net: 0 }, SELL: { n: 0, w: 0, net: 0 } };
+    chrono.forEach(t => {
+      const v = t.pnl;
+      if (v > 0) { wins++; gW += v; cw++; cl = 0; } else { losses++; gL += v; cl++; cw = 0; }
+      mcw = Math.max(mcw, cw); mcl = Math.max(mcl, cl);
+      if (best === null || v > best) best = v; if (worst === null || v < worst) worst = v;
+      cum += v; if (cum > peak) peak = cum; const d = peak - cum; if (d > dd) { dd = d; ddp = (cfg.cap + peak) > 0 ? d / (cfg.cap + peak) * 100 : 0; }
+      const h = new Date((t.ot || t.ct) * 1000).getUTCHours(), x = sess.find(z => h >= z.f && h < z.to); x.n++; x.net += v; if (v > 0) x.w++;
+      const sd = sides[t.side] || (sides[t.side] = { n: 0, w: 0, net: 0 }); sd.n++; sd.net += v; if (v > 0) sd.w++;
+    });
+    const n = trades.length, r2 = v => Math.round(v * 100) / 100;
+    const days = Object.keys(daily);
+    const net = days.length ? days.reduce((a, k) => a + daily[k][0], 0) : cum;
+    const names = { asia: 'เอเชีย', london: 'ลอนดอน', ny: 'นิวยอร์ก', late: 'ดึก' };
+    V = {
+      net: r2(net), trunc: H.count.trades > H.trades.length && H.trades.length && trades.length === H.trades.length,
+      count: n, daysN: days.length, upDays: days.filter(k => daily[k][0] > 0).length,
+      stats: { net: r2(net), gross_win: r2(gW), gross_loss: r2(gL), profit_factor: gL < 0 ? r2(gW / -gL) : null, win_rate: n ? r2(wins / n * 100) : null, wins, losses,
+        avg_win: wins ? r2(gW / wins) : null, avg_loss: losses ? r2(gL / losses) : null, best: best === null ? null : r2(best), worst: worst === null ? null : r2(worst),
+        max_consec_wins: mcw, max_consec_losses: mcl, max_dd: r2(dd), max_dd_pct: r2(ddp), deposits: H.stats.deposits, withdrawals: H.stats.withdrawals },
+      daily, trades,
+      balance: H.balance.filter(b => inT(b[0])), equity: H.equity.filter(e => inT(e[0])),
+      sessions: sess.map(z => ({ k: z.k, name: names[z.k], n: z.n, net: r2(z.net), win_rate: z.n ? r2(z.w / z.n * 100) : null })),
+      sides: Object.fromEntries(Object.entries(sides).map(([k, z]) => [k, { n: z.n, net: r2(z.net), win_rate: z.n ? r2(z.w / z.n * 100) : null }])),
+    };
+  }
   let H = null, timer = null, chart = null, sBal = null, sEq = null, shown = 30, month = null;
 
   const el = document.createElement('div');
@@ -33,7 +73,7 @@
       const r = await fetch(O.HUB + '/app/history?t=' + Date.now(), { cache: 'no-store', headers: { 'X-Key': O.authCode || '' } });
       const d = await r.json();
       if (!d.ok) { if (!H) $('dhBody').innerHTML = `<div class="dh-msg">${esc(d.error === 'EA not connected yet' ? 'รอ EA เชื่อมต่อ…' : (d.error || 'โหลดไม่ได้'))}</div>`; return; }
-      const first = !H; H = d;
+      const first = !H; H = d; view();
       if (first) build(); else paint();
     } catch (e) { if (!H) $('dhBody').innerHTML = '<div class="dh-msg">เชื่อมต่อ hub ไม่ได้</div>'; }
   }
@@ -68,9 +108,16 @@
     sEq = chart.addLineSeries({ color: COL.eq, lineWidth: 2, priceLineVisible: false, lastValueVisible: true });
     chart.subscribeCrosshairMove(p => legend(p));
     $('dhRng').onclick = e => { const b = e.target.closest('[data-r]'); if (!b) return; document.querySelectorAll('#dhRng button').forEach(x => x.classList.toggle('on', x === b)); range(+b.dataset.r); };
-    $('dhPrev').onclick = () => { month = shiftMonth(month, -1); paintCal(); };
+    $('dhPrev').onclick = () => { const m = shiftMonth(month, -1), sm = cfg.start.slice(0, 7); if (`${m[0]}-${String(m[1] + 1).padStart(2, '0')}` >= sm) { month = m; paintCal(); } };
     $('dhNext').onclick = () => { month = shiftMonth(month, 1); paintCal(); };
     $('dhMore').onclick = () => { shown += 30; paintTrades(); };
+    $('dhFoot').addEventListener('click', e => {
+      if (!e.target.closest('#dhCfgOk')) return;
+      const d = $('dhStart').value, c = Number($('dhCap').value);
+      if (/^\d{4}-\d{2}-\d{2}$/.test(d)) cfg.start = d;
+      if (isFinite(c) && c >= 0) cfg.cap = c;
+      saveCfg(); view(); const m = new Date(Date.now() + TZ * 1000); month = [m.getUTCFullYear(), m.getUTCMonth()]; paint(); chart.timeScale().fitContent();
+    });
     paint();
     chart.timeScale().fitContent();
     if (window.OICotGroups) {
@@ -80,20 +127,22 @@
   }
 
   function paint() {
-    const s = H.stats, st = window.OIT_state ? window.OIT_state() : null, a = st && st.account;
+    const s = V.stats, st = window.OIT_state ? window.OIT_state() : null, a = st && st.account;
     const cur = esc(H.currency || '');
     $('dhAcc').textContent = `${H.login} · ${H.currency || ''}`;
     $('dhHero').innerHTML = `
       <div><small>Equity ตอนนี้</small><b>${fx(a ? a.equity : null)}</b><span class="dh-mut">${cur}</span></div>
-      <div><small>กำไรสุทธิทั้งหมด</small><b class="${cls(s.net)}">${sg(s.net)}</b><span class="dh-mut">${H.first_time ? 'ตั้งแต่ ' + thDate(H.first_time, { day: 'numeric', month: 'short', year: 'numeric' }) : ''}</span></div>`;
+      <div><small>กำไรสุทธิตั้งแต่เริ่ม EA</small><b class="${cls(s.net)}">${sg(s.net)}</b><span class="dh-mut">${cfg.cap > 0 ? `<b class="${cls(s.net)}">${sg(s.net / cfg.cap * 100, 1)}%</b> ของทุน ${fx(cfg.cap, 0)} · ` : ''}ตั้งแต่ ${thDate(startUtc(), { day: 'numeric', month: 'short', year: 'numeric' })}</span></div>`;
     const k = (label, val, sub, c = '') => `<div class="dh-kpi"><small>${label}</small><b class="${c}">${val}</b>${sub ? `<span>${sub}</span>` : ''}</div>`;
     $('dhKpis').innerHTML =
       k('Win rate', s.win_rate === null ? '–' : fx(s.win_rate, 1) + '%', `ชนะ ${s.wins} · แพ้ ${s.losses}`) +
       k('Profit factor', s.profit_factor === null ? '–' : fx(s.profit_factor), `+${fx(s.gross_win)} / ${fx(s.gross_loss)}`) +
-      k('Max Drawdown', fx(s.max_dd), s.max_dd_pct ? fx(s.max_dd_pct, 1) + '% ของ Balance' : '', s.max_dd > 0 ? 'neg' : '') +
+      k('Max Drawdown', fx(s.max_dd), s.max_dd_pct ? fx(s.max_dd_pct, 1) + '% ของทุน+กำไรสูงสุด' : '', s.max_dd > 0 ? 'neg' : '') +
       k('เฉลี่ยไม้ชนะ', sg(s.avg_win), 'สูงสุด ' + sg(s.best), 'pos') +
       k('เฉลี่ยไม้แพ้', sg(s.avg_loss), 'ต่ำสุด ' + sg(s.worst), 'neg') +
-      k('ติดกันสูงสุด', `${s.max_consec_wins} / ${s.max_consec_losses}`, 'ชนะ / แพ้');
+      k('ติดกันสูงสุด', `${s.max_consec_wins} / ${s.max_consec_losses}`, 'ชนะ / แพ้') +
+      k('เฉลี่ยต่อวัน', V.daysN ? sg(s.net / V.daysN) : '–', `${V.daysN} วัน · บวก ${V.upDays}`, cls(s.net)) +
+      k('ทุนเริ่มต้น', fx(cfg.cap, 0), `${cur}${a && cfg.cap > 0 ? ' · Eq ' + sg((a.equity - cfg.cap) / cfg.cap * 100, 0) + '%' : ''}`);
     // curve
     // resample both curves onto one even time grid, so horizontal distance = real time
     const g = grid();
@@ -101,11 +150,11 @@
     legend(null);
     if (month === null) { const d = new Date(Date.now() + TZ * 1000); month = [d.getUTCFullYear(), d.getUTCMonth()]; }
     paintCal(); paintSess(); paintTrades();
-    $('dhFoot').innerHTML = `ฝาก ${fx(s.deposits)} · ถอน ${fx(s.withdrawals)} · ${H.count.deals.toLocaleString()} deals · ${H.count.trades.toLocaleString()} ไม้ · อัปเดต ${thTime(H.updated / 1000)} น.`;
+    $('dhFoot').innerHTML = `${V.trunc ? '<div class="dh-mut">⚠️ สถิติคำนวณจาก ' + H.trades.length + ' ไม้ล่าสุด (hub ส่งรายการได้จำกัด) กำไรสุทธิและปฏิทินใช้ข้อมูลครบทุกวัน</div>' : ''}<div class="dh-cfg">เริ่มใช้ EA <input id="dhStart" type="date" value="${esc(cfg.start)}"> ทุน <input id="dhCap" type="number" inputmode="decimal" min="0" step="any" value="${cfg.cap}" style="width:90px"> ${cur} <button id="dhCfgOk">บันทึก</button></div>ฝาก ${fx(s.deposits)} · ถอน ${fx(s.withdrawals)} · ${H.count.deals.toLocaleString()} deals · ${H.count.trades.toLocaleString()} ไม้ · อัปเดต ${thTime(H.updated / 1000)} น.`;
   }
 
   function grid() {
-    const B = H.balance, E = H.equity;
+    const B = V.balance, E = V.equity;
     const t0 = Math.min(B.length ? B[0][0] : Infinity, E.length ? E[0][0] : Infinity);
     const t1 = Math.max(B.length ? B[B.length - 1][0] : 0, E.length ? E[E.length - 1][0] : 0, Math.floor(Date.now() / 1000));
     if (!isFinite(t0)) return { bal: [], eq: [] };
@@ -126,7 +175,7 @@
       if (p && p.time !== undefined) { const v = p.seriesData.get(series); return v ? v.value : null; }
       return arr.length ? arr[arr.length - 1][idx] : null;
     };
-    const b = val(sBal, H.balance, 1), e = val(sEq, H.equity, 2);
+    const b = val(sBal, V.balance, 1), e = val(sEq, V.equity, 2);
     const when = p && p.time !== undefined ? thDate(p.time - TZ, { day: 'numeric', month: 'short', year: '2-digit' }) : 'ล่าสุด';
     $('dhLeg').innerHTML = `<span><i style="background:${COL.bal}"></i>Balance <b>${fx(b)}</b></span><span><i style="background:${COL.eq}"></i>Equity <b>${fx(e)}</b></span><span class="dh-mut">${when}</span>`;
   }
@@ -144,12 +193,12 @@
     const days = new Date(Date.UTC(y, m + 1, 0)).getUTCDate(), lead = (new Date(Date.UTC(y, m, 1)).getUTCDay() + 6) % 7;
     const key = d => `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     let tot = 0, nT = 0, up = 0, dn = 0, maxAbs = 0;
-    for (let d = 1; d <= days; d++) { const v = H.daily[key(d)]; if (v) { maxAbs = Math.max(maxAbs, Math.abs(v[0])); } }
+    for (let d = 1; d <= days; d++) { const v = V.daily[key(d)]; if (v) { maxAbs = Math.max(maxAbs, Math.abs(v[0])); } }
     const today = new Date(Date.now() + TZ * 1000).toISOString().slice(0, 10);
     let html = ['จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส', 'อา'].map(w => `<div class="dh-wd">${w}</div>`).join('');
     for (let i = 0; i < lead; i++) html += '<div></div>';
     for (let d = 1; d <= days; d++) {
-      const v = H.daily[key(d)];
+      const v = V.daily[key(d)];
       let style = '', txt = '';
       if (v) {
         tot += v[0]; nT += v[1]; if (v[0] > 0) up++; else if (v[0] < 0) dn++;
@@ -178,17 +227,17 @@
   }
   function paintSess() {
     const hrs = { asia: '07–14', london: '14–20', ny: '20–04', late: '04–07' };
-    $('dhSess').innerHTML = bars(H.sessions.map(s => ({ ...s, name: `${s.name} ${hrs[s.k] || ''}` })));
-    $('dhSide').innerHTML = bars(['BUY', 'SELL'].map(k => ({ name: k, ...(H.sides[k] || { n: 0, net: 0, win_rate: null }) })));
+    $('dhSess').innerHTML = bars(V.sessions.map(s => ({ ...s, name: `${s.name} ${hrs[s.k] || ''}` })));
+    $('dhSide').innerHTML = bars(['BUY', 'SELL'].map(k => ({ name: k, ...(V.sides[k] || { n: 0, net: 0, win_rate: null }) })));
   }
 
   function paintTrades() {
-    const T = H.trades.slice(0, shown);
-    $('dhCount').textContent = `ล่าสุด ${T.length} จาก ${H.count.trades.toLocaleString()} ไม้`;
+    const T = V.trades.slice(0, shown);
+    $('dhCount').textContent = `ล่าสุด ${T.length} จาก ${V.count.toLocaleString()} ไม้ (ตั้งแต่เริ่ม EA)`;
     $('dhTrades').innerHTML = T.length ? T.map(t => `<div class="dh-tr">
         <div><span class="${t.side === 'BUY' ? 'b' : 's'}">${t.side}</span> <span class="mono">${t.vol}</span> <span class="dh-mut">${esc(t.sym)}${t.magic ? ' · #' + t.magic : ''}</span>
         <small>${t.ct ? thDate(t.ct, { day: 'numeric', month: 'short' }) + ' ' + thTime(t.ct) : ''} · ${fx(t.open, 2)} → ${fx(t.close, 2)}</small></div>
         <b class="mono ${cls(t.pnl)}">${sg(t.pnl)}</b></div>`).join('') : '<div class="dh-msg">ยังไม่มีไม้ที่ปิด (ถ้าเพิ่งอัปเดต EA ประวัติจะทยอยขึ้นภายในไม่กี่นาที)</div>';
-    $('dhMore').hidden = shown >= H.trades.length;
+    $('dhMore').hidden = shown >= V.trades.length;
   }
 })();

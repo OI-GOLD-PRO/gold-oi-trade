@@ -210,3 +210,8 @@ body.oit-max #ticket { border-top: 0; }
 
 /* V4 port: the timeframe row is wider (OI / ƒx / ✏️ buttons) and scrolls sideways; keep the expand button pinned at the right edge */
 .tfs #maxBtn { position: sticky; right: 0; z-index: 3; background: var(--panel, #0e1930); box-shadow: -8px 0 8px -4px var(--panel, #0e1930); }
+
+/* dashboard: EA start date + starting capital editor */
+.dh-cfg { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px; margin-bottom: 8px; font: 11px var(--sans, sans-serif); color: var(--muted); }
+.dh-cfg input { background: var(--panel, #0e1930); color: var(--fg, #e6ebf5); border: 1px solid var(--line, #26344f); border-radius: 8px; padding: 5px 7px; font: 12px var(--mono, monospace); color-scheme: dark; }
+.dh-cfg button { background: var(--gold, #e0b44c); color: #1a1405; border: 0; border-radius: 8px; padding: 6px 12px; font: 600 12px var(--sans, sans-serif); }
