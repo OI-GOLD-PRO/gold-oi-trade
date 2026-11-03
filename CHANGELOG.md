@@ -23,6 +23,10 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### gcw — 2026-11-04 — Claude (คู่กับ OI Gold Pro V4.9.19)
+- ไฟล์: gcw/src/mix.js, gcw/src/index.js
+- แก้อะไร: `/retail` ส่งแถวละเอียดทีละ $1 เพิ่ม — `rows` (ชุด FAST 8 ชม.) และ `freshRows` (1 ชม.) รูปแบบ [ราคา, ซื้อ, ขาย] ให้แอปวาดโปรไฟล์ 👥 แทนโซนรวม · `trap` ไม่เปลี่ยน
+
 ### gcw — 2026-11-03 — Claude (คู่กับ OI Gold Pro V4.9.18)
 - ไฟล์: gcw/src/mix.js, gcw/src/index.js, gcw/test.mjs
 - แก้อะไร: `retailZones(buckets, now, opt)` รับชุดพารามิเตอร์ · `RT_FAST` (โซนที่แสดง: ย้อน 8 ชม. ครึ่งชีวิต 2 ชม. z 1.5 หนา 1.15× 6 โซน ขั้นต่ำ 300 ไม้) · `RT_FRESH` (ไม้ 1 ชม. 3 โซน) · `RT_TRAP` (ชุดเดิม 24 ชม./8 ชม./z 2/1.3×/4 โซน) · `/retail` ส่ง `zones` (FAST) + `fresh` + `trap`

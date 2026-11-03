@@ -305,8 +305,8 @@ export class OptState {
     const all = await S.list({ prefix: 'rb:' }), buckets = {};
     for (const [k, v] of all) { const tb = +k.slice(3); if (tb < now - RT.KEEP) await S.delete(k); else buckets[tb] = v; }
     const z = retailZones(buckets, now);
-    z.fresh = retailZones(buckets, now, RT_FRESH).zones; // V4.9.18 ไม้สด 1 ชม.
-    z.trap = retailZones(buckets, now, RT_TRAP).zones;   // ชุดเดิมให้ 💀 กับดัก
+    { const F = retailZones(buckets, now, RT_FRESH); z.fresh = F.zones; z.freshRows = F.rows || []; } // V4.9.18 ไม้สด 1 ชม. · V4.9.19 + แถว $1
+    z.trap = retailZones(buckets, now, RT_TRAP).zones;   // ชุดเดิมให้ 💀 กับดัก (ไม่ส่งแถว)
     z.updated = Math.floor(now / 1000); z.src = st.ok || {}; z.err = st.err || {};
     await S.put('rt:st', st); await S.put('rt:z', z);
     return { added: trades.length, ok: st.ok, err: st.err, zones: z.zones.length };

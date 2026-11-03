@@ -66,7 +66,9 @@ export function retailZones(buckets, now, opt = RT_FAST) {
     const side = neutral ? 0 : z >= Z ? 1 : z <= -Z ? -1 : 0;
     return { side, rank: r, lo: arr[a].p - 0.5, hi: arr[b].p + 0.5, avg: r2(q ? pq / q : arr[x.i].p), n: Math.round(cb + cs), pct: Math.round(pct * 1000) / 1000, z: Math.round(z * 100) / 100 };
   });
-  return { zones, n: Math.round(n), mc, maxSz: Math.pow(2, mc + 1) / 1000, hrs: Math.round(Math.min(WIN / 3600e3, (now - mnT) / 3600e3) * 10) / 10, ready: true };
+  // V4.9.19: แถวละเอียดทีละ $1 ให้แอปวาดโปรไฟล์ (เดิมเห็นแค่โซนรวม ส่วนมากออกสองฝั่ง/เทา) — [ราคา, ซื้อ, ขาย] (ถ่วงน้ำหนักเวลาแล้ว)
+  const rows = arr.filter(o => o.b + o.s > 0).map(o => [o.p, Math.round(o.b * 10) / 10, Math.round(o.s * 10) / 10]);
+  return { zones, rows, n: Math.round(n), mc, maxSz: Math.pow(2, mc + 1) / 1000, hrs: Math.round(Math.min(WIN / 3600e3, (now - mnT) / 3600e3) * 10) / 10, ready: true };
 }
 
 // ---------- ดึงไม้จริงจากแต่ละตลาด (ทำทุก 1 นาทีใน Durable Object) ----------
