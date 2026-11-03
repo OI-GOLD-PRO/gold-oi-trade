@@ -249,6 +249,8 @@ async function tgCall(env, method, body) {
   return r.json();
 }
 
+const RT_WINS = [1, 2, 4, 8, 12, 24]; // V4.9.25 ช่วงย้อนหลังให้เลือก (ชม.)
+
 export class OptState {
   constructor(state, env) { this.state = state; this.env = env; }
   async fetch(req) {
@@ -275,7 +277,12 @@ export class OptState {
     if (u.pathname === '/poll') { const r = await this.poll(); return new Response(JSON.stringify(r)); }
     if (u.pathname === '/rtpoll') return new Response(JSON.stringify(await this.rtPoll()));
     if (u.pathname === '/rtpush') return new Response(JSON.stringify(await this.rtPush(await req.json().catch(() => null))));
-    if (u.pathname === '/rt') return new Response(JSON.stringify(await this.state.storage.get('rt:z') || { zones: [], ready: false }));
+    if (u.pathname === '/rt') { // V4.9.25 ?win=ชม. → ส่งแถวของช่วงนั้น (ไม่ส่งทุกช่วง ให้ไฟล์เล็ก)
+      const z0 = await this.state.storage.get('rt:z') || { zones: [], ready: false }, h = +u.searchParams.get('win'), W = z0.win && z0.win[h];
+      const { win, ...z } = z0; // ไม่แก้ของที่เก็บไว้ (กันค่าค้างในแคช)
+      if (W) Object.assign(z, { rows: W.rows, fine: W.fine, winH: h, winN: W.n, winHrs: W.hrs });
+      return new Response(JSON.stringify(z));
+    }
     if (u.pathname === '/trapfz') {
       // แผนกับดักที่ล็อกแล้ว: เครื่องแรกที่เห็นสัญญาณเป็นคนล็อก เครื่องอื่นใช้ตาม (ไม่ทับของเดิม)
       const cur = await this.state.storage.get('trapfz') || {};
@@ -309,6 +316,8 @@ export class OptState {
     const z = retailZones(buckets, now);
     { const F = retailZones(buckets, now, RT_FRESH); z.fresh = F.zones; z.freshRows = F.rows || []; z.freshFine = F.fine || []; } // V4.9.18 ไม้สด 1 ชม. · V4.9.19 + แถว $1
     z.trap = retailZones(buckets, now, RT_TRAP).zones;   // ชุดเดิมให้ 💀 กับดัก (ไม่ส่งแถว)
+    // V4.9.25: แถวตามช่วงย้อนหลังที่ผู้ใช้เลือก (1–24 ชม.) · ครึ่งชีวิต = ¼ ของช่วง (8 ชม. = 2 ชม. เท่าชุดหลัก)
+    z.win = {}; for (const h of RT_WINS) { const W = retailZones(buckets, now, { WIN: h * 3600e3, HALF: h * 900e3, Z: 1.5, PEAK: 1.15, MAXZ: 6, MIN: 50 }); z.win[h] = { rows: W.rows || [], fine: W.fine || [], n: W.n, hrs: W.hrs }; }
     z.updated = Math.floor(now / 1000); z.src = Object.assign({}, st.ok || {}); z.err = Object.assign({}, st.err || {});
     { const P = await S.get('rt:push') || {}; Object.entries(P).forEach(([k, w]) => { if (w.at > now - 3 * 60e3) { z.src[k] = (w.n || []).filter(e => e[0] > now - 60e3).reduce((a, e) => a + e[1], 0); z.src[k + '_via'] = w.via || ''; delete z.err[k]; } }); } // V4.9.24 ไม้ที่มือถือ/relay ส่งมา
     await S.put('rt:st', st); await S.put('rt:z', z);
@@ -760,7 +769,7 @@ export default {
       const H = { ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store' };
       if (!env || !env.OPT) return new Response('{}', { status: 500, headers: H });
       const stub = env.OPT.get(env.OPT.idFromName('retail'));
-      const r = url.pathname === '/retail' ? await stub.fetch('https://do/rt' + (url.searchParams.get('poll') ? 'poll' : ''))
+      const r = url.pathname === '/retail' ? await stub.fetch('https://do/rt' + (url.searchParams.get('poll') ? 'poll' : '') + (url.searchParams.get('win') ? '?win=' + encodeURIComponent(url.searchParams.get('win')) : ''))
         : await stub.fetch('https://do/trapfz', request.method === 'POST' ? { method: 'POST', body: await request.text() } : undefined);
       return new Response(await r.text(), { headers: H });
     }
