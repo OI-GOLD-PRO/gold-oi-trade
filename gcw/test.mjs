@@ -106,3 +106,19 @@ console.log('ALL OK');
   if (applyCmeOI(rows2, cme, 'G1M', 20261102)) throw new Error('cme should not override same day');
   console.log('cme oi ok');
 }
+// V4.9.15 แท่งรวม 3 แหล่ง + โซนรายย่อย
+{
+  const { mixBars, retailZones, rtAdd } = await import('./src/index.js');
+  const m = mixBars([[[60, 10, 12, 9, 11, 1]], [[60, 10.2, 12.4, 9.1, 11.2, 2]], [[60, 9.8, 11.8, 8.8, 10.9, 3], [120, 11, 11.5, 10.5, 11.1, 1]]]);
+  if (m.length !== 2 || m[0][1] !== 10 || m[0][4] !== 11 || m[0][5] !== 6 || m[0][6] !== 3 || m[1][6] !== 1) throw new Error('mix ' + JSON.stringify(m));
+  const now = Date.now(), B = {};
+  for (let i = 0; i < 3000; i++) { const p = 4000 + (i % 3); rtAdd(B, now - (i % 50) * 60e3, p, 0.01, i % 100 < 51 ? 1 : -1); } // 51% ซื้อ
+  for (let i = 0; i < 400; i++) rtAdd(B, now - 60e3, 3990 + (i % 20), 0.01, i % 2 ? 1 : -1);
+  const z = retailZones(B, now);
+  if (!z.ready || !z.zones.length) throw new Error('rt zones ' + JSON.stringify(z));
+  const top = z.zones[0]; if (top.side !== 0) throw new Error('49-51 must be สองฝั่ง ' + JSON.stringify(top));
+  const B2 = {}; for (let i = 0; i < 3000; i++) rtAdd(B2, now - (i % 50) * 60e3, 4000 + (i % 3), 0.01, i % 100 < 60 ? 1 : -1);
+  for (let i = 0; i < 400; i++) rtAdd(B2, now - 60e3, 3990 + (i % 20), 0.01, i % 2 ? 1 : -1);
+  if (retailZones(B2, now).zones[0].side !== 1) throw new Error('60% buy');
+  console.log('mix/retail ok', top);
+}

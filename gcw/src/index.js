@@ -1,3 +1,5 @@
+import { MIX_SRC, MIX_TF, mixBars, mixN, rtAdd, retailZones, pullTrades, RT } from './mix.js';
+export { mixBars, retailZones, rtAdd } from './mix.js';
 import { newVapid, sendPush } from './push.js';
 import { MINI_FLASH_PAGE, MINI_MANIFEST } from './flash.js';
 // Worker: ดึงแท่งราคา GC=F (ทองฟิวเจอร์) จาก Yahoo ให้แอป OI Gold Pro เรียกตรง (เปิด CORS) ไม่ต้องรอ GitHub Actions
@@ -271,9 +273,41 @@ export class OptState {
       return new Response(JSON.stringify(h));
     }
     if (u.pathname === '/poll') { const r = await this.poll(); return new Response(JSON.stringify(r)); }
+    if (u.pathname === '/rtpoll') return new Response(JSON.stringify(await this.rtPoll()));
+    if (u.pathname === '/rt') return new Response(JSON.stringify(await this.state.storage.get('rt:z') || { zones: [], ready: false }));
+    if (u.pathname === '/trapfz') {
+      // แผนกับดักที่ล็อกแล้ว: เครื่องแรกที่เห็นสัญญาณเป็นคนล็อก เครื่องอื่นใช้ตาม (ไม่ทับของเดิม)
+      const cur = await this.state.storage.get('trapfz') || {};
+      if (req.method === 'POST') {
+        const b = await req.json().catch(() => null); let add = 0;
+        if (b && typeof b === 'object') Object.entries(b).slice(0, 50).forEach(([k, v]) => { if (/^\d{9,11}\|-?1$/.test(k) && v && typeof v === 'object' && !cur[k] && JSON.stringify(v).length < 2000) { cur[k] = v; add++; } });
+        const lim = Date.now() / 1000 + 7 * 3600 - 3 * 86400; Object.keys(cur).forEach(k => { if (+k.split('|')[0] < lim) delete cur[k]; });
+        if (add) await this.state.storage.put('trapfz', cur);
+      }
+      return new Response(JSON.stringify(cur));
+    }
     const s = await this.state.storage.get('s');
     if (s) s.m = await this.state.storage.get('m') || null;
     return new Response(JSON.stringify(s || null));
+  }
+  // 👥 เก็บไม้รายย่อยทุก 1 นาที (Binance + Bybit + Bitget) แล้วคำนวณโซนเก็บไว้ให้ทุกเครื่องอ่าน
+  async rtPoll() {
+    const S = this.state.storage, now = Date.now(), st = await S.get('rt:st') || {};
+    const trades = await pullTrades(st, now);
+    const touched = {};
+    for (const [t, p, q, s] of trades) {
+      if (t < now - RT.KEEP) continue;
+      const tb = Math.floor(t / RT.BK) * RT.BK;
+      if (!touched[tb]) touched[tb] = await S.get('rb:' + tb) || {};
+      rtAdd({ [tb]: touched[tb] }, t, p, q, s);
+    }
+    for (const tb of Object.keys(touched)) await S.put('rb:' + tb, touched[tb]);
+    const all = await S.list({ prefix: 'rb:' }), buckets = {};
+    for (const [k, v] of all) { const tb = +k.slice(3); if (tb < now - RT.KEEP) await S.delete(k); else buckets[tb] = v; }
+    const z = retailZones(buckets, now);
+    z.updated = Math.floor(now / 1000); z.src = st.ok || {}; z.err = st.err || {};
+    await S.put('rt:st', st); await S.put('rt:z', z);
+    return { added: trades.length, ok: st.ok, err: st.err, zones: z.zones.length };
   }
   // รับคำสั่งจากแชท: /start = รับแจ้งเตือน, /stop = หยุด
   async tgLink(reply) {
@@ -671,10 +705,34 @@ export default {
     if (!env.OPT || !marketOpen(Date.now())) return;
     const stub = env.OPT.get(env.OPT.idFromName('main'));
     ctx.waitUntil(stub.fetch('https://do/poll'));
+    ctx.waitUntil(env.OPT.get(env.OPT.idFromName('retail')).fetch('https://do/rtpoll').catch(() => {}));
   },
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
+    if (url.pathname === '/mix') {
+      // แท่งรวม 3 แหล่ง (median) · แคชร่วม 2 วินาที → ทุกเครื่องได้ชุดเดียวกัน
+      const tf = url.searchParams.get('tf') || '5m', nb = mixN(Math.max(1, +url.searchParams.get('n') || 500));
+      const H = { ...CORS, 'content-type': 'application/json', 'cache-control': 'public, max-age=2' };
+      if (!MIX_TF[tf]) return new Response(JSON.stringify({ error: 'bad tf' }), { status: 400, headers: H });
+      const ck = new Request(`${url.origin}/mix?tf=${tf}&n=${nb}`), cache = caches.default;
+      const hit = await cache.match(ck); if (hit) return hit;
+      const rs = await Promise.allSettled(MIX_SRC.map(s => tvBars(s, MIX_TF[tf], nb, 8000)));
+      const ok = []; rs.forEach((r, i) => { if (r.status === 'fulfilled' && r.value && r.value.length) ok.push(i); });
+      if (!ok.length) return new Response(JSON.stringify({ error: 'no source' }), { status: 502, headers: H });
+      const bars = mixBars(ok.map(i => rs[i].value)).slice(-nb);
+      const res = new Response(JSON.stringify({ tf, src: ok.map(i => MIX_SRC[i].split(':')[0]), updated: Math.floor(Date.now() / 1000), bars }), { headers: H });
+      await cache.put(ck, res.clone());
+      return res;
+    }
+    if (url.pathname === '/retail' || url.pathname === '/trapfz') {
+      const H = { ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store' };
+      if (!env || !env.OPT) return new Response('{}', { status: 500, headers: H });
+      const stub = env.OPT.get(env.OPT.idFromName('retail'));
+      const r = url.pathname === '/retail' ? await stub.fetch('https://do/rt' + (url.searchParams.get('poll') ? 'poll' : ''))
+        : await stub.fetch('https://do/trapfz', request.method === 'POST' ? { method: 'POST', body: await request.text() } : undefined);
+      return new Response(await r.text(), { headers: H });
+    }
     if (url.pathname === '/gf') {
       // แท่ง 1 นาทีล่าสุดของ Gold.F (BlackBull, เรียลไทม์) ให้แอปจับคู่กับ perp ของตัวเอง · แคช 20 วินาที
       const ck = new Request(url.origin + '/gf'), cache = caches.default;

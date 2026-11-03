@@ -10,7 +10,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 2. หลังแก้ทุกครั้ง: เพิ่มรายการใหม่ **ไว้บนสุด** ของส่วน "รายการ" ใน commit เดียวกับโค้ด
 3. รูปแบบ:
    ```
-   ### ส่วนที่แก้ + เวอร์ชัน — YYYY-MM-DD — ผู้แก้ (Claude / ChatGPT)
+   ### gcw — 2026-11-03 — Claude (คู่กับ OI Gold Pro V4.9.15)
+- ไฟล์: gcw/src/mix.js (ใหม่), gcw/src/index.js, gcw/test.mjs
+- แก้อะไร: `/mix?tf=&n=` แท่ง XAUUSDT perp รวม Bybit+Bitget+Binance (median) จาก TradingView แคช 2 วิ · `/retail` โซนรายย่อยคำนวณใน DO 'retail' จากไม้จริง 3 ตลาด ดึงทุกนาทีด้วย cron (49–51% = สองฝั่ง) · `/trapfz` เก็บแผน 💀 กลาง (GET/POST, ไม่ทับของเดิม, เก็บ 3 วัน)
+
+### ส่วนที่แก้ + เวอร์ชัน — YYYY-MM-DD — ผู้แก้ (Claude / ChatGPT)
    - ไฟล์: …
    - แก้อะไร: …
    - ระวัง: …
