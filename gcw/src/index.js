@@ -837,7 +837,7 @@ export default {
       const H = { ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store' };
       if (!env || !env.OPT) return new Response('{}', { status: 500, headers: H });
       const stub = env.OPT.get(env.OPT.idFromName('retail'));
-      const r = url.pathname === '/retail' ? await stub.fetch('https://do/rt' + (url.searchParams.get('poll') ? 'poll' : '') + (url.searchParams.get('win') ? '?win=' + encodeURIComponent(url.searchParams.get('win')) : ''))
+      const r = url.pathname === '/retail' ? await stub.fetch('https://do/rt' + (url.searchParams.get('poll') ? 'poll' : '') + (url.searchParams.get('win') ? '?win=' + encodeURIComponent(url.searchParams.get('win')) + (url.searchParams.get('rt') === '1' ? '&rt=1' : '') : ''))
         : await stub.fetch('https://do/trapfz', request.method === 'POST' ? { method: 'POST', body: await request.text() } : undefined);
       return new Response(await r.text(), { headers: H });
     }
