@@ -78,7 +78,7 @@ export function retailZones(buckets, now, opt = RT_FAST) {
 // ---------- ดึงไม้จริงจากแต่ละตลาด (ทำทุก 1 นาทีใน Durable Object) ----------
 // st = { bn: {id}, by: {t, ids}, bg: {t, ids}, err: {} } · คืนไม้ [t ms, p, q, s]
 const fj = async (u, ms = 6000) => { const ac = new AbortController(), tm = setTimeout(() => ac.abort(), ms); try { const r = await fetch(u, { signal: ac.signal, headers: { 'user-agent': 'oi-gold-pro' } }); if (!r.ok) throw new Error('HTTP ' + r.status); return await r.json(); } finally { clearTimeout(tm); } };
-export async function pullTrades(st, now = Date.now()) {
+export async function pullTrades(st, now = Date.now(), opt = {}) {
   const out = [], err = {}, ok = {};
   // Binance aggTrades: ต่อจาก id ล่าสุด (สูงสุด 6 หน้า/นาที)
   try {
@@ -92,8 +92,8 @@ export async function pullTrades(st, now = Date.now()) {
     }
     ok.binance = n;
   } catch (e) { err.binance = String(e.message || e); }
-  // Bybit recent-trade (1,000 ไม้ล่าสุด) กันซ้ำด้วยเวลา + execId
-  try {
+  // Bybit recent-trade (1,000 ไม้ล่าสุด) กันซ้ำด้วยเวลา + execId · V4.9.32: ข้ามถ้าสาย WebSocket สดทำงานอยู่ (opt.skipBybit)
+  if (!opt.skipBybit) try {
     const j = await fj('https://api.bybit.com/v5/market/recent-trade?category=linear&symbol=XAUUSDT&limit=1000');
     if (j.retCode !== 0) throw new Error(j.retMsg || 'bad');
     const L = (j.result.list || []).map(x => ({ t: +x.time, p: +x.price, q: +x.size, s: x.side === 'Buy' ? 1 : -1, id: String(x.execId) }));

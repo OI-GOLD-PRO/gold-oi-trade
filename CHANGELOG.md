@@ -30,6 +30,10 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 - ทดสอบ: node tools/test-port.mjs ผ่าน; เบราว์เซอร์ข้อมูลจำลอง login/กราฟ/เมนูใหม่/BUY+SELL พร้อม SL/TP/รายการออเดอร์ ผ่าน, runtime errors=[]; ราคาโบรกและ OI offset ตรง; ไม่ส่งคำสั่งจริง
 - ขอบเขต: คง Trade ticket/Hub/EA และแดชกำไรขาดทุนเดิม; AI tray/Quant, signal_log ลงชีต, historical OI และ Web Push ยังเป็นของแอปหลักตาม port เดิม; ไม่ได้ทดสอบตลาดจริงหรือ iPhone จริง
 
+### gcw — 2026-11-04 — Claude (คู่กับ OI Gold Pro V4.9.32) — ใช้ Workers Paid แล้ว
+- ไฟล์: gcw/src/index.js, gcw/src/mix.js
+- แก้อะไร: 👥 โหมดเรียลไทม์ `/retail?win=…&rt=1` — DO `retail` เปิดสาย WebSocket Bybit `publicTrade.XAUUSDT` (ได้ทุกไม้ ไม่หลุดตอนตลาดแรง) + alarm ทุก 5 วิ เก็บไม้ลงถัง · คำนวณแถวใหม่ได้ทุก ≥ 4.5 วิ · ไม่มีคนขอ rt 2 นาที → ปิดสาย กลับไปดึง REST ทุก 1 นาที · ระหว่างสายสดทำงาน cron ข้าม Bybit REST (กันนับซ้ำ, ใช้ watermark `st.by` ร่วมกัน) · ตอบ `rt: {ws, at, err}`
+
 ### gcw — 2026-11-04 — Claude (คู่กับ OI Gold Pro V4.9.31)
 - ไฟล์: gcw/src/mix.js, gcw/src/index.js
 - แก้อะไร: `/retail?win=` รับชั่วโมงอะไรก็ได้ 0.1–24 (ต่ำกว่า 1 ทีละ 0.1, ตั้งแต่ 1 ปัดเป็นชั่วโมงเต็ม) · ค่าที่ไม่ได้คำนวณไว้ล่วงหน้าคำนวณตอนขอแล้วจำ 55 วิ · ถังไม้ละเอียดขึ้นเป็น 3 นาที (เดิม 15)

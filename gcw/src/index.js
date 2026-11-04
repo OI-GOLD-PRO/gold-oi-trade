@@ -282,16 +282,20 @@ export class OptState {
       const z0 = await this.state.storage.get('rt:z') || { zones: [], ready: false };
       // V4.9.31: ใส่ชั่วโมงเองได้ 0.1–24 (ต่ำกว่า 1 ชม. ทีละ 0.1) · ช่วงสำเร็จรูปใช้ที่คำนวณไว้ · ช่วงอื่นคำนวณตอนขอ แล้วจำไว้ 55 วิ
       let h = +u.searchParams.get('win'); h = h > 0 ? Math.min(24, Math.max(0.1, h < 1 ? Math.round(h * 10) / 10 : Math.round(h))) : 0;
-      let W = h && z0.win && z0.win[h];
+      const rt = u.searchParams.get('rt') === '1'; // V4.9.32 โหมดเรียลไทม์ (บัญชีไม่จำกัด): ไม้ Bybit สดผ่าน WebSocket · คำนวณใหม่ทุก ≥ 5 วิ
+      if (rt) await this.rtTouch();
+      let W = !rt && h && z0.win && z0.win[h];
       if (h && !W) {
         this.rtWC = this.rtWC || new Map(); const c = this.rtWC.get(h);
-        if (c && Date.now() - c.at < 55e3) W = c.W;
-        else { const now = Date.now(), all = await this.state.storage.list({ prefix: 'rb:' }), buckets = {}; for (const [k, v] of all) { const tb = +k.slice(3); if (tb >= now - RT.KEEP) buckets[tb] = v; }
+        if (c && Date.now() - c.at < (rt ? 4.5e3 : 55e3)) W = c.W;
+        else if (rt) await this.rtFlush();
+        if (!W) { const now = Date.now(), all = await this.state.storage.list({ prefix: 'rb:' }), buckets = {}; for (const [k, v] of all) { const tb = +k.slice(3); if (tb >= now - RT.KEEP) buckets[tb] = v; }
           const R = retailZones(buckets, now, { WIN: h * 3600e3, HALF: h * 900e3, Z: 1.5, PEAK: 1.15, MAXZ: 6, MIN: 30 }); W = { rows: R.rows || [], fine: R.fine || [], n: R.n, hrs: R.hrs };
           this.rtWC.set(h, { at: now, W }); if (this.rtWC.size > 30) this.rtWC.delete(this.rtWC.keys().next().value); }
       }
       const { win, ...z } = z0; // ไม่แก้ของที่เก็บไว้ (กันค่าค้างในแคช)
       if (W) Object.assign(z, { rows: W.rows, fine: W.fine, winH: h, winN: W.n, winHrs: W.hrs });
+      if (rt) z.rt = { ws: !!(this.bws && this.bws.send && Date.now() - (this.bwsAt || 0) < 30e3), at: Date.now(), err: this.bwsErr || '' };
       return new Response(JSON.stringify(z));
     }
     if (u.pathname === '/trapfz') {
@@ -312,7 +316,9 @@ export class OptState {
   // 👥 เก็บไม้รายย่อยทุก 1 นาที (Binance + Bybit + Bitget) แล้วคำนวณโซนเก็บไว้ให้ทุกเครื่องอ่าน
   async rtPoll() {
     const S = this.state.storage, now = Date.now(), st = await S.get('rt:st') || {};
-    const trades = await pullTrades(st, now);
+    const wsLive = !!(this.bws && this.bws.send && now - (this.bwsAt || 0) < 30e3); // V4.9.32 สาย Bybit สดทำงาน → ไม่ดึงซ้ำ
+    const trades = await pullTrades(st, now, { skipBybit: wsLive });
+    { const st2 = await S.get('rt:st') || {}; if (st2.by && (!st.by || st2.by.t > st.by.t)) st.by = st2.by; if (st2.ws) st.ws = st2.ws; if (wsLive) { st.ok = Object.assign({}, st.ok, { bybit: (st2.ws && st2.ws.n1m) || 0 }); if (st.err) delete st.err.bybit; } } // ระหว่างรอ อาจมีไม้สดเข้ามาแล้ว (กันทับ watermark)
     if (trades.length) st.lastPx = trades[trades.length - 1][1]; // V4.9.24 ราคาอ้างอิงตรวจไม้ที่ส่งมา
     const touched = {};
     for (const [t, p, q, s] of trades) {
@@ -333,6 +339,54 @@ export class OptState {
     { const P = await S.get('rt:push') || {}; Object.entries(P).forEach(([k, w]) => { if (w.at > now - 3 * 60e3) { z.src[k] = (w.n || []).filter(e => e[0] > now - 60e3).reduce((a, e) => a + e[1], 0); z.src[k + '_via'] = w.via || ''; delete z.err[k]; } }); } // V4.9.24 ไม้ที่มือถือ/relay ส่งมา
     await S.put('rt:st', st); await S.put('rt:z', z);
     return { added: trades.length, ok: st.ok, err: st.err, zones: z.zones.length };
+  }
+  // ---------- V4.9.32 👥 เรียลไทม์: สาย WebSocket Bybit (ทุกไม้) เปิดค้างใน DO ขณะมีคนใช้โหมดเรียลไทม์ (≤ 2 นาทีหลังขอครั้งล่าสุด) ----------
+  async rtTouch() {
+    this.rtReqAt = Date.now();
+    if (!this.bws) this.bwsOpen();
+    if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 5000);
+  }
+  bwsOpen() {
+    this.bwsQ = this.bwsQ || []; this.bws = { pending: true }; const me = this.bws;
+    (async () => {
+      try {
+        const resp = await fetch('https://stream.bybit.com/v5/public/linear', { headers: { Upgrade: 'websocket' } });
+        const ws = resp.webSocket; if (!ws) throw new Error('ws upgrade ' + resp.status);
+        ws.accept(); if (this.bws !== me) { try { ws.close(); } catch (e) {} return; }
+        this.bws = ws; this.bwsAt = Date.now(); this.bwsPing = Date.now(); this.bwsErr = '';
+        ws.addEventListener('message', e => {
+          this.bwsAt = Date.now(); let m; try { m = JSON.parse(e.data); } catch (x) { return; }
+          if (m.topic === 'publicTrade.XAUUSDT' && Array.isArray(m.data)) m.data.forEach(d => { if (this.bwsQ.length < 50000) this.bwsQ.push([+d.T, +d.p, +d.v, d.S === 'Buy' ? 1 : -1, String(d.i)]); });
+        });
+        const dead = ev => { if (this.bws === ws) { this.bws = null; this.bwsErr = 'closed ' + ((ev && ev.code) || ''); } };
+        ws.addEventListener('close', dead); ws.addEventListener('error', dead);
+        ws.send(JSON.stringify({ op: 'subscribe', args: ['publicTrade.XAUUSDT'] }));
+      } catch (e) { if (this.bws === me) this.bws = null; this.bwsErr = String(e.message || e); }
+    })();
+  }
+  async rtFlush() {
+    const q = this.bwsQ || []; if (!q.length) return 0; this.bwsQ = [];
+    const S = this.state.storage, now = Date.now(), st = await S.get('rt:st') || {}, prev = st.by || { t: 0, ids: [] }, seen = new Set(prev.ids);
+    const touched = {}; let mx = prev.t, n = 0;
+    for (const [t, p, qq, sd, id] of q) {
+      if (t < prev.t || (t === prev.t && seen.has(id)) || t < now - RT.KEEP) continue;
+      const tb = Math.floor(t / RT.BK) * RT.BK; if (!touched[tb]) touched[tb] = await S.get('rb:' + tb) || {};
+      rtAdd({ [tb]: touched[tb] }, t, p, qq, sd); n++; if (t > mx) mx = t;
+    }
+    for (const tb of Object.keys(touched)) await S.put('rb:' + tb, touched[tb]);
+    const w = st.ws || {}; w.log = (w.log || []).filter(e => e[0] > now - 60e3).concat([[now, n]]); w.n1m = w.log.reduce((a, e) => a + e[1], 0); w.at = now;
+    st.by = { t: mx, ids: q.filter(x => x[0] === mx).map(x => x[4]) }; st.lastPx = q[q.length - 1][1]; st.ws = w;
+    await S.put('rt:st', st);
+    return n;
+  }
+  async alarm() {
+    const now = Date.now();
+    try { await this.rtFlush(); } catch (e) {}
+    if (now - (this.rtReqAt || 0) < 120e3) {
+      if (this.bws && this.bws.send && now - (this.bwsPing || 0) > 20e3) { try { this.bws.send('{"op":"ping"}'); this.bwsPing = now; } catch (e) {} }
+      if (!this.bws || (this.bws.send && now - (this.bwsAt || 0) > 60e3) || (this.bws.pending && now - (this.rtOpenAt || now) > 30e3)) { try { this.bws && this.bws.close && this.bws.close(); } catch (e) {} this.bws = null; this.rtOpenAt = now; this.bwsOpen(); }
+      await this.state.storage.setAlarm(now + 5000);
+    } else { try { this.bws && this.bws.close && this.bws.close(); } catch (e) {} this.bws = null; } // ไม่มีใครใช้เรียลไทม์ 2 นาที → ปิดสาย กลับไปดึงทุก 1 นาทีตามเดิม
   }
   // V4.9.24: รับไม้จากมือถือ (🐋 เปิดอยู่) / เครื่องที่บ้าน (relay) สำหรับตลาดที่บล็อก Cloudflare (Binance, Bitget)
   //  body { src: 'binance'|'bitget', tr: [[id, t ms, p, q, s], ...] } · กันนับซ้ำด้วย id (รับเฉพาะ id ที่ใหม่กว่าที่เคยรับ)
