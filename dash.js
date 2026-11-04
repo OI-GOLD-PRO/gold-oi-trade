@@ -96,6 +96,7 @@
       <section class="dh-card"><div class="dh-h"><b>ช่วงเวลาที่เปิดไม้ (เวลาไทย)</b></div><div id="dhSess"></div></section>
       <section class="dh-card"><div class="dh-h"><b>BUY / SELL</b></div><div id="dhSide"></div></section>
       <section class="dh-card"><div class="dh-h"><b>🏦 COT ทองคำ แยกกลุ่ม</b></div><div id="dhCot"></div></section>
+      <section class="dh-card" id="dhMarket"></section>
       <section class="dh-card"><div class="dh-h"><b>ประวัติไม้ที่ปิดแล้ว</b><span id="dhCount" class="dh-mut"></span></div><div id="dhTrades"></div><button class="dh-more" id="dhMore">แสดงเพิ่ม</button></section>
       <div class="dh-foot" id="dhFoot"></div>`;
     chart = LightweightCharts.createChart($('dhChart'), {
@@ -126,7 +127,15 @@
     }
   }
 
+  function paintMarket() {
+    const el = $('dhMarket'); if (!el) return;
+    el.innerHTML = [window.OIOIStatCard, window.OICrowdCard, window.OIVolCard].filter(f => typeof f === 'function').map(f => f()).join('');
+  }
+  document.addEventListener('oilive', paintMarket);
+  setInterval(paintMarket, 30000);
+
   function paint() {
+    paintMarket();
     const s = V.stats, st = window.OIT_state ? window.OIT_state() : null, a = st && st.account;
     const cur = esc(H.currency || '');
     $('dhAcc').textContent = `${H.login} · ${H.currency || ''}`;
