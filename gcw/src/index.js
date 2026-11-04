@@ -277,6 +277,20 @@ export class OptState {
     }
     if (u.pathname === '/poll') { const r = await this.poll(); return new Response(JSON.stringify(r)); }
     if (u.pathname === '/rtpoll') return new Response(JSON.stringify(await this.rtPoll()));
+    if (u.pathname === '/gexlog') { // V4.9.38 ประวัติแนว GEX บวกรายวัน (ให้กรอบดีลเลอร์รับย้อนหลังใช้แนวของวันนั้น)
+      const S = this.state.storage;
+      if (req.method === 'POST') {
+        const b = await req.json().catch(() => null), d = b && String(b.d || '');
+        if (/^\d{4}-\d{2}-\d{2}$/.test(d) && Math.abs(Date.parse(d + 'T00:00:00Z') - Date.now()) < 3 * 86400e3 && Array.isArray(b.lv)) {
+          const cur = await S.get('gx:' + d) || { m: {} };
+          b.lv.slice(0, 12).forEach(x => { if (!Array.isArray(x)) return; const k = +x[0], pr = +x[1], g = +x[2]; if (!(k > 0 && k < 100000 && pr > 0 && Math.abs(pr - k) < 200 && g > 0 && isFinite(g))) return; const o = cur.m[k] || { p: pr, g: 0, n: 0 }; o.p = pr; o.g = Math.max(o.g, g); o.n = (o.n || 0) + 1; cur.m[k] = o; });
+          cur.root = String(b.root || cur.root || '').slice(0, 12); cur.at = Date.now(); await S.put('gx:' + d, cur);
+          const all = await S.list({ prefix: 'gx:' }); const keys = [...all.keys()].sort(); for (const k of keys.slice(0, Math.max(0, keys.length - 30))) await S.delete(k);
+        }
+      }
+      const all = await S.list({ prefix: 'gx:' }), out = {}; for (const [k, v] of all) out[k.slice(3)] = v;
+      return new Response(JSON.stringify(out));
+    }
     if (u.pathname === '/rtpush') return new Response(JSON.stringify(await this.rtPush(await req.json().catch(() => null))));
     if (u.pathname === '/rt') { // V4.9.25 ?win=ชม. → ส่งแถวของช่วงนั้น (ไม่ส่งทุกช่วง ให้ไฟล์เล็ก)
       const z0 = await this.state.storage.get('rt:z') || { zones: [], ready: false };
@@ -845,6 +859,12 @@ export default {
       if (!env || !env.OPT) return new Response('{}', { status: 500, headers: H });
       const body = await request.text(); if (body.length > 1.5e6) return new Response('{"error":"too big"}', { status: 413, headers: H });
       const r = await env.OPT.get(env.OPT.idFromName('retail')).fetch('https://do/rtpush', { method: 'POST', body });
+      return new Response(await r.text(), { headers: H });
+    }
+    if (url.pathname === '/gexlog') {
+      const H = { ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store' };
+      if (!env || !env.OPT) return new Response('{}', { status: 500, headers: H });
+      const r = await env.OPT.get(env.OPT.idFromName('gex')).fetch('https://do/gexlog', request.method === 'POST' ? { method: 'POST', body: (await request.text()).slice(0, 5000) } : undefined);
       return new Response(await r.text(), { headers: H });
     }
     if (url.pathname === '/retail' || url.pathname === '/trapfz') {
