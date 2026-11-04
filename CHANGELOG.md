@@ -30,6 +30,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 - ทดสอบ: node tools/test-port.mjs ผ่าน; เบราว์เซอร์ข้อมูลจำลอง login/กราฟ/เมนูใหม่/BUY+SELL พร้อม SL/TP/รายการออเดอร์ ผ่าน, runtime errors=[]; ราคาโบรกและ OI offset ตรง; ไม่ส่งคำสั่งจริง
 - ขอบเขต: คง Trade ticket/Hub/EA และแดชกำไรขาดทุนเดิม; AI tray/Quant, signal_log ลงชีต, historical OI และ Web Push ยังเป็นของแอปหลักตาม port เดิม; ไม่ได้ทดสอบตลาดจริงหรือ iPhone จริง
 
+### gcw — 2026-11-04 — Claude (คู่กับ OI Gold Pro V4.9.36)
+- ไฟล์: gcw/src/mix.js (`invUpdate`), gcw/src/index.js, gcw/test.mjs
+- แก้อะไร: 👥 สถานะค้างของรายย่อย (ประมาณ) — สาย Bybit สด subscribe `tickers.XAUUSDT` เพิ่ม (OI สด) · ทุกครั้งที่เก็บไม้: f = (ΔOI/V+1)/2 = สัดส่วนเปิดใหม่ · ไม้เล็ก Buy → Long ค้าง +q·f, ปิด Short q·(1−f) · Sell กลับกัน · ส่วนที่ปิดหักจากสถานะค้างทุกราคาตามสัดส่วน (ราคาวิ่งสวน = หักฝั่งติดลบ ×2, วิ่งตาม = หักฝั่งกำไร ×2) · จางครึ่งทุก 36 ชม. · เก็บ `rt:inv` · `/retail` ตอบ `inv` = [[ราคา, Long, Short] (oz)], `invSince`, `invAt`
+- สาย Bybit สดเปิดค้างตลอดช่วงตลาดเปิด (cron เรียกทุกนาที, alarm ทุก 5 วิ · มีคนดูเรียลไทม์ = 2 วิ) เพื่อนับสถานะค้างต่อเนื่อง
+
 ### gcw — 2026-11-04 — Claude (คู่กับ OI Gold Pro V4.9.33)
 - ไฟล์: gcw/src/index.js
 - แก้อะไร: เรียลไทม์ 👥 — alarm เก็บไม้สดทุก 2 วิ (เดิม 5) · แคชแถวโหมด rt 1.8 วิ (เดิม 4.5)

@@ -133,5 +133,13 @@ console.log('ALL OK');
   const B4 = {}; for (let i = 0; i < 1000; i++) rtAdd(B4, now - 60e3, (i % 7 ? 3990 + (i % 9) : 4000.26 + (i % 5) * 0.1), 0.01, i % 2 ? 1 : -1);
   B4[Math.floor((now - 120e3) / RT.BK) * RT.BK] = Object.assign(B4[Math.floor((now - 120e3) / RT.BK) * RT.BK] || {}, { 4005: (() => { const a = new Array(RT.NC * 4).fill(0); a[3] = 500; a[RT.NC + 3] = 100; return a; })() });
   const z4 = retailZones(B4, now); if (!z4.fine || !z4.fine.find(r => r[0] === 4000.3) || !z4.fine.find(r => r[0] === 4005) || !z4.rows.find(r => r[0] === 4000)) throw new Error('fine ' + JSON.stringify(z4.fine));
+  // V4.9.36 สถานะค้าง: OI เพิ่มเท่าปริมาณ = เปิดทั้งหมด · OI ลด = ปิด หักจากราคาเก่า
+  { const { invUpdate } = await import('./src/mix.js'), inv = {}, t0 = now;
+    invUpdate(inv, [[t0, 4000, 0.01, 1], [t0, 4000, 0.01, 1], [t0, 3990, 0.01, -1]], { now: t0, dOI: 0.03, px: 4000, dir: 0, mc: 5 });
+    if (Math.abs(inv.m['4000.0'][0] - 0.02) > 1e-9 || Math.abs(inv.m['3990.0'][1] - 0.01) > 1e-9) throw new Error('inv open ' + JSON.stringify(inv));
+    invUpdate(inv, [[t0, 3995, 0.01, -1]], { now: t0, dOI: -0.01, px: 3995, dir: -5, mc: 5 }); // Long ปิด 0.01 ตอนราคาลง → หักจาก Long 4000
+    if (Math.abs(inv.m['4000.0'][0] - 0.01) > 1e-9 || inv.m['3995.0'] && inv.m['3995.0'][1] > 1e-9) throw new Error('inv close ' + JSON.stringify(inv));
+    const big = {}; invUpdate(big, [[t0, 4000, 5, 1]], { now: t0, dOI: 5, px: 4000, dir: 0, mc: 5 }); if (Object.keys(big.m).length) throw new Error('big trade must be ignored');
+  }
   console.log('mix/retail ok', top);
 }

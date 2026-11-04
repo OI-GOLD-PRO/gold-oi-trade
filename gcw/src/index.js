@@ -1,4 +1,4 @@
-import { MIX_SRC, MIX_TF, mixBars, mixN, rtAdd, retailZones, pullTrades, RT, RT_FRESH, RT_TRAP } from './mix.js';
+import { MIX_SRC, MIX_TF, mixBars, mixN, rtAdd, retailZones, pullTrades, RT, RT_FRESH, RT_TRAP, invUpdate } from './mix.js';
 export { mixBars, retailZones, rtAdd, RT_FAST, RT_FRESH, RT_TRAP } from './mix.js';
 import { newVapid, sendPush } from './push.js';
 import { MINI_FLASH_PAGE, MINI_MANIFEST } from './flash.js';
@@ -295,6 +295,7 @@ export class OptState {
       }
       const { win, ...z } = z0; // ไม่แก้ของที่เก็บไว้ (กันค่าค้างในแคช)
       if (W) Object.assign(z, { rows: W.rows, fine: W.fine, winH: h, winN: W.n, winHrs: W.hrs });
+      { const inv = await this.state.storage.get('rt:inv'); if (inv && inv.m) { z.inv = Object.entries(inv.m).filter(([, a]) => a[0] + a[1] >= 0.002).map(([k, a]) => [+k, Math.round(a[0] * 1000) / 1000, Math.round(a[1] * 1000) / 1000]); z.invSince = inv.since; z.invAt = inv.at; z.invOI = inv.oi; } } // V4.9.36 สถานะค้าง
       if (rt) z.rt = { ws: !!(this.bws && this.bws.send && Date.now() - (this.bwsAt || 0) < 30e3), at: Date.now(), err: this.bwsErr || '' };
       return new Response(JSON.stringify(z));
     }
@@ -316,6 +317,8 @@ export class OptState {
   // 👥 เก็บไม้รายย่อยทุก 1 นาที (Binance + Bybit + Bitget) แล้วคำนวณโซนเก็บไว้ให้ทุกเครื่องอ่าน
   async rtPoll() {
     const S = this.state.storage, now = Date.now(), st = await S.get('rt:st') || {};
+    // V4.9.36: เปิดสาย Bybit สดค้างไว้ตลอดช่วงตลาดเปิด (cron ทุกนาทีเรียกมาที่นี่) → นับสถานะค้างต่อเนื่อง
+    this.rtAlways = now; if (!this.bws) this.bwsOpen(); if (!(await S.getAlarm())) await S.setAlarm(now + 5000);
     const wsLive = !!(this.bws && this.bws.send && now - (this.bwsAt || 0) < 30e3); // V4.9.32 สาย Bybit สดทำงาน → ไม่ดึงซ้ำ
     const trades = await pullTrades(st, now, { skipBybit: wsLive });
     { const st2 = await S.get('rt:st') || {}; if (st2.by && (!st.by || st2.by.t > st.by.t)) st.by = st2.by; if (st2.ws) st.ws = st2.ws; if (wsLive) { st.ok = Object.assign({}, st.ok, { bybit: (st2.ws && st2.ws.n1m) || 0 }); if (st.err) delete st.err.bybit; } } // ระหว่างรอ อาจมีไม้สดเข้ามาแล้ว (กันทับ watermark)
@@ -356,24 +359,34 @@ export class OptState {
         this.bws = ws; this.bwsAt = Date.now(); this.bwsPing = Date.now(); this.bwsErr = '';
         ws.addEventListener('message', e => {
           this.bwsAt = Date.now(); let m; try { m = JSON.parse(e.data); } catch (x) { return; }
+          if (m.topic === 'tickers.XAUUSDT' && m.data && m.data.openInterest !== undefined && m.data.openInterest !== '') { const v = +m.data.openInterest; if (v > 0) this.oiNow = v; }
           if (m.topic === 'publicTrade.XAUUSDT' && Array.isArray(m.data)) m.data.forEach(d => { if (this.bwsQ.length < 50000) this.bwsQ.push([+d.T, +d.p, +d.v, d.S === 'Buy' ? 1 : -1, String(d.i)]); });
         });
         const dead = ev => { if (this.bws === ws) { this.bws = null; this.bwsErr = 'closed ' + ((ev && ev.code) || ''); } };
         ws.addEventListener('close', dead); ws.addEventListener('error', dead);
-        ws.send(JSON.stringify({ op: 'subscribe', args: ['publicTrade.XAUUSDT'] }));
+        ws.send(JSON.stringify({ op: 'subscribe', args: ['publicTrade.XAUUSDT', 'tickers.XAUUSDT'] })); // V4.9.36 + tickers (OI สด)
       } catch (e) { if (this.bws === me) this.bws = null; this.bwsErr = String(e.message || e); }
     })();
   }
   async rtFlush() {
     const q = this.bwsQ || []; if (!q.length) return 0; this.bwsQ = [];
     const S = this.state.storage, now = Date.now(), st = await S.get('rt:st') || {}, prev = st.by || { t: 0, ids: [] }, seen = new Set(prev.ids);
-    const touched = {}; let mx = prev.t, n = 0;
+    const touched = {}; let mx = prev.t, n = 0; const used = [];
     for (const [t, p, qq, sd, id] of q) {
       if (t < prev.t || (t === prev.t && seen.has(id)) || t < now - RT.KEEP) continue;
       const tb = Math.floor(t / RT.BK) * RT.BK; if (!touched[tb]) touched[tb] = await S.get('rb:' + tb) || {};
-      rtAdd({ [tb]: touched[tb] }, t, p, qq, sd); n++; if (t > mx) mx = t;
+      rtAdd({ [tb]: touched[tb] }, t, p, qq, sd); n++; if (t > mx) mx = t; used.push([t, p, qq, sd]);
     }
     for (const tb of Object.keys(touched)) await S.put('rb:' + tb, touched[tb]);
+    // V4.9.36: สถานะค้าง (ประมาณ) จาก ΔOI ช่วงนี้
+    try {
+      const inv = await S.get('rt:inv') || {}, z = await S.get('rt:z') || {}, lp = used.length ? used[used.length - 1][1] : null;
+      this.pxH = (this.pxH || []).filter(e => e[0] > now - 70e3); if (lp) this.pxH.push([now, lp]);
+      const dir = lp && this.pxH.length ? lp - this.pxH[0][1] : 0, dOI = this.oiNow > 0 && this.oiPrev > 0 ? this.oiNow - this.oiPrev : NaN;
+      const r = invUpdate(inv, used, { now, dOI, px: lp, dir, mc: isFinite(z.mc) ? z.mc : 5 });
+      if (this.oiNow > 0) this.oiPrev = this.oiNow;
+      inv.oi = this.oiNow || inv.oi || null; inv.f = r.f; await S.put('rt:inv', inv);
+    } catch (e) { this.invErr = String(e.message || e); }
     const w = st.ws || {}; w.log = (w.log || []).filter(e => e[0] > now - 60e3).concat([[now, n]]); w.n1m = w.log.reduce((a, e) => a + e[1], 0); w.at = now;
     st.by = { t: mx, ids: q.filter(x => x[0] === mx).map(x => x[4]) }; st.lastPx = q[q.length - 1][1]; st.ws = w;
     await S.put('rt:st', st);
@@ -382,10 +395,11 @@ export class OptState {
   async alarm() {
     const now = Date.now();
     try { await this.rtFlush(); } catch (e) {}
-    if (now - (this.rtReqAt || 0) < 120e3) {
+    const active = now - (this.rtReqAt || 0) < 120e3; // มีคนดูเรียลไทม์ = ทุก 2 วิ · ไม่มี แต่ตลาดเปิด (cron ยังเรียก) = ทุก 5 วิ
+    if (active || now - (this.rtAlways || 0) < 150e3) {
       if (this.bws && this.bws.send && now - (this.bwsPing || 0) > 20e3) { try { this.bws.send('{"op":"ping"}'); this.bwsPing = now; } catch (e) {} }
       if (!this.bws || (this.bws.send && now - (this.bwsAt || 0) > 60e3) || (this.bws.pending && now - (this.rtOpenAt || now) > 30e3)) { try { this.bws && this.bws.close && this.bws.close(); } catch (e) {} this.bws = null; this.rtOpenAt = now; this.bwsOpen(); }
-      await this.state.storage.setAlarm(now + 2000); // V4.9.33 เก็บไม้สดทุก 2 วิ
+      await this.state.storage.setAlarm(now + (active ? 2000 : 5000)); // V4.9.33 เก็บไม้สดทุก 2 วิ · V4.9.36 ไม่มีคนดู 5 วิ
     } else { try { this.bws && this.bws.close && this.bws.close(); } catch (e) {} this.bws = null; } // ไม่มีใครใช้เรียลไทม์ 2 นาที → ปิดสาย กลับไปดึงทุก 1 นาทีตามเดิม
   }
   // V4.9.24: รับไม้จากมือถือ (🐋 เปิดอยู่) / เครื่องที่บ้าน (relay) สำหรับตลาดที่บล็อก Cloudflare (Binance, Bitget)

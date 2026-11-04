@@ -114,3 +114,34 @@ export async function pullTrades(st, now = Date.now(), opt = {}) {
   st.err = err; st.ok = ok;
   return out;
 }
+
+// ---------- V4.9.36 👥 สถานะค้างของรายย่อย (ประมาณ) ----------
+// ทุกช่วงสั้น ๆ: ΔOI เทียบปริมาณซื้อขายทั้งหมด V → สัดส่วนที่เป็น "เปิดใหม่" f = (ΔOI/V + 1) / 2
+//  ไม้เล็ก Buy: เปิด Long q·f ที่ราคานั้น + ปิด Short q·(1−f) · ไม้เล็ก Sell: เปิด Short q·f + ปิด Long q·(1−f)
+//  ส่วนที่ปิด หักออกจากสถานะค้างทุกราคาตามสัดส่วน · ราคาวิ่งสวนคนถือ = หักฝั่งที่ติดลบหนักกว่า (×2) · วิ่งตาม = หักฝั่งที่กำไรหนักกว่า
+//  สถานะเก่าค่อย ๆ จาง ครึ่งหนึ่งทุก 36 ชม.
+export const INV = { HL: 36 * 3600e3, MIN: 0.0005, W: 2 };
+export function invUpdate(inv, tr, o) {
+  const now = o.now, m = inv.m || (inv.m = {});
+  if (inv.at) { const k = Math.pow(0.5, Math.max(0, now - inv.at) / INV.HL); if (k < 0.99999) for (const key in m) { m[key][0] *= k; m[key][1] *= k; if (m[key][0] + m[key][1] < INV.MIN) delete m[key]; } }
+  inv.at = now; if (!inv.since) inv.since = now;
+  const V = tr.reduce((a, x) => a + (x[2] > 0 ? x[2] : 0), 0);
+  if (!(V > 0) || !isFinite(o.dOI)) return { f: null, open: 0, closeL: 0, closeS: 0 };
+  const f = Math.max(0, Math.min(1, (o.dOI / V + 1) / 2));
+  let cL = 0, cS = 0, op = 0;
+  for (const x of tr) {
+    const p = x[1], q = x[2], s = x[3]; if (!(q > 0) || !(p > 0)) continue;
+    if (Math.floor(Math.log2(q * 1000)) > o.mc) continue; // เฉพาะไม้เล็ก (รายย่อย)
+    const key = (Math.round(p * 10) / 10).toFixed(1), a = m[key] || (m[key] = [0, 0]), oq = q * f, cq = q - oq; op += oq;
+    if (s > 0) { a[0] += oq; cS += cq; } else { a[1] += oq; cL += cq; }
+  }
+  const take = (idx, amt, heavy) => {
+    if (!(amt > 0)) return; const ks = Object.keys(m).filter(k => m[k][idx] > 0); if (!ks.length) return;
+    let W = 0, tot = 0; const w = ks.map(k => { const v = m[k][idx] * (heavy(+k) ? INV.W : 1); W += v; tot += m[k][idx]; return v; });
+    amt = Math.min(amt, tot); ks.forEach((k, i) => { m[k][idx] = Math.max(0, m[k][idx] - amt * w[i] / W); if (m[k][0] + m[k][1] < INV.MIN) delete m[k]; });
+  };
+  const px = o.px, dir = o.dir || 0;
+  take(0, cL, k => dir < 0 ? k > px : dir > 0 ? k < px : false); // Long ปิด: ราคาลง = Long ติดลบ (ซื้อแพงกว่า) โดนก่อน · ราคาขึ้น = Long กำไรปิดก่อน
+  take(1, cS, k => dir > 0 ? k < px : dir < 0 ? k > px : false); // Short ปิด: ราคาขึ้น = Short ติดลบ (ขายถูกกว่า) โดนก่อน · ราคาลง = Short กำไรปิดก่อน
+  return { f, open: op, closeL: cL, closeS: cS };
+}
