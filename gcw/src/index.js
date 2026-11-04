@@ -249,6 +249,7 @@ async function tgCall(env, method, body) {
   return r.json();
 }
 
+const MIX_LAST = new Map(); // V4.9.29 แท่งล่าสุดที่ได้ของแต่ละแหล่ง (ในหน่วยความจำของ Worker)
 const RT_WINS = [1, 2, 4, 8, 12, 24]; // V4.9.25 ช่วงย้อนหลังให้เลือก (ชม.)
 
 export class OptState {
@@ -751,10 +752,13 @@ export default {
       const ck = new Request(`${url.origin}/mix?tf=${tf}&n=${nb}`), cache = caches.default;
       const hit = await cache.match(ck); if (hit) return hit;
       const rs = await Promise.allSettled(MIX_SRC.map(s => tvBars(s, MIX_TF[tf], nb, 8000)));
+      // V4.9.29: แหล่งไหนดึงไม่ได้รอบนี้ (TradingView ตอบ 4xx เป็นพัก ๆ) → ใช้แท่งล่าสุดที่เคยได้ของแหล่งนั้น (ไม่เกิน 3 นาที) ค่ากลางจะไม่กระโดด
+      const now = Date.now();
+      rs.forEach((r, i) => { const k = MIX_SRC[i] + '|' + tf + '|' + nb; if (r.status === 'fulfilled' && r.value && r.value.length) MIX_LAST.set(k, { at: now, v: r.value }); else { const L = MIX_LAST.get(k); if (L && now - L.at < 180e3) rs[i] = { status: 'fulfilled', value: L.v, stale: true }; } });
       const ok = []; rs.forEach((r, i) => { if (r.status === 'fulfilled' && r.value && r.value.length) ok.push(i); });
       if (!ok.length) return new Response(JSON.stringify({ error: 'no source' }), { status: 502, headers: H });
       const bars = mixBars(ok.map(i => rs[i].value)).slice(-nb);
-      const res = new Response(JSON.stringify({ tf, src: ok.map(i => MIX_SRC[i].split(':')[0]), updated: Math.floor(Date.now() / 1000), bars }), { headers: H });
+      const res = new Response(JSON.stringify({ tf, src: ok.map(i => MIX_SRC[i].split(':')[0]), stale: ok.filter(i => rs[i].stale).map(i => MIX_SRC[i].split(':')[0]), updated: Math.floor(Date.now() / 1000), bars }), { headers: H });
       await cache.put(ck, res.clone());
       return res;
     }

@@ -30,6 +30,10 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 - ทดสอบ: node tools/test-port.mjs ผ่าน; เบราว์เซอร์ข้อมูลจำลอง login/กราฟ/เมนูใหม่/BUY+SELL พร้อม SL/TP/รายการออเดอร์ ผ่าน, runtime errors=[]; ราคาโบรกและ OI offset ตรง; ไม่ส่งคำสั่งจริง
 - ขอบเขต: คง Trade ticket/Hub/EA และแดชกำไรขาดทุนเดิม; AI tray/Quant, signal_log ลงชีต, historical OI และ Web Push ยังเป็นของแอปหลักตาม port เดิม; ไม่ได้ทดสอบตลาดจริงหรือ iPhone จริง
 
+### gcw — 2026-11-04 — Claude (คู่กับ OI Gold Pro V4.9.29)
+- ไฟล์: gcw/src/index.js
+- แก้อะไร: `/mix` แหล่งไหนดึงไม่ได้ (TradingView ตอบ 4xx เป็นพัก ๆ ~12k ครั้ง/วัน) → ใช้แท่งล่าสุดที่เคยได้ของแหล่งนั้น (≤ 3 นาที) แทน ค่ากลางไม่กระโดด · ตอบ `stale` = แหล่งที่ใช้ของเก่า
+
 ### gcw — 2026-11-04 — Claude (คู่กับ OI Gold Pro V4.9.25)
 - ไฟล์: gcw/src/index.js
 - แก้อะไร: `/retail?win=1|2|4|8|12|24` ส่งแถว (`rows`/`fine`) ตามช่วงย้อนหลังที่เลือก (ครึ่งชีวิต = ¼ ช่วง) · คำนวณไว้ทุกนาทีใน `rt:z.win` · ไม่ใส่ `win` = แถวชุดหลัก 8 ชม. เหมือนเดิม · `zones`/`trap` ไม่เปลี่ยน
