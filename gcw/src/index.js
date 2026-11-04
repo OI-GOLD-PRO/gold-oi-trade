@@ -296,7 +296,7 @@ export class OptState {
       const { win, ...z } = z0; // ไม่แก้ของที่เก็บไว้ (กันค่าค้างในแคช)
       if (W) Object.assign(z, { rows: W.rows, fine: W.fine, winH: h, winN: W.n, winHrs: W.hrs });
       { const inv = await this.state.storage.get('rt:inv'); if (inv && inv.m) { z.inv = Object.entries(inv.m).filter(([, a]) => a[0] + a[1] >= 0.002).map(([k, a]) => [+k, Math.round(a[0] * 1000) / 1000, Math.round(a[1] * 1000) / 1000]); z.invSince = inv.since; z.invAt = inv.at; z.invOI = inv.oi; } } // V4.9.36 สถานะค้าง
-      if (rt) z.rt = { ws: !!(this.bws && this.bws.send && Date.now() - (this.bwsAt || 0) < 30e3), at: Date.now(), err: this.bwsErr || '' };
+      if (rt) z.rt = { ws: !!(this.bws && this.bws.send && Date.now() - (this.bwsAt || 0) < 30e3), at: Date.now(), err: this.bwsErr || '', oi: this.oiNow || null, invErr: this.invErr || '', q: (this.bwsQ || []).length };
       return new Response(JSON.stringify(z));
     }
     if (u.pathname === '/trapfz') {
