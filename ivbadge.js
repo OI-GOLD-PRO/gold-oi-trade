@@ -51,7 +51,8 @@
     if (!R) return null;
     const d = R.d1h, up = d !== null && d >= 0.005, dn = d !== null && d <= -0.005;
     if (R.mode === 'settle') return [`IV ${pct(R.iv)}% ⏸`, '#c9b8ff', 'iv'];
-    return [`IV ${pct(R.iv)}%${d === null ? '' : up ? ` ▲${Math.abs(d * 100).toFixed(1)}` : dn ? ` ▼${Math.abs(d * 100).toFixed(1)}` : ' ·'}`, up ? '#ff8a3d' : dn ? '#22e39a' : '#c9b8ff', 'iv'];
+    const E = window.OI_vol && window.OI_vol.erange && window.OI_vol.erange(), ct = E && E.settle ? ` · CME ${(E.settle * 100).toFixed(1)}` : ''; // V4.5.4: เทียบ Vol Settle ของ CME ที่ราคาเดียวกัน
+    return [`IV ${pct(R.iv)}%${d === null ? '' : up ? ` ▲${Math.abs(d * 100).toFixed(1)}` : dn ? ` ▼${Math.abs(d * 100).toFixed(1)}` : ''}${ct}`, up ? '#ff8a3d' : dn ? '#22e39a' : '#c9b8ff', 'iv'];
   }
   (window.OIBadgeExtra = window.OIBadgeExtra || []).push(badge);
 
@@ -62,6 +63,7 @@
     const lo = at(F - 100), hi = at(F + 100);
     return `● เส้น smile: Put ${lo[0]} = ${pct(lo[1])}% · ATM ${pct(R.iv)}% · Call ${hi[0]} = ${pct(hi[1])}%${lo[1] - hi[1] > 0.02 ? ' → <b style="color:#ff6b82">ฝั่ง Put แพงกว่า (กลัวขาลง)</b>' : hi[1] - lo[1] > 0.02 ? ' → <b style="color:#2fe3a6">ฝั่ง Call แพงกว่า (ไล่ขาขึ้น)</b>' : ''}<br>`;
   }
+  const esc2 = t => String(t).replace(/[<>&]/g, '');
   function explain() {
     if (!R) { O.showToast && O.showToast('IV: รอข้อมูลออปชันสดของสัญญาวันนี้…', 5000); return; }
     const d = R.d1h, mood = R.mode === 'settle' ? 'ตลาดปิด: IV ไม่เปลี่ยน รอดูทิศทาง IV ตอนตลาดเปิด (เก็บทุก 5 นาที)' : d === null ? 'ยังไม่มีประวัติพอเทียบ (เก็บทุก 5 นาที)'
@@ -72,6 +74,7 @@
     O.showToast && O.showToast(
       `<b style="color:#c9b8ff">IV ATM ${pct(R.iv)}%</b> (สัญญา ${R.root}, ต่อปี · คำนวณเองด้วย Black-76)<br>` +
       (R.mode === 'settle' ? `⏸ ตลาดปิด: คิดจากราคา settlement CME วันที่ ${R.sd} (ตรงกับเส้น Vol Settle ใน QuikStrike)<br>` : `● สด: คิดจากค่ากลาง bid/ask ของออปชัน (ฟิวเจอร์สอ้างอิง ${R.F ? R.F.toFixed(1) : '–'})<br>`) +
+      ((E => E && E.settle && R.mode !== 'settle' ? `● CME Vol Settle (ราคาปิด ${esc2(E.src)}) ที่ราคานี้ = <b>${(E.settle * 100).toFixed(2)}%</b> · ค่าสดของเราสูง/ต่ำกว่าได้ เพราะ Vol Settle คงที่ทั้งวันจนกว่า CME จะ settle รอบใหม่ (01:30 ไทย) ส่วนค่าสดคิดจากราคาออปชันตอนนี้ (เวลาที่เหลือมีช่วงตลาดสหรัฐฯ ที่ผันผวนสุด)<br>` : '')(window.OI_vol && window.OI_vol.erange && window.OI_vol.erange())) +
       skewLine() +
       `เปลี่ยนใน 1 ชม.: ${d === null ? '–' : pts(d) + ' จุด'} · ตั้งแต่เปิดวัน: ${R.dOpen === null ? '–' : pts(R.dOpen) + ' จุด'}<br>` +
       `${mood}<br>` +
