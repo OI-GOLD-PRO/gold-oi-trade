@@ -1,0 +1,26 @@
+// Regression checks for the GC -> broker adapter; no network or orders.
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import vm from 'node:vm';
+const root = path.resolve(import.meta.dirname, '..');
+const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
+for(const [,body] of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)) new vm.Script(body);
+for(const file of fs.readdirSync(root).filter(f=>f.endsWith('.js'))) new vm.Script(fs.readFileSync(path.join(root,file),'utf8'),{filename:file});
+for(const [,file] of html.matchAll(/(?:src|href)="([^"?]+\.(?:js|css))(?:\?[^" ]*)?"/g)) if(!file.includes('://')) assert.ok(fs.existsSync(path.join(root,file)),file);
+assert.match(html,/const GC_WORKER = 'https:\/\/gc-yahoo.oigoldpro.workers.dev'/);
+assert.doesNotMatch(html,/API_BASE/);
+const adj = html.match(/  function adjFor\(ms\) \{[\s\S]*?\n  \}/)[0];
+const ctx = vm.createContext({adj:6.5,histAdj:[[100,-28]],sessAdj:new Map([[100,-28]]),sessKey:t=>Math.floor(t),gcOff:()=>34.5});
+vm.runInContext(adj+'; result = [adjFor(100000), adjFor(101000), adjFor(Date.now())];',ctx);
+assert.deepEqual(Array.from(ctx.result),[6.5,6.5,6.5]);
+const trap = fs.readFileSync(path.join(root,'trap.js'),'utf8');
+const shift = trap.match(/const shiftPlan = .*?; \};/)[0];
+const plan = {entry:4200,sl:4195,tp1:4210,tp2:4215,ext:4194.5,pp:4198,R:5,score:70};
+const tc=vm.createContext({plan});
+vm.runInContext(shift+'; broker=shiftPlan(plan,-34.5); roundTrip=shiftPlan(broker,34.5);',tc);
+assert.equal(tc.broker.entry,4165.5);assert.equal(tc.broker.sl,4160.5);assert.equal(tc.broker.R,5);
+assert.equal(JSON.stringify(tc.roundTrip),JSON.stringify(plan));
+assert.match(trap,/const body = null; \/\/ shared plans are read-only in Trade/);
+assert.match(trap,/shiftPlan\(frozen\[fk\], -G\(\)\)/);
+console.log('PASS: JS/assets, Worker binding, historical basis, GC frozen plan round-trip, read-only shared plans');

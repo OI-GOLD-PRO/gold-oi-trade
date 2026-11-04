@@ -74,12 +74,19 @@ rep_re(r'<script src="goldscalp\.js"></script>\n.*?</body>', '''<script src="tra
 <script src="goldscalp.js"></script>
 <script src="live.js"></script>
 <script src="intraday.js"></script>
+<script src="retail.js"></script>
 <script src="bigtrade.js"></script>
 <script src="dealer.js"></script>
 <script src="ivbadge.js"></script>
 <script src="oistep.js"></script>
 <script src="squeeze.js"></script>
 <script src="cotgroups.js"></script>
+<script src="crowd.js"></script>
+<script src="oistat.js"></script>
+<script src="trap.js"></script>
+<script src="volreg.js"></script>
+<script src="oidiv.js"></script>
+<script src="dealerbox.js"></script>
 </body>''')
 # not ported (dashboard / AI text / luxury shell / Apps-Script data): colorize.js, quant.js, aitray.js, v33-luxury.js, historical-oi.js
 rep('<div class="row"><button data-oih="1">Historical OI Zones</button></div>', '')
@@ -173,7 +180,7 @@ rep("      showLogin(res.reason === 'expired' ?",
     "      if (res.error === 'not found') { showLogin('hub ยังเป็นรุ่นเก่า — รัน npx wrangler deploy ในโฟลเดอร์ hub ก่อน'); return; }\n      showLogin(res.reason === 'expired' ?")
 # news from the OI Gold Pro repo (read-only)
 rep_re(r"  const GH_OWNER =.*?\n(?=  // หมายเหตุ: raw\.githubusercontent)",
-       "  const GH_OWNER = 'OI-GOLD-PRO', GH_REPO = 'gold-oi-pro';\n  const NEWS_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/news.json`;\n")
+       "  const GH_OWNER = 'OI-GOLD-PRO', GH_REPO = 'gold-oi-pro';\n  const GC_WORKER = 'https://gc-yahoo.oigoldpro.workers.dev';\n  const NEWS_URL = `https://raw.githubusercontent.com/${GH_OWNER}/${GH_REPO}/main/news.json`;\n")
 
 # --- expose an API for trade.js (extends the window.OI that OI Gold Pro already exports) ---
 rep("    markDirty() { dirty = true; },\n  };", '''    markDirty() { dirty = true; },
@@ -194,6 +201,15 @@ rep('<div class="tag">OPTIONS · OPEN INTEREST · GAMMA</div>', '<div class="tag
 rep("      const yg = series.priceToCoordinate(g.p);", "      const gp = g.p - gcOff(), yg = series.priceToCoordinate(gp);")
 rep("ctx.fillText(g.p.toFixed(2), bx + (axW - 1) / 2, by + bh / 2 + .5);", "ctx.fillText(gp.toFixed(2), bx + (axW - 1) / 2, by + bh / 2 + .5);")
 rep("ctx.fillText(`${g.lab} ${g.p.toFixed(1)}`,", "ctx.fillText(`${g.lab} ${gp.toFixed(1)}`,")
+
+# Trade has hub authentication, no Apps Script history endpoint.
+rep_re(r"  window\.OIHistoryZonesAPI = async \(\) => \{.*?\n  \};\n", "")
+# Historical basis is perp-GC; translate it to perp-broker as well.
+rep("if (sessAdj.has(k)) return sessAdj.get(k);", "if (sessAdj.has(k)) return sessAdj.get(k) + gcOff();")
+rep("} return b[1];", "} return b[1] + gcOff();")
+rep("$('setVer').textContent = 'OI Gold Pro V' + APP_VER", "$('setVer').textContent = 'OI Trade V' + APP_VER")
+# Version all local scripts/styles so installed apps load this release together.
+s = re.sub(r'(src|href)="([^"?]+\.(?:js|css))"', lambda m: m.group(0) if '://' in m[2] else f'{m[1]}="{m[2]}?v={APP_VER}"', s)
 
 if DRY:
     print("\n".join(FAILS) or "ALL ANCHORS OK")
@@ -284,3 +300,32 @@ port_mod("dealer.js", [("const KEY = 'oi_dealer'", "const KEY = 'oit_dealer'"), 
 port_mod("ivbadge.js", [("const HKEY = 'oi_iv_hist2'", "const HKEY = 'oit_iv_hist2'"), ("localStorage.removeItem('oi_iv_hist')", "localStorage.removeItem('oit_iv_hist')")])
 port_mod("oistep.js", [("const KEY = 'oi_step3'", "const KEY = 'oit_step3'")])
 port_mod("squeeze.js", [("const P = O.lastClose; if (P === null || !isFinite(P)) return null;", "const P = O.lastClose === null ? null : O.lastClose + G(); if (P === null || !isFinite(P)) return null;")], g=True)
+
+# New chart modules use rebased OI rows and fetchTF bars. Live data stays in the primary repo.
+for name in ["retail.js", "dealerbox.js", "volreg.js", "oidiv.js", "crowd.js", "oistat.js", "trap.js"]:
+    m = open(os.path.join(SRC_DIR, name), encoding="utf-8").read()
+    m = re.sub(r"(['\"])oi_", r"\1oit_", m)
+    for asset in ["vol.json", "iv_hist.json", "gc_oi.json", "gcy.json", "cme_oi.json"]:
+        m = m.replace("fetch('" + asset, "fetch('https://oi-gold-pro.github.io/gold-oi-pro/" + asset)
+    if name == "trap.js":
+        def tr(old, new):
+            global m
+            if m.count(old) != 1:
+                raise SystemExit(f"trap.js anchor found {m.count(old)}x: {old[:80]!r}")
+            m = m.replace(old, new)
+        tr("  const O = window.OI;", "  const O = window.OI;\n" + G_DEF + """
+  // Frozen plans remain in GC coordinates in memory/storage/server. Convert at use time.
+  const shiftPlan = (v, d) => { const r = Object.assign({}, v); for (const k of ['entry','sl','tp1','tp2','ext','pp']) if (Number.isFinite(r[k])) r[k] += d; return r; };
+""")
+        tr("const FKEY = 'oit_trap_frozen_v499';", "const FKEY = 'oit_trap_frozen_gc_v499';")
+        tr("s.side, F = frozen[fk];", "s.side, F = frozen[fk] && shiftPlan(frozen[fk], -G());")
+        tr("const F = frozen[fk];", "const F = shiftPlan(frozen[fk], -G());")
+        tr("frozen[fk] = { entry:", "frozen[fk] = shiftPlan({ entry:")
+        tr("why: P.why, w: P.w }; seenF.add(fk);", "why: P.why, w: P.w }, G()); seenF.add(fk);")
+        # GC round numbers must stay GC round numbers, not broker round numbers.
+        tr("for (let r = Math.ceil((px - rng) / 25) * 25; r <= px + rng; r += 25)", "for (let r = Math.ceil((px + G() - rng) / 25) * 25; r <= px + G() + rng; r += 25)")
+        tr("add(r + (r > px ? 0.3 : -0.3), r > px ? 1 : -1, w,", "add(r - G() + (r - G() > px ? 0.3 : -0.3), r - G() > px ? 1 : -1, w,")
+        # Trade reads the shared canonical plan but does not publish broker-derived candidates to Gold Pro.
+        tr("const body = Object.keys(fzNew).length ? JSON.stringify(fzNew) : null;", "const body = null; // shared plans are read-only in Trade")
+    open(os.path.join(OUT_DIR, name), "w", encoding="utf-8").write(m)
+    print(f"{name} copied from OI Gold Pro (Trade adapter)")

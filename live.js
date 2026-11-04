@@ -60,8 +60,10 @@
       mode = 'live'; Tiv = Math.max((d.expTs * 1000 - now) / YEAR, 60e3 / YEAR);
       px = (k, t) => { const o = (map.get(k) || {})[t]; if (!o) return null; const b = +o.bid, a = +o.ask; if (b > 0 && a > b) { const m = (a + b) / 2; if (a - b <= Math.max(0.6, m * 0.25)) return m; } return null; };
     } else if (st.cme && st.cme.settle && st.cme.root === d.root && +st.cme.exp === +d.exp) {
-      const sm = new Map(st.cme.settle.rows.map(([k, t, v]) => [k + t, v])), t0 = settleMs(st.cme.settle.tradeDate);
-      if (t0) { mode = 'settle'; settleDate = st.cme.settle.tradeDate; Tiv = Math.max((d.expTs * 1000 - t0) / YEAR, 60e3 / YEAR); px = (k, t) => sm.get(k + t) || null; }
+      // V4.4.1: เวลาแบบเดียวกับ CME/QuikStrike (เทียบ Vol Settle แล้ว 3 สัญญา): จาก 17:00 ชิคาโกของวันเทรด → 12:30 ชิคาโกวันหมดอายุ นับตามเวลานาฬิกา (ไม่บวกชั่วโมงเปลี่ยน DST)
+      const sm = new Map(st.cme.settle.rows.map(([k, t, v]) => [k + t, v])), [sM, sD, sY] = String(st.cme.settle.tradeDate).split('/').map(Number), e = String(d.exp);
+      const Ts = sY ? (Date.UTC(+e.slice(0, 4), +e.slice(4, 6) - 1, +e.slice(6, 8), 12, 30) - Date.UTC(sY, sM - 1, sD, 17, 0)) / YEAR : null;
+      if (Ts > 0) { mode = 'settle'; settleDate = st.cme.settle.tradeDate; Tiv = Math.max(Ts, 60e3 / YEAR); px = (k, t) => sm.get(k + t) || null; }
       ks = [...new Set([...ks, ...st.cme.settle.rows.map(r => r[0])])].sort((a, b) => a - b);
     }
     if (!mode) return null;
@@ -211,7 +213,7 @@
   }
   setTimeout(poll, 2500);
   st.poll = poll; // ให้ปุ่ม ⟳ เรียกดึงข้อมูลสดทันที
-  setInterval(poll, 60000);
+  setInterval(poll, 30000); // V4.4.2: Worker ดึงข้อมูลทุก 1 นาที → โหลดทุก 30 วินาที (IV บนกราฟอัปเดตทุก ~1 นาที)
   // ชีตโหลดเสร็จหลังข้อมูลสด หรือโหลดชีตใหม่ (oi ถูกสร้างใหม่): คำนวณซ้ำ
   setInterval(() => {
     if (!st.d || !O.cfgData) return;
@@ -288,7 +290,7 @@
         const sig = (b, sl, lab) => { const v = b + sl, n = b - sl; if (v >= 10 && Math.abs(n) >= Math.max(5, v * 0.2)) { parts.push([lab, lab === 'C' ? C('--call') : C('--put'), 0]); parts.push([n > 0 ? '▲' : '▼', n > 0 ? C('--call') : C('--put'), 4]); } }; // C เขียว P แดง · ▲ เขียว ▼ แดง
         sig(s.bc, s.sc, 'C'); sig(s.bp, s.sp, 'P');
         const v = s.vc + s.vp, o = s.c + s.p;
-        if (hot(s, vMax)) parts.push(['🔥', '#fff', 4]);
+        // V4.9.28: ผู้ใช้ไม่เอาไอคอน 🔥 บนกราฟ (ยังดู 'เงินใหม่' ได้ในหน้าแดช)
         if (!parts.length) return;
         const L = r && oi.maxOI ? barMax * Math.max(r.c, r.p) / oi.maxOI : 0;
         const wAll = parts.reduce((a, [t, , g]) => a + ctx.measureText(t).width + g, 0);
@@ -300,15 +302,19 @@
     // 3) ป้ายสถานะมุมซ้ายบน
     const badges = [];
     const gm = oi && oi.gmf ? oi.gmf.find(g => g.lab === 'gmf M') : null;
-    if (gm && O.lastClose !== null) badges.push(O.lastClose + G() >= gm.p ? ['γ+ เหนือFlip', C('--call')] : ['γ− ใต้Flip', C('--put')]);
+    // V4.4.3: ผู้ใช้ขอเอาป้ายนี้ออก
+    if (false && gm && O.lastClose !== null) badges.push(O.lastClose + G() >= gm.p ? ['γ+ เหนือFlip', C('--call')] : ['γ− ใต้Flip', C('--put')]);
     const cot = window.OICot;
-    if (cot && cot.bias !== undefined) badges.push(cot.bias > 0 ? ['COT↑', C('--call')] : cot.bias < 0 ? ['COT↓', C('--put')] : ['COT→', C('--gold')]);
+    // V4.4.3: ผู้ใช้ขอเอาป้ายนี้ออก
+    if (false && cot && cot.bias !== undefined) badges.push(cot.bias > 0 ? ['COT↑', C('--call')] : cot.bias < 0 ? ['COT↓', C('--put')] : ['COT→', C('--gold')]);
     if (c && c.skew !== null) badges.push(c.skew > 1.5 ? ['😨Put skew', C('--put')] : c.skew < -1.5 ? ['🤑Call skew', C('--call')] : ['⚖️Skew กลาง', C('--muted')]);
     if (c && c.em) badges.push([`EM ±${c.em.toFixed(1)}`, '#9aa7ff']);
     if (st.err && !c) badges.push(['ข้อมูลสดไม่ได้', C('--muted')]);
     else if (c && !c.match) badges.push([`สด ${c.root} ≠ ชีต ${c.cfgC || '–'}`, C('--muted')]);
     // ป้ายจากอินดี้อื่น (เช่น dealer.js) → [ข้อความ, สี, key สำหรับแตะ]
-    (window.OIBadgeExtra || []).forEach(f => { try { const x = f(); if (x) { if (x[4] === 'first') badges.unshift(x); else badges.push(x); } } catch (e) {} }); // [ข้อความ, สี, key, พื้นหลัง, 'first' = ขึ้นหน้าสุด]
+    { const first = []; (window.OIBadgeExtra || []).forEach(f => { try { const x = f(); if (x) { if (x[4] === 'first') first.push(x); else badges.push(x); } } catch (e) {} }); badges.unshift(...first); }
+    // V4.5.2: ลำดับที่ผู้ใช้กำหนด: ⚠️ Squeeze (เมื่อมีสัญญาณ) → Dealer → IV → OI Divergence (High/Low + OI) → HV (🌡) → ที่เหลือตามเดิม
+    { const ORD = ['squeeze', 'dealer', 'iv', 'oidiv', 'volreg'], rk = x => { const i = ORD.indexOf(x[2]); return i < 0 ? ORD.length : i; }; badges.splice(0, badges.length, ...badges.map((x, i) => [x, i]).sort((a, b) => rk(a[0]) - rk(b[0]) || a[1] - b[1]).map(z => z[0])); } // V4.5.0: ป้าย 'first' หลายอันเรียงตามลำดับโหลด // [ข้อความ, สี, key, พื้นหลัง, 'first' = ขึ้นหน้าสุด]
     // V3.5.7: ป้ายสถานะอยู่ในแถบของตัวเองเหนือกราฟ (เดิมวาดทับกราฟ ทำให้ซ้อนกับป้ายราคา/OI มุมซ้ายบน)
     const wrap = document.getElementById('wrap');
     if (wrap) {
