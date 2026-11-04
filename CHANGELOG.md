@@ -23,6 +23,13 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Trade V0.10.02 — 2026-11-04 — ChatGPT (ฐาน OI Gold Pro V4.9.28)
+- ไฟล์: index.html, live.js, bigtrade.js, ivbadge.js, dash.js, tools/port.py, tools/test-port.mjs; เพิ่ม retail.js, trap.js, dealerbox.js, volreg.js, oidiv.js, crowd.js, oistat.js
+- แก้อะไร: ย้ายกราฟ/โซน/แหล่งแท่งรวมจาก V4.9.28; เพิ่มโปรไฟล์รายย่อย (ความละเอียด/ช่วงย้อนหลัง), กับดัก, กรอบดีลเลอร์, HV/IV/SD, OI Divergence และการ์ด OI/COT/ความผันผวนในแดชเทรด; ใส่ cache version ให้ทุก script/style
+- แก้ adapter: คง GC_WORKER ที่ port เดิมลบทิ้ง; แปลง historical perp–GC basis เป็น perp–broker; แผนกับดักเก็บสเกล GC แล้วแปลงราคาเข้า/SL/TP ตอนใช้; อ่าน shared frozen plans อย่างเดียว ไม่ส่งแผนจากโบรกไปทับตัวหลัก; เอา history API ที่ไม่มี backend ใน Trade ออก
+- ทดสอบ: node tools/test-port.mjs ผ่าน; เบราว์เซอร์ข้อมูลจำลอง login/กราฟ/เมนูใหม่/BUY+SELL พร้อม SL/TP/รายการออเดอร์ ผ่าน, runtime errors=[]; ราคาโบรกและ OI offset ตรง; ไม่ส่งคำสั่งจริง
+- ขอบเขต: คง Trade ticket/Hub/EA และแดชกำไรขาดทุนเดิม; AI tray/Quant, signal_log ลงชีต, historical OI และ Web Push ยังเป็นของแอปหลักตาม port เดิม; ไม่ได้ทดสอบตลาดจริงหรือ iPhone จริง
+
 ### gcw — 2026-11-04 — Claude (คู่กับ OI Gold Pro V4.9.25)
 - ไฟล์: gcw/src/index.js
 - แก้อะไร: `/retail?win=1|2|4|8|12|24` ส่งแถว (`rows`/`fine`) ตามช่วงย้อนหลังที่เลือก (ครึ่งชีวิต = ¼ ช่วง) · คำนวณไว้ทุกนาทีใน `rt:z.win` · ไม่ใส่ `win` = แถวชุดหลัก 8 ชม. เหมือนเดิม · `zones`/`trap` ไม่เปลี่ยน
