@@ -287,7 +287,7 @@ export class OptState {
       let W = !rt && h && z0.win && z0.win[h];
       if (h && !W) {
         this.rtWC = this.rtWC || new Map(); const c = this.rtWC.get(h);
-        if (c && Date.now() - c.at < (rt ? 4.5e3 : 55e3)) W = c.W;
+        if (c && Date.now() - c.at < (rt ? 1.8e3 : 55e3)) W = c.W; // V4.9.33 เรียลไทม์ทุก 2 วิ
         else if (rt) await this.rtFlush();
         if (!W) { const now = Date.now(), all = await this.state.storage.list({ prefix: 'rb:' }), buckets = {}; for (const [k, v] of all) { const tb = +k.slice(3); if (tb >= now - RT.KEEP) buckets[tb] = v; }
           const R = retailZones(buckets, now, { WIN: h * 3600e3, HALF: h * 900e3, Z: 1.5, PEAK: 1.15, MAXZ: 6, MIN: 30 }); W = { rows: R.rows || [], fine: R.fine || [], n: R.n, hrs: R.hrs };
@@ -344,7 +344,7 @@ export class OptState {
   async rtTouch() {
     this.rtReqAt = Date.now();
     if (!this.bws) this.bwsOpen();
-    if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 5000);
+    if (!(await this.state.storage.getAlarm())) await this.state.storage.setAlarm(Date.now() + 2000);
   }
   bwsOpen() {
     this.bwsQ = this.bwsQ || []; this.bws = { pending: true }; const me = this.bws;
@@ -385,7 +385,7 @@ export class OptState {
     if (now - (this.rtReqAt || 0) < 120e3) {
       if (this.bws && this.bws.send && now - (this.bwsPing || 0) > 20e3) { try { this.bws.send('{"op":"ping"}'); this.bwsPing = now; } catch (e) {} }
       if (!this.bws || (this.bws.send && now - (this.bwsAt || 0) > 60e3) || (this.bws.pending && now - (this.rtOpenAt || now) > 30e3)) { try { this.bws && this.bws.close && this.bws.close(); } catch (e) {} this.bws = null; this.rtOpenAt = now; this.bwsOpen(); }
-      await this.state.storage.setAlarm(now + 5000);
+      await this.state.storage.setAlarm(now + 2000); // V4.9.33 เก็บไม้สดทุก 2 วิ
     } else { try { this.bws && this.bws.close && this.bws.close(); } catch (e) {} this.bws = null; } // ไม่มีใครใช้เรียลไทม์ 2 นาที → ปิดสาย กลับไปดึงทุก 1 นาทีตามเดิม
   }
   // V4.9.24: รับไม้จากมือถือ (🐋 เปิดอยู่) / เครื่องที่บ้าน (relay) สำหรับตลาดที่บล็อก Cloudflare (Binance, Bitget)
