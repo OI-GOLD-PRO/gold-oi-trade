@@ -65,8 +65,9 @@
   }
 
   // ---------- ย้อนหลังไม้ใหญ่ ----------
-  function addTrade(t, p, q, s, keepAll) {
+  function addTrade(t, p, q, s, keepAll, id) {
     sizes[sN % RING] = q; sN++;
+    if (window.OIRetailSink) window.OIRetailSink(t, p, q, s, id); // V4.9.12: 👥 โซนรายย่อย (ไม้เล็ก)
     if (src === 'bitget') { const bt = barOf(t), d = delta.get(bt) || { b: 0, s: 0 }; if (s > 0) d.b += q; else d.s += q; delta.set(bt, d); }
     if (keepAll || q >= Math.max(1, thrCache * 0.4)) trades.push({ t, p, q, s }); // เก็บเฉพาะไม้ที่มีโอกาสถึงเกณฑ์ (ประหยัดหน่วยความจำ 24 ชม.)
   }
@@ -80,6 +81,7 @@
     try {
       const keep = Math.min(Date.now() - 25 * 3600e3, sinceT || Infinity), rows = trades.slice().sort((a, b) => a.t - b.t).filter(x => x.t >= keep && x.q >= Math.max(MINQ, thrCache * 0.4)).map(x => [x.t, +x.p.toFixed(2), +x.q.toFixed(3), x.s]);
       localStorage.setItem(CKEY, JSON.stringify({ v: 2, hiId: covHi, lim: limited, since: sinceT, rows }));
+      if (window.OI_retail) OI_retail.save();
     } catch (e) {}
   }
   // ดึง 1 หน้า: โดนจำกัดความถี่ (429/418) หรือเน็ตสะดุด → รอแล้วลองใหม่ ไม่โยนทิ้งไปใช้ Bitget
@@ -98,7 +100,7 @@
       const res = (await Promise.all(batch.map(p => p.catch(e => { if (/HTTP 400/.test(e.message)) return null; throw e; })))).filter(Boolean);
       if (!res.length) { limited = true; break; }
       let oldest = Infinity;
-      res.forEach(a => a.forEach(x => { addTrade(x.T, +x.p, +x.q, x.m ? -1 : 1); if (x.T < oldest) oldest = x.T; }));
+      res.forEach(a => a.forEach(x => { addTrade(x.T, +x.p, +x.q, x.m ? -1 : 1, false, x.a); if (x.T < oldest) oldest = x.T; }));
       done += res.length;
       status = `${label} ${Math.min(99, Math.round(done / total * 100))}%`; paintInfo(); O.markDirty();
       if (oldest < since) break;
@@ -131,14 +133,14 @@
       try {
         const head = await fetchJ(`https://fapi.binance.com/fapi/v1/aggTrades?symbol=${SYM}&limit=1000`);
         if (!head.length) throw new Error('no data');
-        head.forEach(x => addTrade(x.T, +x.p, +x.q, x.m ? -1 : 1, true));
+        head.forEach(x => addTrade(x.T, +x.p, +x.q, x.m ? -1 : 1, true, x.a));
         const top = head[head.length - 1].a, low = head[0].a;
         lastId = top; lastMsg = Date.now(); thrAt = 0; thr(); O.markDirty();
         status = 'กำลังหาช่วงเวลา…'; paintInfo();
         const hiNeed = A.closed ? await idAt(A.end, top) : low - 1;
         const c = loadCache();
         let loNeed = null;
-        if (c && c.hiId && c.rows.length && (c.rows[0][0] <= since + 3600e3 || (c.lim && c.since <= since + 3600e3)) && c.hiId > top - 3000000) {
+        if (c && c.hiId && c.rows.length && !(window.OI_retail && OI_retail.cfg.on && OI_retail.needFull(since)) && (c.rows[0][0] <= since + 3600e3 || (c.lim && c.since <= since + 3600e3)) && c.hiId > top - 3000000) {
           c.rows.forEach(([t, p, q, s]) => { if (t >= since && t < head[0].T) trades.push({ t, p, q, s }); });
           loNeed = c.hiId; // มีของเดิมแล้ว ดึงเฉพาะช่วงที่ขาด
         }
@@ -172,7 +174,7 @@
     try {
       if (src === 'binance') {
         ws = new WebSocket(`wss://fstream.binance.com/ws/${SYM.toLowerCase()}@aggTrade`);
-        ws.onmessage = e => { const x = JSON.parse(e.data); if (x.e === 'aggTrade') { lastMsg = Date.now(); if (lastId && x.a > lastId + 1) gapFill(); if (x.a > lastId) { if (covHi === lastId) covHi = x.a; lastId = x.a; addTrade(x.T, +x.p, +x.q, x.m ? -1 : 1); live(x.T); } } };
+        ws.onmessage = e => { const x = JSON.parse(e.data); if (x.e === 'aggTrade') { lastMsg = Date.now(); if (lastId && x.a > lastId + 1) gapFill(); if (x.a > lastId) { if (covHi === lastId) covHi = x.a; lastId = x.a; addTrade(x.T, +x.p, +x.q, x.m ? -1 : 1, false, x.a); live(x.T); } } };
       } else {
         ws = new WebSocket('wss://ws.bitget.com/v2/ws/public');
         ws.onopen = () => { ws.send(JSON.stringify({ op: 'subscribe', args: [{ instType: 'USDT-FUTURES', channel: 'trade', instId: SYM }] })); wsTimer = setInterval(() => { try { ws.send('ping'); } catch (e) {} }, 25000); };
@@ -195,7 +197,7 @@
     try {
       for (let k = 0; k < 120; k++) {
         const a = await page(lastId + 1); if (!a.length) break;
-        a.forEach(x => { if (x.a > lastId) { if (covHi === lastId) covHi = x.a; lastId = x.a; addTrade(x.T, +x.p, +x.q, x.m ? -1 : 1); } });
+        a.forEach(x => { if (x.a > lastId) { if (covHi === lastId) covHi = x.a; lastId = x.a; addTrade(x.T, +x.p, +x.q, x.m ? -1 : 1, false, x.a); } });
         O.markDirty();
         if (a.length < 1000) break;
         await sleep(700);
