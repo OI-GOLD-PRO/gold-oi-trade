@@ -279,7 +279,17 @@ export class OptState {
     if (u.pathname === '/rtpoll') return new Response(JSON.stringify(await this.rtPoll()));
     if (u.pathname === '/rtpush') return new Response(JSON.stringify(await this.rtPush(await req.json().catch(() => null))));
     if (u.pathname === '/rt') { // V4.9.25 ?win=ชม. → ส่งแถวของช่วงนั้น (ไม่ส่งทุกช่วง ให้ไฟล์เล็ก)
-      const z0 = await this.state.storage.get('rt:z') || { zones: [], ready: false }, h = +u.searchParams.get('win'), W = z0.win && z0.win[h];
+      const z0 = await this.state.storage.get('rt:z') || { zones: [], ready: false };
+      // V4.9.31: ใส่ชั่วโมงเองได้ 0.1–24 (ต่ำกว่า 1 ชม. ทีละ 0.1) · ช่วงสำเร็จรูปใช้ที่คำนวณไว้ · ช่วงอื่นคำนวณตอนขอ แล้วจำไว้ 55 วิ
+      let h = +u.searchParams.get('win'); h = h > 0 ? Math.min(24, Math.max(0.1, h < 1 ? Math.round(h * 10) / 10 : Math.round(h))) : 0;
+      let W = h && z0.win && z0.win[h];
+      if (h && !W) {
+        this.rtWC = this.rtWC || new Map(); const c = this.rtWC.get(h);
+        if (c && Date.now() - c.at < 55e3) W = c.W;
+        else { const now = Date.now(), all = await this.state.storage.list({ prefix: 'rb:' }), buckets = {}; for (const [k, v] of all) { const tb = +k.slice(3); if (tb >= now - RT.KEEP) buckets[tb] = v; }
+          const R = retailZones(buckets, now, { WIN: h * 3600e3, HALF: h * 900e3, Z: 1.5, PEAK: 1.15, MAXZ: 6, MIN: 30 }); W = { rows: R.rows || [], fine: R.fine || [], n: R.n, hrs: R.hrs };
+          this.rtWC.set(h, { at: now, W }); if (this.rtWC.size > 30) this.rtWC.delete(this.rtWC.keys().next().value); }
+      }
       const { win, ...z } = z0; // ไม่แก้ของที่เก็บไว้ (กันค่าค้างในแคช)
       if (W) Object.assign(z, { rows: W.rows, fine: W.fine, winH: h, winN: W.n, winHrs: W.hrs });
       return new Response(JSON.stringify(z));

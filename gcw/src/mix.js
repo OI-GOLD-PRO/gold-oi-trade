@@ -22,7 +22,8 @@ export function mixBars(lists) {
 export const mixN = n => n <= 5 ? 5 : n <= 300 ? 300 : n <= 1000 ? 1000 : 1500;
 
 // ---------- โซนรายย่อย ----------
-export const RT = { BK: 15 * 60e3, NC: 16, KEEP: 26 * 3600e3, HALF: 8 * 3600e3, NEUTRAL: [0.49, 0.51] };
+export const RT = { BK: 3 * 60e3, // V4.9.31: ถัง 3 นาที (เดิม 15) ให้เลือกย้อนหลังต่ำกว่า 1 ชม. ได้ · ถังเก่า 15 นาทีอ่านร่วมได้
+  NC: 16, KEEP: 26 * 3600e3, HALF: 8 * 3600e3, NEUTRAL: [0.49, 0.51] };
 // V4.9.18: ชุดพารามิเตอร์โซน — FAST = โซนที่แสดง (ตามไม้ใหม่ไวขึ้น) · FRESH = ไม้สด 1 ชม. · TRAP = ชุดเดิมให้ 💀 กับดัก (ไม่เปลี่ยนกติกาที่ backtest ไว้)
 export const RT_FAST = { WIN: 8 * 3600e3, HALF: 2 * 3600e3, Z: 1.5, PEAK: 1.15, MAXZ: 6, MIN: 300 };
 export const RT_FRESH = { WIN: 3600e3, HALF: 3600e3, Z: 1.5, PEAK: 1.15, MAXZ: 3, MIN: 50 };
