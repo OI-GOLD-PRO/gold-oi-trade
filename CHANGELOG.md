@@ -23,6 +23,13 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.7.8 + Worker /mini — 2026-11-04 — Claude
+- ไฟล์: `mini/OIGoldProMini/OIGoldProMini.ino`, `gcw/src/index.js`
+- อาการ: จอขึ้น "no candles" บ่อย ทั้งที่ WiFi OK / data OK / price live → แท่ง Gold.F จาก TradingView ดึงไม่ได้ชั่วคราว Worker เลยส่ง `b: []` และแคชไว้ 15 วิ
+- แก้ Worker: แท่งว่าง → ลอง `tvBars` ใหม่ 1 ครั้ง · ยังว่าง → ใช้แท่งชุดล่าสุดที่เก็บใน cache `/mini/lastbars?tf=` (1 ชม.) · ตอบแบบนี้ใส่ `bst:1` และแคชแค่ 3 วิ · ได้แท่งปกติ → เก็บชุดล่าสุดทุกครั้ง
+- แก้จอ: `applyNet` ถ้าข้อมูลใหม่ไม่มีแท่งแต่ของเดิมมี (TF เดียวกัน) → เก็บแท่งเดิมไว้ อัปเดตค่าอื่นตามปกติ
+- ระวัง: endpoint อื่นของแอปไม่เปลี่ยน
+
 ### Trade V0.10.02 — 2026-11-04 — ChatGPT (ฐาน OI Gold Pro V4.9.28)
 - ไฟล์: index.html, live.js, bigtrade.js, ivbadge.js, dash.js, tools/port.py, tools/test-port.mjs; เพิ่ม retail.js, trap.js, dealerbox.js, volreg.js, oidiv.js, crowd.js, oistat.js
 - แก้อะไร: ย้ายกราฟ/โซน/แหล่งแท่งรวมจาก V4.9.28; เพิ่มโปรไฟล์รายย่อย (ความละเอียด/ช่วงย้อนหลัง), กับดัก, กรอบดีลเลอร์, HV/IV/SD, OI Divergence และการ์ด OI/COT/ความผันผวนในแดชเทรด; ใส่ cache version ให้ทุก script/style

@@ -20,7 +20,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.7.7"
+#define FW_VER "0.7.8"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -1399,7 +1399,11 @@ bool dirtyChart = false, dirtyStatus = false, dirtyHdr = false;
 void applyNet() {
   bool got = false;
   if (ndReady && xSemaphoreTake(mx, 0) == pdTRUE) {
-    if (ND.tf == tfIdx) { memcpy(&D, &ND, sizeof(Data)); got = true; }
+    if (ND.tf == tfIdx) {
+      // Worker ส่งแท่งว่างมา (แหล่งแท่งเทียนสะดุดชั่วคราว) → เก็บแท่งเดิมไว้ ไม่ขึ้น "no candles"
+      if (!ND.nb && haveData && D.tf == ND.tf && D.nb) { memcpy(ND.b, D.b, sizeof(D.b[0]) * D.nb); ND.nb = D.nb; ND.bs = D.bs; ND.lt = D.lt; }
+      memcpy(&D, &ND, sizeof(Data)); got = true;
+    }
     ndReady = false;
     xSemaphoreGive(mx);
   }

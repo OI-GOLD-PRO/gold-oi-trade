@@ -934,12 +934,20 @@ export default {
         let s = null;
         if (env && env.OPT) { s = await (await env.OPT.get(env.OPT.idFromName('main')).fetch('https://do/get')).json(); }
         const [a, b1, pp, nw] = await Promise.allSettled([tvBars('BLACKBULL:GOLD.F', tf, 120), tf === '1' ? Promise.resolve(null) : tvBars('BLACKBULL:GOLD.F', '1', 12), tvBars('BYBIT:XAUUSDT.P', '1', 12), newsEvents()]);
-        const gf = a.status === 'fulfilled' ? a.value : null, g1 = tf === '1' ? gf : (b1.status === 'fulfilled' ? b1.value : null);
+        let gf = a.status === 'fulfilled' ? a.value : null;
+        // แท่ง Gold.F ดึงไม่ได้ชั่วคราว → ลองใหม่ 1 ครั้ง · ยังไม่ได้ → ใช้แท่งชุดล่าสุดที่เก็บไว้ (1 ชม.) · ได้ → เก็บไว้
+        const lk = new Request(url.origin + '/mini/lastbars?tf=' + tf);
+        if (!gf || !gf.length) { try { gf = await tvBars('BLACKBULL:GOLD.F', tf, 120, 8000); } catch (e) { gf = null; } }
+        let stale = false;
+        if (gf && gf.length) await cache.put(lk, new Response(JSON.stringify(gf), { headers: { 'cache-control': 'public, max-age=3600' } }));
+        else { const lb = await cache.match(lk); if (lb) { try { gf = await lb.json(); stale = true; } catch (e) {} } }
+        const g1 = tf === '1' ? gf : (b1.status === 'fulfilled' ? b1.value : null);
         const nowS = Math.floor(Date.now() / 1000);
         const off = g1 && pp.status === 'fulfilled' && pp.value ? liveOffset(g1, pp.value, nowS) : null;
         const pl = miniPayload(s, gf, nowS, MINI_TF[tf], off);
         pl.nx = nw.status === 'fulfilled' ? miniNews(nw.value, Date.now()) : [];
-        const res = new Response(JSON.stringify(pl), { headers: hdr });
+        if (stale || !pl.b.length) pl.bst = 1;  // แท่งเก่าจากที่เก็บไว้/ไม่มีแท่ง: แคชสั้น ให้รอบหน้าลองใหม่
+        const res = new Response(JSON.stringify(pl), { headers: pl.bst ? { ...hdr, 'cache-control': 'public, max-age=3' } : hdr });
         await cache.put(ck, res.clone());
         return res;
       } catch (e) { return new Response(JSON.stringify({ error: String(e.message || e) }), { status: 502, headers: { ...CORS, 'content-type': 'application/json' } }); }
