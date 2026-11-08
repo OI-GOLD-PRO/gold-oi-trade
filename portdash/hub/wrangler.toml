@@ -1,0 +1,15 @@
+# MT5 Port Dashboard hub — separate Worker from oi-trade-hub (own name, own Durable Object storage)
+name = "port-hub"
+main = "src/index.js"
+compatibility_date = "2026-01-01"
+
+[[durable_objects.bindings]]
+name = "PORT"
+class_name = "Port"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Port"]
+
+# Secret (set by GitHub Actions from the repo secret PORT_ADMIN_KEY, never committed):
+#   ADMIN_KEY = the owner's login code for the dashboard

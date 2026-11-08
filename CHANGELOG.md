@@ -1,6 +1,6 @@
 # บันทึกการแก้ไข (Change Log) — gold-oi-trade
 
-repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI Gold Pro Mini (mini/) และแอปโซล่า (solar/)
+repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI Gold Pro Mini (mini/), แอปโซล่า (solar/) และแดชบอร์ดพอร์ต (portdash/)
 งานส่วนนี้ซับซ้อน ปกติ Claude เป็นคนแก้ ถ้า ChatGPT แก้ ต้องจดไว้ที่นี่ด้วย
 
 งาน OI Gold Pro Mini อ่าน [`mini/HANDOFF.md`](mini/HANDOFF.md) ก่อน
@@ -22,6 +22,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 4. ห้ามใส่ token หรือ key ในโค้ด (TELEGRAM_BOT_TOKEN เป็น Cloudflare Secret และ wrangler.toml ต้องคง `keep_vars = true`)
 
 ## รายการ
+
+### portdash v1.0.00 — 2026-11-09 — Claude (ใหม่)
+- ไฟล์: portdash/ ทั้งโฟลเดอร์ (index.html, app.js, app.css, manifest.json, icon/, hub/, ea/PortSender.mq5, tools/), .github/workflows/deploy-portdash.yml
+- แก้อะไร: แอปแดชบอร์ดพอร์ต MT5 แบบดูอย่างเดียว แยกจากแอปเทรด · Worker ใหม่ `port-hub` (DO SQLite `Port`) · EA PortSender ส่งยอด/ไม้เปิด/ประวัติดีลทั้งบัญชี (ไม่เทรด) ด้วย ConnectKey ต่อบัญชี · 5 หน้า: ภาพรวม, รายละเอียดบัญชี (equity curve, ไม้เปิด, ไม้ปิด), ปฏิทินกำไร/ขาดทุนรายวัน (เวลาไทย), สถิติ + แยกตาม magic, จัดการบัญชี/รหัสลูกค้า · ลูกค้าเห็นเฉพาะบัญชีที่กำหนด · ตั้งวันเริ่มนับต่อบัญชีได้
+- ระวัง: ต้องตั้ง repo secret `PORT_ADMIN_KEY` แล้วรัน workflow "Deploy portdash hub" · ConnectKey 1 ตัวผูก MT5 1 login (เปลี่ยนต้องกด "ย้ายไปบัญชี MT5 อื่น" ซึ่งล้างประวัติ) · EA ยังไม่ได้ compile ใน sandbox · ไม่เกี่ยวกับ tools/port.py (นั่นคือพอร์ต OI Gold Pro เข้าแอปเทรด)
 
 ### trade app v0.12.00 — 2026-11-08 — Claude (ตามหลัง OI Gold Pro V4.9.85)
 - ไฟล์: tools/port.py, index.html, osf.js (ใหม่), bigtrade/dealer/dealerbox/live/oistep/retail/trap/volreg.js (พอร์ตใหม่), tools/test-app.py

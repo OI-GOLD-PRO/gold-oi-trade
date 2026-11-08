@@ -13,6 +13,7 @@
 | `icon/` | ไอคอนหน้าจอโฮม (ลูกศรเขียวขึ้น–แดงลงไขว้กัน, OI สีทองตรงกลาง) |
 | `index.html`, `trade.js`, `trade.css` | แอปเทรด (กราฟ + OI จาก OI Gold Pro, ตั๋วออเดอร์, ลากเส้น TP/SL) |
 | `tools/` | สคริปต์ทดสอบ hub, ทดสอบแอป และสร้างไอคอน |
+| `portdash/` | แดชบอร์ดพอร์ต MT5 (ดูอย่างเดียว, รองรับบัญชีลูกค้า) — แอป + Worker `port-hub` + EA PortSender ดู [`portdash/README.md`](portdash/README.md) |
 
 เวอร์ชัน: **v0.3.00** (เฟส 2 – แอปเทรด, ฐาน OI Gold Pro V1.7.00)
 
