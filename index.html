@@ -320,7 +320,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   #zoneWait[hidden] { display: none; }
   @keyframes zwPulse { 50% { box-shadow: 0 0 22px rgba(224,180,76,.6); } }
 </style>
-<link rel="stylesheet" href="trade.css?v=0.10.02">
+<link rel="stylesheet" href="trade.css?v=0.11.00">
 </head>
 <body>
   <div id="splash" aria-label="OI Trade กำลังเปิด">
@@ -487,7 +487,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   const IS_GOLD = SYM === 'gold' || SYM === 'gcy';
   const SYMBOL = SC.perp || (SC.yahoo === 'GC' ? 'XAUTUSDT' : null); // GC(Yahoo): ใช้ perp ทองต่อปลายกราฟ
   // เวอร์ชันแอป: แก้เล็กเพิ่มเลขท้าย (2 หลัก), เพิ่มฟีเจอร์ใหญ่เพิ่มเลขกลาง
-  const APP_VER = '0.10.02'; // based on OI Gold Pro V4.9.28
+  const APP_VER = '0.11.00'; // based on OI Gold Pro V4.9.28
   { const sv = document.getElementById('spVer'); if (sv) sv.textContent = 'V' + APP_VER; }
   const ZONE_HALF = SC.zone; // ครึ่งความกว้างโซนกำแพง OI ต่อสัญลักษณ์ (ทอง ±2.5 = $5, น้ำมัน ±0.15 = $0.3)
   const TZ_SHIFT = 7 * 3600; // แสดงเวลาไทยบนแกนเวลา
@@ -2428,23 +2428,24 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   if (saved) { $('login').hidden = true; $('chips').innerHTML = '<span class="chip">กำลังตรวจสอบรหัสผ่าน…</span>'; tryLogin(saved, true); }
 })();
 </script>
-<script src="trade.js?v=0.10.02"></script>
-<script src="dash.js?v=0.10.02"></script>
-<script src="goldscalp.js?v=0.10.02"></script>
-<script src="live.js?v=0.10.02"></script>
-<script src="intraday.js?v=0.10.02"></script>
-<script src="retail.js?v=0.10.02"></script>
-<script src="bigtrade.js?v=0.10.02"></script>
-<script src="dealer.js?v=0.10.02"></script>
-<script src="ivbadge.js?v=0.10.02"></script>
-<script src="oistep.js?v=0.10.02"></script>
-<script src="squeeze.js?v=0.10.02"></script>
-<script src="cotgroups.js?v=0.10.02"></script>
-<script src="crowd.js?v=0.10.02"></script>
-<script src="oistat.js?v=0.10.02"></script>
-<script src="trap.js?v=0.10.02"></script>
-<script src="volreg.js?v=0.10.02"></script>
-<script src="oidiv.js?v=0.10.02"></script>
-<script src="dealerbox.js?v=0.10.02"></script>
+<script src="trade.js?v=0.11.00"></script>
+<script src="dash.js?v=0.11.00"></script>
+<script src="goldscalp.js?v=0.11.00"></script>
+<script src="live.js?v=0.11.00"></script>
+<script src="intraday.js?v=0.11.00"></script>
+<script src="retail.js?v=0.11.00"></script>
+<script src="bigtrade.js?v=0.11.00"></script>
+<script src="dealer.js?v=0.11.00"></script>
+<script src="ivbadge.js?v=0.11.00"></script>
+<script src="oistep.js?v=0.11.00"></script>
+<script src="squeeze.js?v=0.11.00"></script>
+<script src="cotgroups.js?v=0.11.00"></script>
+<script src="crowd.js?v=0.11.00"></script>
+<script src="oistat.js?v=0.11.00"></script>
+<script src="trap.js?v=0.11.00"></script>
+<script src="volreg.js?v=0.11.00"></script>
+<script src="oidiv.js?v=0.11.00"></script>
+<script src="dealerbox.js?v=0.11.00"></script>
+<script src="autoui.js?v=0.11.00"></script>
 </body>
 </html>

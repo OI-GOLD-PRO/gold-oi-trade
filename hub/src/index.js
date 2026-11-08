@@ -17,9 +17,10 @@
 // OI_CODE secret = a login code of OI Gold Pro, used only to READ its OI data.
 
 import { TEST_PAGE } from "./page.js";
+import { autoStep, newAuto, cleanCfg } from "./auto.js";
 import { HIST_SCHEMA, storeDeals, histCursor, computeHistory } from "./history.js";
 
-export const VERSION = "v0.4.00";
+export const VERSION = "v0.5.00";
 const OI_API = "https://script.google.com/macros/s/AKfycbwQrp29KWhUCVO0ojjS73SiLtDKe1QKx69KOOF90QQOlV3csHXqxfOGUYKYw2D6nZp0tw/exec";
 const OI_CACHE_MS = 60_000;
 let oiCache = null; // {at, body}
@@ -89,6 +90,22 @@ export async function findUser(code, env) {
   }
   return null;
 }
+
+// OI sheet data for the hub's own use (auto-trader) — same source/cache as the app proxy
+export async function oiData(env) {
+  const now = Date.now();
+  if (oiCache && now - oiCache.at < OI_CACHE_MS) return oiCache.body;
+  if (!env.OI_CODE) return null;
+  const r = await fetch(`${OI_API}?api=data&code=${encodeURIComponent(env.OI_CODE)}&t=${now}`, { redirect: "follow", signal: AbortSignal.timeout(4000) });
+  const d = await r.json();
+  if (d.error) return null;
+  delete d.auth;
+  oiCache = { at: now, body: d };
+  return d;
+}
+const GF_URL = "https://gc-yahoo.oigoldpro.workers.dev/gf";
+const NEWS_URL = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-pro/main/news.json";
+const getJson = async (u) => { const r = await fetch(u, { signal: AbortSignal.timeout(2500) }); return r.ok ? await r.json() : null; };
 
 async function oiProxy(env) {
   const now = Date.now();
@@ -210,12 +227,15 @@ export class Hub {
     this.results = [];
     this.seq = 0;
     this.sql = ctx.storage.sql || null;
+    this.auto = newAuto(); this.bars = []; this.cache = {};
     this.histVer = 0; this.histCache = null; this.lastEqAt = 0;
     if (this.sql) for (const q of HIST_SCHEMA) this.sql.exec(q);
     ctx.blockConcurrencyWhile(async () => {
       this.queue = (await ctx.storage.get("queue")) || [];
       this.results = (await ctx.storage.get("results")) || [];
       this.seq = (await ctx.storage.get("seq")) || 0;
+      const au = await ctx.storage.get("auto");
+      if (au) this.auto = { ...newAuto(), ...au, cfg: cleanCfg(au.cfg) };
     });
   }
 
@@ -227,6 +247,8 @@ export class Hub {
       if (url.pathname === "/app/state" && req.method === "GET") return this.appState(now);
       if (url.pathname === "/app/cmd" && req.method === "POST") return await this.appCmd(req, now);
       if (url.pathname === "/app/history" && req.method === "GET") return this.appHistory(now);
+      if (url.pathname === "/app/auto" && req.method === "GET") return this.appAuto(now);
+      if (url.pathname === "/app/auto" && req.method === "POST") return await this.appAutoSet(req, now);
     } catch (e) {
       return json({ ok: false, error: String(e && e.message || e) }, 500);
     }
@@ -261,6 +283,10 @@ export class Hub {
       this.stateAt = now;
     }
     let dirty = this.expire(now);
+    if (Array.isArray(body.bars) && body.bars.length) {
+      const bs = body.bars.filter((r) => Array.isArray(r) && r.length >= 5 && r.every((v) => Number.isFinite(Number(v))));
+      if (bs.length) this.bars = bs.map((r) => ({ t: Number(r[0]), open: Number(r[1]), high: Number(r[2]), low: Number(r[3]), close: Number(r[4]) }));
+    }
 
     if (Array.isArray(body.results)) {
       for (const r of body.results) {
@@ -269,6 +295,22 @@ export class Hub {
         dirty = true;
       }
     }
+
+    // 🌏 OSF auto-trader (does nothing while mode = off; queued commands go out in this very reply)
+    try {
+      const io = {
+        oi: () => oiData(this.env), news: () => getJson(NEWS_URL + "?t=" + Math.floor(now / 300000)),
+        gf: async () => { const j = await getJson(GF_URL + "?t=" + Math.floor(now / 20000)); return j && j.bars && j.bars.length ? j.bars : null; },
+        cmd: (b) => {
+          const [c, err] = validateCmd(b);
+          if (err) { this.auto.log.unshift({ at: now, kind: "warn", msg: "คำสั่งไม่ผ่าน: " + err }); return; }
+          this.seq += 1; c.id = now.toString(36) + "-" + this.seq.toString(36); c.at = now; c.auto = true;
+          this.queue.push(c); this.pushResult({ id: c.id, ok: null, status: "queued", at: now, type: c.type, auto: true });
+        },
+      };
+      if (await autoStep(this.auto, { state: this.state, bars: this.bars, cache: this.cache }, io, now)) dirty = true;
+      if (this.queue.length) dirty = true;
+    } catch (e) { this.auto.log.unshift({ at: now, kind: "warn", msg: "auto error: " + String((e && e.message) || e) }); dirty = true; }
 
     const out = ["OK"];
     // deal history + equity samples, per MT5 login
@@ -323,6 +365,22 @@ export class Hub {
     return json(body);
   }
 
+  appAuto(now) {
+    this.lastAppAt = now;
+    const a = this.auto;
+    return json({ ok: true, cfg: a.cfg, status: a.status, off: a.off, zones: a.dayLv ? a.dayLv.L : [], reg: a.reg, log: a.log.slice(0, 30), bars: this.bars.length, online: !!this.stateAt && now - this.stateAt < ONLINE_MS });
+  }
+
+  async appAutoSet(req, now) {
+    this.lastAppAt = now;
+    let b; try { b = await req.json(); } catch { return json({ ok: false, error: "bad json" }, 400); }
+    const prev = this.auto.cfg.mode, cfg = cleanCfg(b, this.auto.cfg);
+    this.auto.cfg = cfg; this.auto.at = 0;
+    this.auto.log.unshift({ at: now, kind: "cfg", msg: `ตั้งค่า: โหมด ${cfg.mode} · RR ${cfg.rr} · ${cfg.lotMode === "risk" ? "เสี่ยง " + cfg.riskPct + "%" : cfg.lots + " lot"} · สูงสุด ${cfg.maxOpen} · เพดานขาดทุน ${cfg.dailyLossPct}%` + (prev !== cfg.mode ? ` (จาก ${prev})` : "") });
+    await this.persist();
+    return this.appAuto(now);
+  }
+
   async appCmd(req, now) {
     this.lastAppAt = now;
     let b;
@@ -340,6 +398,6 @@ export class Hub {
   }
 
   async persist() {
-    await this.ctx.storage.put({ queue: this.queue, results: this.results, seq: this.seq });
+    await this.ctx.storage.put({ queue: this.queue, results: this.results, seq: this.seq, auto: this.auto });
   }
 }

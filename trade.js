@@ -308,9 +308,10 @@
     const nPos = S ? (S.positions || []).length + (S.orders || []).length : 0;
     $('acct').innerHTML = `<span class="ea ${online ? 'on' : ''}"><i></i>${online ? 'EA' : (S ? 'EA ออฟไลน์' : 'รอ EA…')}</span>` +
       (a ? `<span>Eq <b>${fx(a.equity, a.equity >= 10000 ? 0 : 2)}</b> ${esc(a.currency)}</span><span>ลอย <b class="${cls(a.profit)}">${sg(a.profit)}</b></span><span>วันนี้ <b class="${cls(S.pl && S.pl.today)}">${sg(S.pl && S.pl.today)}</b></span>` : '') +
-      `<button id="dashBtn" aria-label="แดชบอร์ด">📊</button><button id="posBtn" aria-label="ออเดอร์">📋 <b>${nPos}</b></button>`;
+      `<button id="autoBtn" aria-label="ออโต้">🤖</button><button id="dashBtn" aria-label="แดชบอร์ด">📊</button><button id="posBtn" aria-label="ออเดอร์">📋 <b>${nPos}</b></button>`;
     $('posBtn').onclick = openSheet;
     $('dashBtn').onclick = () => window.OIT_openDash && window.OIT_openDash();
+    $('autoBtn').onclick = () => window.OIT_openAuto && window.OIT_openAuto();
     if (s) { const b = document.querySelector('header .sym b'); if (b && b.textContent !== s.name) b.textContent = s.name; }
 
     // prices

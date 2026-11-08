@@ -87,6 +87,7 @@ rep_re(r'<script src="goldscalp\.js"></script>\n.*?</body>', '''<script src="tra
 <script src="volreg.js"></script>
 <script src="oidiv.js"></script>
 <script src="dealerbox.js"></script>
+<script src="autoui.js"></script>
 </body>''')
 # not ported (dashboard / AI text / luxury shell / Apps-Script data): colorize.js, quant.js, aitray.js, v33-luxury.js, historical-oi.js
 rep('<div class="row"><button data-oih="1">Historical OI Zones</button></div>', '')

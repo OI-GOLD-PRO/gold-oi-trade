@@ -23,6 +23,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### hub + ea + trade app — 2026-11-08 — Claude (trade app v0.11.00, hub v0.5.00, EA v0.4.00)
+- ไฟล์: hub/src/osf.js (ใหม่), hub/src/auto.js (ใหม่), hub/src/index.js, ea/OI_Trade_Bridge.mq5, autoui.js (ใหม่), trade.js, trade.css, index.html, tools/port.py, tools/test-osf.mjs, tools/test-auto.mjs
+- แก้อะไร: ระบบเทรดอัตโนมัติ 🌏 OI Session Fade บน hub (ทำงานเองไม่ต้องเปิดแอป) · osf.js = พอร์ต scan/levels จาก OI Gold Pro (ทดสอบเทียบผลเท่ากันด้วย tools/test-osf.mjs) · auto.js วาง BUY/SELL LIMIT+SL+TP ล่วงหน้าที่ขอบโซนเมื่อโซนถูก "ตั้งรอ" (แท่ง M1 ปิดห่าง ≥ $3) แล้วยกเลิกถ้าเงื่อนไขเปลี่ยน/ใกล้ข่าวแดง/ครบเพดานขาดทุน · EA v0.4 ส่งแท่ง M1 ที่ปิดแล้ว ~130 แท่งใน /ea/sync (`bars`) · hub: GET/POST /app/auto · แอป: ปุ่ม 🤖 ในแถบบัญชี (โหมด ปิด/ซ้อม/ส่งจริง, RR 1/1.6/5, lot คงที่หรือ risk %, ไม้พร้อมกัน, เพดานขาดทุนวัน)
+- ระวัง: ค่าเริ่มต้น = ปิด · ต้อง deploy hub (`npx wrangler deploy` ใน hub/) และ compile EA ใหม่ · เส้นโซนคิดครั้งเดียวต่อวันจากราคา Gold.F 06:00 + ชีต OI · ส่วนต่าง GC−โบรก = Gold.F − ราคา EA (มัธยฐาน) · เทสต์สดกับ Gold.F/ชีตทำใน sandbox ไม่ได้ (ถูกบล็อก) · ไม้ที่เปิดเองในบัญชีนับรวมกับ maxOpen · แตะ/เข้าไม้จริงเกิดที่โบรกเกอร์ (ต่างจากแบ็กเทสที่ดูแท่ง M1)
+
 ### Mini v0.7.8 + Worker /mini — 2026-11-04 — Claude
 - ไฟล์: `mini/OIGoldProMini/OIGoldProMini.ino`, `gcw/src/index.js`
 - อาการ: จอขึ้น "no candles" บ่อย ทั้งที่ WiFi OK / data OK / price live → แท่ง Gold.F จาก TradingView ดึงไม่ได้ชั่วคราว Worker เลยส่ง `b: []` และแคชไว้ 15 วิ

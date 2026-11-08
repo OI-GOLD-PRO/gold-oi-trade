@@ -12,7 +12,7 @@
 
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "v0.3.00"
+#define EA_VERSION "v0.4.00"
 
 input string HubURL          = "https://oi-trade-hub.YOURNAME.workers.dev"; // Hub URL (no trailing /)
 input string EAKey           = "";        // EA key (same as EA_KEY on the hub)
@@ -273,6 +273,25 @@ string BuildDeals(int &count)
 }
 
 //+------------------------------------------------------------------+
+//| Closed M1 bars (for the hub auto-trader) — sent once per new bar |
+//+------------------------------------------------------------------+
+datetime g_barsT = 0;
+string BuildBars()
+{
+   MqlRates r[];
+   ArraySetAsSeries(r, false);
+   int n = CopyRates(g_sym, PERIOD_M1, 1, 130, r);   // shift 1 = last CLOSED bar
+   if(n < 2) return "";
+   if(r[n - 1].time == g_barsT) return "";
+   g_barsT = r[n - 1].time;
+   int dg = (int)SymbolInfoInteger(g_sym, SYMBOL_DIGITS);
+   string o = "";
+   for(int i = 0; i < n; i++)
+      o += (i ? "," : "") + "[" + IntegerToString((long)r[i].time) + "," + JNum(r[i].open, dg) + "," + JNum(r[i].high, dg) + "," + JNum(r[i].low, dg) + "," + JNum(r[i].close, dg) + "]";
+   return o;
+}
+
+//+------------------------------------------------------------------+
 //| Hub sync                                                         |
 //+------------------------------------------------------------------+
 void Sync()
@@ -281,7 +300,8 @@ void Sync()
    for(int i = 0; i < ArraySize(g_results); i++) res += (i ? "," : "") + g_results[i];
    int nDeals = 0;
    string deals = BuildDeals(nDeals);
-   string body = "{\"state\":" + BuildState() + ",\"results\":[" + res + "],\"deals\":[" + deals + "]}";
+   string bars = BuildBars();
+   string body = "{\"state\":" + BuildState() + ",\"results\":[" + res + "],\"deals\":[" + deals + "]" + (bars != "" ? ",\"bars\":[" + bars + "]" : "") + "}";
    int sent = ArraySize(g_results);
 
    char data[], reply[];
