@@ -12,7 +12,7 @@
   if (!O || !O.hooks || !(O.sym === 'gold' || O.sym === 'gcy')) return;
   const $ = id => document.getElementById(id);
   const KEY = 'oit_volreg' + (O.psfx || '');
-  const cfg = { on: true, sd: true };
+  const cfg = { on: !window.OI_NEWDEV, sd: true }; // V4.9.29 เครื่องใหม่ปิดเป็นค่าเริ่ม
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} };
   const ZN = {

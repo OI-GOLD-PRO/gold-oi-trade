@@ -79,6 +79,7 @@ rep_re(r'<script src="goldscalp\.js"></script>\n.*?</body>', '''<script src="tra
 <script src="dealer.js"></script>
 <script src="ivbadge.js"></script>
 <script src="oistep.js"></script>
+<script src="osf.js"></script>
 <script src="squeeze.js"></script>
 <script src="cotgroups.js"></script>
 <script src="crowd.js"></script>
@@ -94,7 +95,7 @@ rep('<div class="row"><button data-oih="1">Historical OI Zones</button></div>', 
 # (source aitray.js = secret AI price-action tray via the owner's Apps Script: not ported)
 # single chart only: no 2nd-chart layout
 rep_re(r"  // ---- เลย์เอาต์ 2 กราฟ: กราฟที่ 2 = iframe.*?\n  let SYM = 'gold';", "  const EMBED = false, PSFX = '', LAY = '';\n  let SYM = 'gold';")
-rep_re(r"  // ---------- เลือกสัญลักษณ์ \(ทอง / น้ำมัน\) ----------\n  \$\('symName'\)\.textContent = SC\.name;\n.*?(?=  window\.OI = \{)", "  $('symName').textContent = SC.name;\n")
+rep_re(r"  // ---------- เลือกสัญลักษณ์ [^\n]*----------\n  \$\('symName'\)\.textContent = SC\.name;\n.*?(?=  const ftCache = new Map\(\);\n  window\.OI = \{)", "  $('symName').textContent = SC.name;\n")
 rep_re(r"    // ดึงข้อมูลชีตของสัญลักษณ์ใดก็ได้ \(ใช้ในแดชบอร์ด dash\.js\)\n    async fetchData\(sym\) \{.*?\n    \},\n(?=    showToast)", "")
 
 # --- gold only (V1.9+ has a symbol switcher; the trade app trades the MT5 gold symbol only) ---
@@ -296,6 +297,7 @@ def port_mod(name, subs, g=False):
         m = m.replace("  const O = window.OI;\n", "  const O = window.OI;\n" + G_DEF)
     open(os.path.join(OUT_DIR, name), "w", encoding="utf-8").write(m)
     print(f"{name} copied from OI Gold Pro")
+port_mod("osf.js", [("const KEY = 'oi_sfade'", "const KEY = 'oit_sfade'"), ("localStorage.getItem('oi_iv_hist2')", "localStorage.getItem('oit_iv_hist2')"), ("cfg.on === null ? (!!O.unlimited && !window.OI_NEWDEV) : !!cfg.on", "cfg.on === null ? true : !!cfg.on")])
 port_mod("bigtrade.js", [("const KEY = 'oi_bigtr'", "const KEY = 'oit_bigtr'"), ("const CKEY = 'oi_bigtr_cache'", "const CKEY = 'oit_bigtr_cache'")])
 port_mod("dealer.js", [("const KEY = 'oi_dealer'", "const KEY = 'oit_dealer'"), ("const P = O.lastClose; if (P === null || !isFinite(P)) return null;", "const P = O.lastClose === null ? null : O.lastClose + G(); if (P === null || !isFinite(P)) return null;")], g=True)
 port_mod("ivbadge.js", [("const HKEY = 'oi_iv_hist2'", "const HKEY = 'oit_iv_hist2'"), ("localStorage.removeItem('oi_iv_hist')", "localStorage.removeItem('oit_iv_hist')")])

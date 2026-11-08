@@ -180,6 +180,7 @@ with sync_playwright() as p:
     page.screenshot(path=f"{OUT}/9-dash2.png")
     page.wait_for_timeout(800)
     print("COT groups rendered:", page.evaluate("() => document.querySelectorAll('#dhCot .cr').length"), page.evaluate("() => (document.querySelector('#dhCot')||{}).innerText.slice(0, 240)"))
+    print("OSF indicator:", page.evaluate("() => !!window.OI_sfade && {rrs: window.OI_sfade.RRS, on: window.OI_sfade.isOn()}"))
     page.evaluate("() => document.getElementById('dhCot').scrollIntoView()"); page.wait_for_timeout(300)
     page.screenshot(path=f"{OUT}/15-cot.png")
     page.evaluate("() => document.getElementById('dhBody').scrollTop = 1400"); page.wait_for_timeout(300)

@@ -11,7 +11,7 @@
   if (!O || !O.hooks || !(O.sym === 'gold' || O.sym === 'gcy')) return;
   const $ = id => document.getElementById(id);
   const KEY = 'oit_dealer' + (O.psfx || '');
-  const cfg = { on: true };
+  const cfg = { on: !window.OI_NEWDEV }; // V4.9.29 เครื่องใหม่ปิดเป็นค่าเริ่ม
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} };
   const clamp = (x, a, b) => Math.max(a, Math.min(b, x));

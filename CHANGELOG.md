@@ -23,6 +23,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### trade app v0.12.00 — 2026-11-08 — Claude (ตามหลัง OI Gold Pro V4.9.85)
+- ไฟล์: tools/port.py, index.html, osf.js (ใหม่), bigtrade/dealer/dealerbox/live/oistep/retail/trap/volreg.js (พอร์ตใหม่), tools/test-app.py
+- แก้อะไร: อัพเดทตาม OI Gold Pro V4.9.85 · เพิ่มอินดี้ 🌏 OI Session Fade (osf.js, key `oit_sfade`, เปิดเป็นค่าเริ่มต้น) · แก้ anchor ชื่อหัวเลือกสัญลักษณ์ใน port.py และกัน `const ftCache` ไม่ให้ถูกตัดทิ้ง
+- ระวัง: แดชบอร์ด P/L ยังแยกจากแดช OI · siglog.js ยังไม่พอร์ต
+
 ### hub + ea + trade app — 2026-11-08 — Claude (trade app v0.11.00, hub v0.5.00, EA v0.4.00)
 - ไฟล์: hub/src/osf.js (ใหม่), hub/src/auto.js (ใหม่), hub/src/index.js, ea/OI_Trade_Bridge.mq5, autoui.js (ใหม่), trade.js, trade.css, index.html, tools/port.py, tools/test-osf.mjs, tools/test-auto.mjs
 - แก้อะไร: ระบบเทรดอัตโนมัติ 🌏 OI Session Fade บน hub (ทำงานเองไม่ต้องเปิดแอป) · osf.js = พอร์ต scan/levels จาก OI Gold Pro (ทดสอบเทียบผลเท่ากันด้วย tools/test-osf.mjs) · auto.js วาง BUY/SELL LIMIT+SL+TP ล่วงหน้าที่ขอบโซนเมื่อโซนถูก "ตั้งรอ" (แท่ง M1 ปิดห่าง ≥ $3) แล้วยกเลิกถ้าเงื่อนไขเปลี่ยน/ใกล้ข่าวแดง/ครบเพดานขาดทุน · EA v0.4 ส่งแท่ง M1 ที่ปิดแล้ว ~130 แท่งใน /ea/sync (`bars`) · hub: GET/POST /app/auto · แอป: ปุ่ม 🤖 ในแถบบัญชี (โหมด ปิด/ซ้อม/ส่งจริง, RR 1/1.6/5, lot คงที่หรือ risk %, ไม้พร้อมกัน, เพดานขาดทุนวัน)

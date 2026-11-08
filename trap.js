@@ -18,7 +18,7 @@
   if (!O || !O.hooks || !(O.sym === 'gold' || O.sym === 'gcy')) return;
   const $ = id => document.getElementById(id);
   const KEY = 'oit_trap' + (O.psfx || '');
-  const cfg = { on: true, pools: true };
+  const cfg = { on: !window.OI_NEWDEV, pools: true }; // V4.9.29 เครื่องใหม่ปิดเป็นค่าเริ่ม
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
   const save = () => { try { localStorage.setItem(KEY, JSON.stringify(cfg)); } catch (e) {} };
   const TFS = { '1m': 60, '5m': 300, '15m': 900, '30m': 1800, '1h': 3600, '4h': 14400, '1d': 86400 };
@@ -38,7 +38,7 @@
       fzApply(await r.json());
     } catch (e) {}
   }
-  setTimeout(fzSync, 2000); setInterval(() => { if (document.visibilityState === 'visible') fzSync(); }, 30000);
+  setTimeout(fzSync, 2000); setInterval(() => { if (document.visibilityState === 'visible' && !O.paused) fzSync(); }, 30000);
   const saveF = () => { try { const lim = Date.now() / 1000 + 7 * 3600 - 3 * 86400; Object.keys(frozen).forEach(k => { if (+k.split('|')[0] < lim) delete frozen[k]; }); localStorage.setItem(FKEY, JSON.stringify(frozen)); } catch (e) {} };
   let B = [], pools = [], setups = [], atr = 2, busy = false, lastRun = 0;
   // ราคาสปอต XAUUSD (ที่รายย่อย CFD เห็น) ≠ ราคาบนกราฟ (สเกลฟิวเจอร์ส) → basis = กราฟ − สปอต (ดึงทุก 1 นาที)
@@ -47,7 +47,7 @@
     try { const r = await (await fetch('https://api.gold-api.com/price/XAU', { cache: 'no-store' })).json(), sp = Number(r.price), px = O.lastClose;
       if (sp > 0 && px > 0 && Math.abs(px - sp) < 80) { basis = px - sp; basisAt = Date.now(); } } catch (e) {}
   }
-  setTimeout(loadSpot, 3000); setInterval(loadSpot, 60000);
+  setTimeout(loadSpot, 3000); setInterval(() => { if (!O.paused) loadSpot(); }, 60000);
 
   // ---------- ขั้น 1: แถบ SL ----------
   function buildPools(B) {

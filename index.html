@@ -14,6 +14,8 @@
 <meta name="theme-color" content="#0b1020">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+Thai:wght@400;500;600&family=JetBrains+Mono:wght@400;600&display=swap">
+<script>/* V4.9.29: เครื่องใหม่ (ไม่เคยเปิดแอป) → อินดี้ทั้งหมดปิดเป็นค่าเริ่ม เหลือแค่ OI ให้ผู้ใช้เปิดเอง · เครื่องเดิมใช้ค่าเดิม */
+(function () { try { var v = localStorage.getItem('oit_newdev'); if (v === null) { var old = false; for (var i = 0; i < localStorage.length; i++) { if (/^oi_/.test(localStorage.key(i) || '')) { old = true; break; } } v = old ? '0' : '1'; localStorage.setItem('oit_newdev', v); } window.OI_NEWDEV = v === '1'; } catch (e) { window.OI_NEWDEV = false; } })();</script>
 <script src="https://unpkg.com/lightweight-charts@4.1.3/dist/lightweight-charts.standalone.production.js"></script>
 <style>
   /* Layout: แถบหัวราคา > ชิปข้อมูล OI > ปุ่มไทม์เฟรม > กราฟเต็มจอ (มี overlay วาดแท่ง OI ทับ) */
@@ -107,7 +109,40 @@
   #splash .retry { margin-top: 10px; padding: 9px 22px; border: 0; border-radius: 10px; background: #e0b44c; color: #1a1405; font: 600 14px -apple-system, sans-serif; }
   #splash .tag { position: absolute; bottom: calc(env(safe-area-inset-bottom, 0px) + 28px); font-size: 11px; color: #8a93ad; letter-spacing: 1px; animation: spFade .5s ease 1.3s both; }
   @keyframes spFade { from { opacity: 0; } }
-  @media (prefers-reduced-motion: reduce) { #splash * { animation-duration: .01ms !important; animation-delay: 0s !important; } }
+  #splash .intro-modern, #splash .intro-cache, #splash .intro-skip { display: none; }
+  #splash.modern {
+    --intro-gold: #eac377;
+    background: radial-gradient(ellipse at 50% 34%, #192642 0%, #0b1426 43%, #070b14 79%);
+    padding: calc(env(safe-area-inset-top, 0px) + 16px) 24px calc(env(safe-area-inset-bottom, 0px) + 68px);
+  }
+  #splash.modern > .grid, #splash.modern > .logo, #splash.modern > .tag { display: none; }
+  #splash.modern .intro-modern { display: block; width: min(100%, 310px); text-align: center; }
+  #splash .intro-mark { display: block; width: 86px; height: 86px; margin: 0 auto 18px; filter: drop-shadow(0 8px 28px #d8ad5828); }
+  #splash .intro-title { margin: 0; color: #f6eedf; font: 750 clamp(26px, 7vw, 40px)/1.1 var(--sans, system-ui); letter-spacing: .08em; }
+  #splash .intro-title span { color: var(--intro-gold); }
+  #splash .intro-caption { margin: 10px 0 20px; color: #9eaec7; font: 600 10px/1.5 var(--sans, system-ui); letter-spacing: .13em; }
+  #splash .intro-chart { display: block; width: 100%; height: auto; }
+  #splash.modern .intro-cache:not([hidden]) { display: block; margin-top: 20px; color: #a6b4cb; font: 500 11px/1.4 var(--sans, system-ui); }
+  #splash.modern .px { margin-top: 6px; min-height: 0; color: var(--intro-gold); animation: none; }
+  #splash.modern .px:empty { display: none; }
+  #splash.modern .load { margin-top: 16px; width: min(62vw, 250px); animation: none; }
+  #splash.modern .ver { margin-top: 9px; color: #a6b4cb; animation: none; }
+  #splash.modern .intro-skip {
+    display: block; position: absolute; bottom: calc(env(safe-area-inset-bottom, 0px) + 12px);
+    min-height: 44px; padding: 0 18px; border: 1px solid #33415a; border-radius: 24px;
+    background: #111b2d; color: #dce4f0; font: 600 12px var(--sans, system-ui);
+  }
+  #splash.modern .intro-skip:focus-visible { outline: 2px solid var(--intro-gold); outline-offset: 3px; }
+  @media (max-height: 460px) {
+    #splash.modern .intro-chart { display: none; }
+    #splash.modern .intro-mark { width: 52px; height: 52px; margin-bottom: 8px; }
+    #splash.modern .intro-caption { margin-bottom: 6px; }
+    #splash.modern .intro-cache:not([hidden]) { margin-top: 8px; }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    #splash, #splash * { animation-duration: .01ms !important; animation-delay: 0s !important; }
+    #splash.modern .load i { animation: none; width: 100%; background: var(--intro-gold); }
+  }
   #login { position: fixed; inset: 0; z-index: 50; background: var(--bg); display: flex; align-items: center; justify-content: center; padding: 24px 16px; }
   #login .card { width: 100%; max-width: 340px; background: var(--panel); border: 1px solid var(--line); border-radius: 16px; padding: 24px 20px; text-align: center; }
   #login h1 { margin: 0 0 4px; font: 600 22px var(--mono); color: var(--gold); letter-spacing: .03em; }
@@ -126,6 +161,8 @@
   .chip.warn { border-color: #7a5a1c; color: var(--gold); }
   .tfs { display: flex; gap: 3px; padding: 0 14px 6px; }
   .tfs button { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 3px 0; font: 600 10.5px var(--mono); }
+  #tfs #footprintBtn { flex: 0 0 34px; padding: 0; line-height: 0; }
+  #footprintBtn svg { vertical-align: middle; }
   .tfs button.on { background: var(--gold); border-color: var(--gold); color: #1a1405; }
   .tfs button#oiBtn, .tfs button#indBtn, .tfs button#drawBtn { flex: none; padding: 3px 9px; font-style: italic; }
   .tfs button#oiBtn.has, .tfs button#indBtn.has, .tfs button#drawBtn.has { border-color: var(--gold); color: var(--gold); }
@@ -274,6 +311,9 @@
   .tfs button.on { background: #cba348; border-color: #e1ba5b; color: #151b28; box-shadow: inset 0 1px 0 rgba(255,255,255,.20); }
   .tfs button#oiBtn.has, .tfs button#indBtn.has, .tfs button#drawBtn.has { border-color: #b48d3b; }
   #wrap { border-top-color: #29344d; }
+  /* V4.9.67: ปุ่ม AUTO มุมล่างขวา (ช่องว่างระหว่างแกนราคากับแกนเวลา) */
+  #autoBtn { position: absolute; right: 0; bottom: 0; z-index: 7; display: flex; align-items: center; justify-content: center; padding: 0; border: 1px solid #e0b44c; border-radius: 4px; background: #e0b44c; color: #10131c; font: 800 10px var(--mono, monospace); letter-spacing: .5px; cursor: pointer; -webkit-user-select: none; user-select: none; touch-action: manipulation; }
+  #autoBtn.off { background: transparent; color: #8a93ad; border-color: #4a5370; }
   #tip { background: rgba(12,18,33,.95); border-color: #35425b; box-shadow: 0 5px 20px rgba(0,0,0,.24); }
   .legend { gap: 3px 10px; padding: 5px 12px 3px; font-size: 10px; border-top-color: #27334a; color: #909ab0; align-items: center; }
   .legend i { width: 9px; height: 3px; margin-right: 3px; }
@@ -313,14 +353,14 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
  .tfs button{min-width:34px;min-height:32px;font-size:10px;border-radius:9px}
  .legend{font-size:10px;gap:3px 8px;padding:5px 8px}
 }
-  /* V4.5.9: ป้ายรอดู PA ในโซน OI */
-  #zoneWait { position: absolute; top: 34px; left: 50%; transform: translateX(-50%); z-index: 6; pointer-events: none; text-align: center; padding: 6px 14px; border-radius: 12px; border: 1.5px solid #e0b44c; background: rgba(12,16,28,.82); color: #ffd36b; font: 600 13px/1.35 var(--sans, sans-serif); box-shadow: 0 0 14px rgba(224,180,76,.35); animation: zwPulse 2s ease-in-out infinite; white-space: nowrap; }
-  #zoneWait b { font-size: 14px; color: #ffe08a; }
-  #zoneWait small { display: block; margin-top: 2px; font: 500 10.5px var(--mono, monospace); color: #c9b8ff; }
+  /* V4.9.49: ป้ายลอยกลางบนสุดของ viewport พ้น safe area โดยไม่ดันกราฟ */
+  #zoneWait { position: fixed; left: 50%; top: calc(env(safe-area-inset-top, 0px) + 8px); transform: translateX(-50%); z-index: 45; width: max-content; max-width: calc(100vw - 24px); box-sizing: border-box; pointer-events: none; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px; padding: 8px 14px; background: rgba(35,29,14,.96); border: 1px solid #e0b44c; border-radius: 12px; box-shadow: 0 6px 22px rgba(0,0,0,.3); color: #ffd36b; font: 600 11.5px var(--sans, sans-serif); line-height: 1.4; text-align: center; white-space: normal; overflow-wrap: anywhere; animation: zwPulse 2s ease-in-out infinite; }
+  #zoneWait b { font-size: 12px; color: #ffe08a; }
+  #zoneWait small { font: 500 10px var(--mono, monospace); color: #c9b8ff; }
   #zoneWait[hidden] { display: none; }
-  @keyframes zwPulse { 50% { box-shadow: 0 0 22px rgba(224,180,76,.6); } }
+  @keyframes zwPulse { 50% { background: rgba(64,48,12,.96); border-color: #ffe08a; } }
 </style>
-<link rel="stylesheet" href="trade.css?v=0.11.00">
+<link rel="stylesheet" href="trade.css?v=0.12.00">
 </head>
 <body>
   <div id="splash" aria-label="OI Trade กำลังเปิด">
@@ -344,16 +384,62 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
         <rect class="bar b4" x="297" y="446" width="143" height="24" rx="12" fill="#e5576b"/>
       </svg>
     </div>
+    <div class="intro-modern">
+      <svg class="intro-mark" viewBox="0 0 88 88" aria-hidden="true">
+        <rect x="3" y="3" width="82" height="82" rx="23" fill="#121d30" stroke="#76613b"/>
+        <circle cx="44" cy="44" r="29" fill="none" stroke="#eac377" stroke-opacity=".3"/>
+        <path d="M24 54l10-10 8 5 17-20h8" fill="none" stroke="#eac377" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M57 29h10v10" fill="none" stroke="#eac377" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <circle cx="24" cy="54" r="3" fill="#eac377"/>
+        <path d="M28 64h32" stroke="#6f5b3b" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+      <p class="intro-title"><span>OI</span> GOLD PRO</p>
+      <p class="intro-caption">OPTIONS · OPEN INTEREST · GAMMA</p>
+      <svg class="intro-chart" viewBox="0 0 310 104" aria-hidden="true">
+        <rect x=".5" y=".5" width="309" height="103" rx="14" fill="#0a1222" stroke="#33415a"/>
+        <path d="M17 26h276M17 52h276M17 78h276M58 15v74m52-74v74m52-74v74m52-74v74m52-74v74" stroke="#273750" opacity=".65"/>
+        <defs><clipPath id="spTrailClip"><rect x="17" y="10" width="278" height="84"/></clipPath></defs>
+        <path clip-path="url(#spTrailClip)" id="spTrend" d="M18 77l32-10 27 4 34-26 29 8 37-18 27 9" fill="none" stroke="#eac377" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M17 52h276" stroke="#a898cd" stroke-opacity=".65" stroke-dasharray="3 5"/>
+        <g fill="#47c6a2"><rect id="spCallWall" x="222" y="17" width="71" height="6" rx="3" stroke="#bdfff0" stroke-width="1.5" stroke-opacity="0"/><rect x="250" y="27" width="43" height="6" rx="3"/></g>
+        <g fill="#e27387"><rect x="260" y="71" width="33" height="6" rx="3"/><rect id="spPutWall" x="231" y="81" width="62" height="6" rx="3" stroke="#ffd1dc" stroke-width="1.5" stroke-opacity="0"/></g>
+        <defs>
+          <radialGradient id="spHeadGlow">
+            <stop offset="0" stop-color="#ffe49b" stop-opacity=".95"/>
+            <stop offset=".45" stop-color="#f9c964" stop-opacity=".42"/>
+            <stop offset="1" stop-color="#eac377" stop-opacity="0"/>
+          </radialGradient>
+        </defs>
+        <g id="spTrendHead" transform="translate(204 44)">
+          <circle r="14" fill="url(#spHeadGlow)"/>
+          <circle r="3.6" fill="#ffe29a"/>
+          <circle r="1.5" fill="#fff9e7"/>
+        </g>
+      </svg>
+    </div>
+    <div class="intro-cache" id="spCacheLabel" hidden>ราคาล่าสุดที่บันทึก</div>
     <div class="px" id="spPx"></div>
     <div class="load" id="spLoad"><i></i></div>
     <div class="ver" id="spVer"></div>
     <div class="st" id="spSt"></div>
     <div class="tag">OI TRADE · MT5</div>
+    <button type="button" class="intro-skip">ข้าม Intro</button>
   </div>
   <script>
   // อินโทร: ปิดเมื่อกราฟพร้อม (เล่นอย่างน้อย 1.2 วินาที) · เกิน 2.5 วินาทีแสดงสถานะ · เกิน 6 วินาทีเข้าแอปเลย · แตะเพื่อข้าม · ออฟไลน์มีปุ่มลองใหม่
   (function () {
     var el = document.getElementById('splash'), t0 = Date.now(), closed = false, pend = '', MIN = 1200, SHOW_ST = 2500, MAX = 6000;
+    var introKey = 'oi_intro_style', introStyle = 'modern';
+    try { if (localStorage.getItem(introKey) === 'classic') introStyle = 'classic'; } catch (e) {}
+    window.OIIntro = {
+      get: function () { return introStyle; },
+      set: function (value) {
+        introStyle = value === 'classic' ? 'classic' : 'modern';
+        el.classList.toggle('modern', introStyle === 'modern');
+        try { localStorage.setItem(introKey, introStyle); } catch (e) {}
+      }
+    };
+    el.classList.toggle('modern', introStyle === 'modern');
     if (/[?&]pane=b/.test(location.search)) { el.remove(); window.OISplash = { done: function () {}, status: function () {}, start: function () {} }; return; }
     var saved = null; try { saved = localStorage.getItem('oit_code'); } catch (e) {}
     var running = false, gen = 0, st = document.getElementById('spSt');
@@ -365,15 +451,85 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
       st.innerHTML = '📡 ไม่มีอินเทอร์เน็ต<br><button class="retry" id="spRetry">ลองใหม่</button>';
       document.getElementById('spRetry').onclick = function (e) { e.stopPropagation(); location.reload(); };
     }
+    function animateTrend(g) {
+      var motion = window.matchMedia('(prefers-reduced-motion: reduce)');
+      if (motion.matches) return;
+      var line = document.getElementById('spTrend'), head = document.getElementById('spTrendHead');
+      var walls = ['spCallWall', 'spPutWall'].map(function (id) {
+        var bar = document.getElementById(id);
+        var x = Number(bar.getAttribute('x'));
+        return { bar: bar, x: x, width: Number(bar.getAttribute('width')),
+          y: Number(bar.getAttribute('y')) + Number(bar.getAttribute('height')) / 2 };
+      });
+      var interval = 125, scroll = 0.22, history = 10, elapsed = 0, lastFrame;
+      var nextWall = Math.random() < .5 ? 0 : 1;
+      var points = [68, 73, 64, 69, 61, 63, 51, 55, 45, 50, 44].map(function (y) {
+        return { x: 204, y: y };
+      });
+      function randomBetween(min, max) { return min + Math.random() * (max - min); }
+      function addLeg() {
+        var wall = walls[nextWall], from = points[points.length - 1];
+        var reach = randomBetween(20, 30);
+        var approachY = from.y + (wall.y - from.y) * randomBetween(.43, .7);
+        var reboundY = wall.y + (52 - wall.y) * randomBetween(.43, .88);
+        // The 3.6px tip core meets the left edge of the extended bar.
+        var contactX = wall.x - reach - 3.6;
+        points.push(
+          { x: contactX - randomBetween(3, 7), y: approachY, wall: wall, reach: reach * .5 },
+          { x: contactX, y: wall.y, wall: wall, reach: reach, contact: true },
+          { x: contactX - randomBetween(5, 11), y: reboundY }
+        );
+        nextWall = 1 - nextWall;
+      }
+      function frame(now) {
+        if (closed || !running || g !== gen || motion.matches) return;
+        if (lastFrame !== undefined) elapsed += Math.min(now - lastFrame, 50);
+        lastFrame = now;
+        if (elapsed >= interval) {
+          elapsed -= interval;
+          points.shift();
+        }
+        if (points.length <= history + 1) addLeg();
+        var fraction = elapsed / interval, a = points[history], b = points[history + 1];
+        var x = a.x + (b.x - a.x) * fraction, y = a.y + (b.y - a.y) * fraction;
+        var trail = [];
+        // Past prices keep their height and scroll left at a constant rate.
+        for (var i = 0; i <= history; i++) {
+          var p = points[i], pastX = p.x - ((history - i) * interval + elapsed) * scroll;
+          trail.push(pastX.toFixed(2) + ' ' + p.y.toFixed(2));
+        }
+        trail.push(x.toFixed(2) + ' ' + y.toFixed(2));
+        line.setAttribute('d', 'M' + trail.join('L'));
+        head.setAttribute('transform', 'translate(' + x.toFixed(2) + ' ' + y.toFixed(2) + ')');
+        var flash = a.contact ? 1 - fraction : 0;
+        walls.forEach(function (wall) {
+          var from = a.wall === wall ? a.reach : 0, to = b.wall === wall ? b.reach : 0;
+          var extension = from + (to - from) * fraction;
+          wall.bar.setAttribute('x', (wall.x - extension).toFixed(2));
+          wall.bar.setAttribute('width', (wall.width + extension).toFixed(2));
+          wall.bar.setAttribute('stroke-opacity', (a.wall === wall ? flash : 0).toFixed(2));
+        });
+        head.firstElementChild.setAttribute('r', (13 + 2 * Math.sin(now / 75) + 4 * flash).toFixed(2));
+        requestAnimationFrame(frame);
+      }
+      requestAnimationFrame(frame);
+    }
     // เริ่มเล่น: เปิดแอปที่ล็อกอินค้างไว้ = เล่นทันที · ยังไม่ล็อกอิน = ซ่อนไว้ แล้วเล่นหลังกดเข้าสู่ระบบสำเร็จ
     function start() {
       if (running || closed) return; running = true; t0 = Date.now(); var g = ++gen;
       el.style.display = '';
+      if (introStyle === 'modern') animateTrend(g);
       // ราคาล่าสุดจากครั้งก่อน นับขึ้นให้ดูมีชีวิต
       var px = null; try { px = JSON.parse(localStorage.getItem('oit_splash_px') || 'null'); } catch (e) {}
-      if (px && isFinite(px.p)) {
-        var pel = document.getElementById('spPx'), s0 = t0 + 1200;
-        (function step() { var now = Date.now(), k = Math.min(1, Math.max(0, (now - s0) / 600)); if (now >= s0) pel.textContent = px.n + ' ' + (px.p - 60 * Math.pow(1 - k, 3)).toFixed(2); if (k < 1 && !closed) requestAnimationFrame(step); })();
+      if (px && Number.isFinite(px.p)) {
+        var pel = document.getElementById('spPx');
+        if (introStyle === 'modern') {
+          pel.textContent = (px.n || 'XAUUSD') + ' ' + Number(px.p).toFixed(2);
+          document.getElementById('spCacheLabel').hidden = false;
+        } else {
+          var s0 = t0 + 1200;
+          (function step() { var now = Date.now(), k = Math.min(1, Math.max(0, (now - s0) / 600)); if (now >= s0) pel.textContent = px.n + ' ' + (px.p - 60 * Math.pow(1 - k, 3)).toFixed(2); if (k < 1 && !closed) requestAnimationFrame(step); })();
+        }
       }
       setTimeout(paint, SHOW_ST);
       setTimeout(function () { if (g !== gen || !running || navigator.onLine === false) return; close(); }, MAX);
@@ -416,6 +572,14 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     <button class="icon" id="bell" aria-label="เปิดหรือปิดแจ้งเตือน">🔕</button>
     <div id="alertList"></div>
     <div class="note" id="alertNote"></div>
+    <h4>หน้าจอ Intro</h4>
+    <label class="row" for="introStyle">
+      <span class="tx">รูปแบบ Intro<small>ใช้เมื่อเปิดแอปครั้งถัดไป</small></span>
+      <select id="introStyle" style="max-width:50%;min-height:36px;border:1px solid var(--line);border-radius:8px;padding:4px 8px;background:var(--panel);color:var(--fg);font:inherit">
+        <option value="modern">Gold Pulse</option>
+        <option value="classic">Classic</option>
+      </select>
+    </label>
     <h4>บัญชี</h4>
     <button class="icon" id="logout" aria-label="ออกจากระบบ">⏻ ออกจากระบบ</button>
     <div class="note" id="setVer"></div>
@@ -429,6 +593,9 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     <button data-tf="1h">H1</button>
     <button data-tf="4h">H4</button>
     <button data-tf="1d">D1</button>
+    <button type="button" id="footprintBtn" hidden title="Footprint" aria-label="สลับ Footprint กับแท่งเทียน" aria-pressed="false">
+      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M10 2v16M7 5H3m10 0h4M7 10H2m11 0h3M7 15H4m9 0h5"/></svg>
+    </button>
     <button id="oiBtn" class="has" aria-label="เปิด/ปิดข้อมูล OI บนกราฟ">OI</button>
     <button id="indBtn" aria-label="เลือกอินดิเคเตอร์">ƒx</button>
     <button id="drawBtn" aria-label="เครื่องมือวาดกราฟ">✏️</button>
@@ -436,6 +603,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   <div id="gsTbl"></div>
   <div id="wrap">
     <div id="chart"></div>
+    <button id="autoBtn" type="button" aria-label="กราฟเลื่อนตามราคาอัตโนมัติ">AUTO</button>
     <div id="reloadOv" aria-hidden="true"><div class="sp"></div><small>กำลังโหลดกราฟใหม่…</small></div>
     <canvas id="ov"></canvas>
     <div id="tip" hidden></div>
@@ -478,7 +646,6 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   const SYMS = {
     gold: { name: 'XAUUSD', label: 'ทองคำ', ico: '🥇', perp: 'XAUUSDT', dec: 2, tick: 0.01, tol: 1.5, rearm: 8, mult: 100, carry: true, zone: 2.5, note: 'GC' },
     gcy: { name: 'GC·Y', label: 'ทอง GC (Yahoo)', ico: '📉', perp: null, yahoo: 'GC', yfile: 'gcy.json', dataSym: 'gold', dec: 2, tick: 0.01, tol: 1.5, rearm: 8, mult: 100, carry: false, zone: 2.5, note: 'GC' },
-    oil: { name: 'WTI', label: 'น้ำมัน', ico: '🛢️', perp: 'CLUSDT', dec: 2, tick: 0.01, tol: 0.15, rearm: 0.8, mult: 1000, carry: false, zone: 0.15, note: 'CL' },
   };
   const EMBED = false, PSFX = '', LAY = '';
   let SYM = 'gold';
@@ -487,9 +654,15 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   const IS_GOLD = SYM === 'gold' || SYM === 'gcy';
   const SYMBOL = SC.perp || (SC.yahoo === 'GC' ? 'XAUTUSDT' : null); // GC(Yahoo): ใช้ perp ทองต่อปลายกราฟ
   // เวอร์ชันแอป: แก้เล็กเพิ่มเลขท้าย (2 หลัก), เพิ่มฟีเจอร์ใหญ่เพิ่มเลขกลาง
-  const APP_VER = '0.11.00'; // based on OI Gold Pro V4.9.28
+  const APP_VER = '0.12.00'; // based on OI Gold Pro V4.9.85
   { const sv = document.getElementById('spVer'); if (sv) sv.textContent = 'V' + APP_VER; }
-  const ZONE_HALF = SC.zone; // ครึ่งความกว้างโซนกำแพง OI ต่อสัญลักษณ์ (ทอง ±2.5 = $5, น้ำมัน ±0.15 = $0.3)
+  const ZONE_HALF = SC.zone; // ครึ่งความกว้างโซนกำแพง OI ต่อสัญลักษณ์ (ทอง ±2.5 = $5)
+  // V4.9.74: ทอง = ความกว้างโซนตามช่วงเวลา (ตรงกับ 🌏 OI Session Fade / แบ็กเทส) · Asia เช้า 06–10 ±2 · Asia สาย 10–14 ±1 · London 14–19:30 ±1.5 · NY/กลางคืน ±1.5
+  const zoneHalf = () => {
+    if (SC.note !== 'GC') return ZONE_HALF;
+    const m = Math.floor(((Date.now() / 1000 + 7 * 3600) % 86400) / 60);
+    return m >= 360 && m < 600 ? 2 : m >= 600 && m < 840 ? 1 : 1.5;
+  };
   const TZ_SHIFT = 7 * 3600; // แสดงเวลาไทยบนแกนเวลา
 
   const $ = id => document.getElementById(id);
@@ -525,6 +698,10 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     wickUpColor: C('--up'), wickDownColor: C('--down'),
     priceFormat: { type: 'price', precision: SC.dec, minMove: SC.tick },
   });
+  // V4.9.40: ล็อกซูมแนวตั้ง → เส้นอินดี้อื่นบนแกนขวา (VWAP ฯลฯ) ไม่ดึงช่วงราคาให้กว้างออก
+  let vRange = null;
+  ['addLineSeries', 'addHistogramSeries', 'addAreaSeries'].forEach(fn => { const o = chart[fn].bind(chart); chart[fn] = (opt = {}) => { const sr2 = o(opt), user = opt.autoscaleInfoProvider, onRight = !opt.priceScaleId || opt.priceScaleId === 'right';
+    try { sr2.applyOptions({ autoscaleInfoProvider: orig => (vRange && onRight) ? null : (user ? user(orig) : orig()) }); } catch (e) {} return sr2; }; });
 
   // $25 grid from $1,000 below through $1,000 above the live gold price.
   const quarterGridLines = [];
@@ -678,6 +855,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   // ---------- overlay แท่ง OI ----------
   const ov = $('ov'), ctx = ov.getContext('2d');
   let dirty = true, lastKey = '';
+  { let zh0 = null; setInterval(() => { const z = zoneHalf(); if (z !== zh0) { zh0 = z; dirty = true; } }, 30000); } // เปลี่ยนช่วงเวลา → วาดโซนใหม่
   const overlayHooks = []; const bgHooks = []; // V4.9.20 ชั้นใต้แถบ OI // ส่วนเสริม (เช่น goldscalp.js) วาดทับกราฟได้
   window.OIHistoryZonesRedraw = () => { dirty = true; };
   window.OIHistoryZonesWide=()=>{ document.querySelector('.tfs button[data-tf="1H"]')?.click(); const b=[...document.querySelectorAll('.tfs button')].find(b=>b.textContent.trim()==='H1');b?.click();setTimeout(()=>{chart.timeScale().fitContent();dirty=true;},2500); };
@@ -871,7 +1049,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
       if (rC || rP) {
         const useC = rC && (!rP || r.c >= r.p);
         const rk = useC ? rC : rP;
-        const half = rk <= 5 ? ZONE_HALF : ZONE_HALF / 2;
+        const half = rk <= 5 ? zoneHalf() : zoneHalf() / 2;
         const rankT = Math.max(0, Math.min(1, (rk - 1) / 9));
         const wallFrom = useC ? [4,120,87] : [185,28,28], wallTo = useC ? [134,239,172] : [253,186,116];
         const wallRgb = wallFrom.map((v,i) => Math.round(v + (wallTo[i] - v) * rankT));
@@ -1215,7 +1393,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   const isVolLine = r => !!(oi && oi.topV && oi.topV.includes(r.strike)); // เส้นเหลือง Volume วันนี้ 5 อันดับ
   const alertZones = () => (oi && oi.offset !== null) ? oi.rows.filter(r => zRank(r) > 0 || isVolLine(r)) : [];
   // ขอบโซนตรงกับที่วาด: อันดับ 1-5 โซนเต็ม, 6-10 ครึ่งความกว้าง
-  const zoneEdges = r => { const k = zRank(r), h = k && k <= 5 ? ZONE_HALF : ZONE_HALF / 2; return { lo: r.price - h, hi: r.price + h }; };
+  const zoneEdges = r => { const k = zRank(r), zh = zoneHalf(), h = k && k <= 5 ? zh : zh / 2; return { lo: r.price - h, hi: r.price + h }; };
   const sessDay = () => Math.floor((Date.now() / 1000 + TZ_SHIFT - 5 * 3600) / 86400); // วันเทรดเริ่ม 05:00 น.
 
   // จำสถานะโซนไว้ตลอด: ซิงก์ชีต/ปรับ offset ทุกนาทีจะไม่รีเซ็ตสถานะ
@@ -1376,15 +1554,15 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     });
   }
 
-  // V4.5.9: ป้ายกลางกราฟ "รอดู PA" ค้างไว้ตลอดที่ราคาอยู่ในโซน OI/Vol (โซนเดียวกับที่แจ้งเตือน) · ออกจากโซนแล้วป้ายหายเอง
+  // V4.9.49: ป้ายลอยกลางบนสุดของจอ "รอดู PA" ค้างไว้ตลอดที่ราคาอยู่ในโซน OI/Vol (โซนเดียวกับที่แจ้งเตือน) · ออกจากโซนแล้วป้ายหายเอง
   function zoneBanner(price) {
     let el = $('zoneWait');
     const zs = price === null ? [] : alertZones().filter(r => { if (!zRank(r)) return false; const { lo, hi } = zoneEdges(r); return price >= lo && price <= hi; }); // V4.9.23: เฉพาะโซน OI (ไม่รวมเส้น Vol)
-    if (!zs.length) { if (el && !el.hidden) el.hidden = true; return; }
-    if (!el) { el = document.createElement('div'); el.id = 'zoneWait'; el.setAttribute('role', 'status'); const w = $('wrap'); if (!w) return; w.appendChild(el); }
+    if (!zs.length) { if (el) el.hidden = true; return; }
+    if (!el) { el = document.createElement('div'); el.id = 'zoneWait'; el.setAttribute('role', 'status'); document.body.appendChild(el); }
     const r = zs.sort((a, b) => (zRank(a) || 99) - (zRank(b) || 99))[0], { lo, hi } = zoneEdges(r), k = zRank(r);
     const lab = k ? (r.c >= r.p ? 'C' : 'P') + r.strike + ` อันดับ ${k}` : 'Vol ' + r.strike;
-    const html = `<b>⏳ รอดู PA เด้ง หรือ ทะลุ</b><br>อย่าเพิ่งออกออเดอร์<small>ในโซน ${lab} · ${lo.toFixed(1)}–${hi.toFixed(1)}</small>`;
+    const html = `<b>⏳ รอดู PA เด้ง หรือ ทะลุ</b><span>อย่าเพิ่งออกออเดอร์</span><small>${lab} · ${lo.toFixed(1)}–${hi.toFixed(1)}</small>`;
     if (el.dataset.h !== html) { el.dataset.h = html; el.innerHTML = html; }
     el.hidden = false;
   }
@@ -1470,6 +1648,8 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   function closeSettings() { $('setPanel').hidden = true; }
   $('setBtn').addEventListener('click', openSettings);
   $('setClose').addEventListener('click', closeSettings);
+  $('introStyle').value = window.OIIntro.get();
+  $('introStyle').addEventListener('change', e => window.OIIntro.set(e.target.value));
   $('setPanel').addEventListener('click', e => {
     if (e.target === $('setPanel')) { closeSettings(); return; }
     const sw = e.target.closest('[data-at]'); if (!sw || sw.disabled) return;
@@ -1616,6 +1796,62 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     });
   }
   let prov = null, pingTimer = null, lastBarTime = null, pollTimer = null;
+  // V4.9.34: จำมุมมองกราฟที่ผู้ใช้เลื่อน/ซูมล่าสุด (ขนาดแท่ง bs + ระยะจากแท่งล่าสุดถึงขอบขวา sp หน่วยแท่ง) → ค่าเริ่มครั้งต่อไป
+  //          แท่งใหม่เกิด → เลื่อนตามโดยคงระยะเดิม (ไม่ว่าจะเลื่อนไปซ้าย/ขวา หรือซูมไว้แค่ไหน)
+  const VKEY = 'oi_view' + PSFX; let viewUserAt = 0, viewLast = null, viewSaveT = null;
+  // V4.9.67: ปุ่ม AUTO — เปิด = กราฟเลื่อนตามราคา (คงระยะ/ซูมที่ตั้งไว้) · ปิด = กราฟค้างตรงที่เลื่อนไว้ ไม่ไหลตาม
+  let autoOn = (() => { try { return localStorage.getItem('oit_autofollow') !== '0'; } catch (e) { return true; } })();
+  function autoPaint() { const b = $('autoBtn'); if (!b) return; b.classList.toggle('off', !autoOn); b.textContent = autoOn ? 'AUTO' : 'ค้าง'; b.title = autoOn ? 'กราฟเลื่อนตามราคา (แตะเพื่อหยุด)' : 'กราฟค้างไว้ (แตะเพื่อให้เลื่อนตามราคา)';
+    try { const ts = chart.timeScale(), w = chart.priceScale('right').width(), h = ts.height(); if (w > 0 && h > 0) { b.style.width = (w - 2) + 'px'; b.style.height = (h - 3) + 'px'; b.style.right = '1px'; b.style.bottom = '1px'; } } catch (e) {} }
+  function autoSet(on) {
+    autoOn = on; try { localStorage.setItem('oit_autofollow', on ? '1' : '0'); } catch (e) {}
+    try { const ts = chart.timeScale(); ts.applyOptions({ shiftVisibleRangeOnNewBar: on });
+      if (on) { vLoad(); const V = viewGet(); if (V) { ts.applyOptions({ barSpacing: V.bs, rightOffset: V.sp }); ts.scrollToPosition(V.sp, false); } else ts.scrollToRealTime(); }
+      else chart.priceScale('right').applyOptions({ autoScale: false }); // ค้างทั้งแนวนอนและแนวตั้ง (ลากเองได้)
+    } catch (e) {}
+    autoPaint(); showToast(on ? '▶ AUTO: กราฟเลื่อนตามราคา' : '⏸ ค้างกราฟไว้ตรงนี้ (แตะ AUTO เพื่อให้เลื่อนตาม)', 2500);
+  }
+  setTimeout(() => { const b = $('autoBtn'); if (!b) return; b.addEventListener('click', e => { e.stopPropagation(); autoSet(!autoOn); }); ['pointerdown', 'touchstart'].forEach(ev => b.addEventListener(ev, e => e.stopPropagation(), { passive: true }));
+    try { chart.timeScale().applyOptions({ shiftVisibleRangeOnNewBar: autoOn }); } catch (e) {} autoPaint(); }, 0);
+  setInterval(autoPaint, 2000);
+  const viewGet = () => { try { const v = JSON.parse(localStorage.getItem(VKEY) || 'null'); return v && v.bs > 0 && isFinite(v.sp) ? v : null; } catch (e) { return null; } };
+  ['pointerdown', 'wheel', 'touchstart'].forEach(ev => chartEl.addEventListener(ev, () => { viewUserAt = Date.now(); }, { passive: true, capture: true }));
+  ['pointermove', 'touchmove'].forEach(ev => chartEl.addEventListener(ev, () => { if (Date.now() - viewUserAt < 3000) viewUserAt = Date.now(); }, { passive: true, capture: true }));
+  chart.timeScale().subscribeVisibleLogicalRangeChange(() => {
+    if (window.OI_footprint?.active || Date.now() - viewUserAt > 3000) return; // เปลี่ยนจากโปรแกรม ไม่ใช่ผู้ใช้ (รวมช่วงกราฟไหลต่อหลังปล่อยนิ้ว)
+    clearTimeout(viewSaveT); viewSaveT = setTimeout(() => { if (window.OI_footprint?.active) return; try { const ts = chart.timeScale(), V = { bs: Math.round(ts.options().barSpacing * 100) / 100, sp: Math.round(ts.scrollPosition() * 10) / 10 }; localStorage.setItem(VKEY, JSON.stringify(V)); } catch (e) {} }, 400);
+  });
+  // V4.9.40: ล็อกการซูมแนวตั้ง — ถ้าผู้ใช้ลาก/ซูมแกนราคาเอง จำช่วงราคา (ขนาดซูม) + ตำแหน่งราคาล่าสุดบนจอ (ต่อ TF)
+  //          ราคาวิ่งจนเกือบตกขอบบน/ล่าง (เหลือ 6%) → เลื่อนให้ราคาล่าสุดกลับมาที่ตำแหน่งเดิม โดยคงขนาดซูมไว้ · แตะสองครั้งที่กราฟ = ยกเลิกล็อก (กลับปรับอัตโนมัติ)
+  const VSKEY = 'oi_vspan' + PSFX; let vLock = null, vCapT = null;
+  const vAll = () => { try { return JSON.parse(localStorage.getItem(VSKEY) || '{}') || {}; } catch (e) { return {}; } };
+  const vGet = () => { const v = vAll()[tf]; return v && v.S > 0 && v.yf >= 0 && v.yf <= 1 ? v : null; };
+  const vSet = v => { try { const o = vAll(); if (v) o[tf] = v; else delete o[tf]; localStorage.setItem(VSKEY, JSON.stringify(o)); } catch (e) {} };
+  series.applyOptions({ autoscaleInfoProvider: orig => vRange ? { priceRange: { minValue: vRange.lo, maxValue: vRange.hi } } : orig() });
+  const plotH = () => chartEl.clientHeight - chart.timeScale().height();
+  // V4.9.41: ตั้งช่วงราคาแล้วกลับเป็นโหมดเลื่อนเองได้ (autoScale ปิด = ลากขึ้นลงได้) · ไม่ล็อก = ปรับอัตโนมัติ
+  const vApply = () => { try { const ps = chart.priceScale('right'); ps.applyOptions({ autoScale: false }); ps.applyOptions({ autoScale: true }); if (vLock) requestAnimationFrame(() => requestAnimationFrame(() => { try { if (vLock) ps.applyOptions({ autoScale: false }); } catch (e) {} })); } catch (e) {} };
+  const vCenter = () => { if (!vLock || lastClose === null || lastClose === undefined) return; const lo = lastClose - vLock.yf * vLock.S; vRange = { lo, hi: lo + vLock.S }; vApply(); };
+  function vCapture() { // อ่านช่วงราคาที่ผู้ใช้ซูมไว้ (ไม่รวมขอบเว้น scaleMargins)
+    try { const H = plotH(), top = series.coordinateToPrice(0), bot = series.coordinateToPrice(H); if (top === null || bot === null || !(top > bot)) return;
+      const m = chart.priceScale('right').options().scaleMargins || { top: 0.08, bottom: 0.08 }, span = top - bot, hi = top - span * m.top, lo = bot + span * m.bottom, S = hi - lo;
+      if (!(S > 0) || lastClose === null) return; vLock = { S: Math.round(S * 100) / 100, yf: Math.min(0.94, Math.max(0.06, (lastClose - lo) / S)) }; vRange = { lo, hi }; vSet(vLock); } catch (e) {} // จำอย่างเดียว ไม่แตะจอ (ผู้ใช้ยังลากต่อได้)
+  }
+  ['pointerup', 'touchend', 'wheel'].forEach(ev => chartEl.addEventListener(ev, () => { clearTimeout(vCapT); vCapT = setTimeout(() => { if (chart.priceScale('right').options().autoScale === false) vCapture(); }, 1200); }, { passive: true, capture: true })); // ลาก/ซูมแนวตั้งแล้ว → จำขนาดซูม + ตำแหน่งใหม่
+  chartEl.addEventListener('dblclick', () => { vLock = null; vRange = null; vSet(null); setTimeout(vApply, 50); }, true);
+  const vLoad = () => { vLock = vGet(); vRange = null; if (vLock) vCenter(); else vApply(); if (!autoOn) setTimeout(() => { try { if (!autoOn) chart.priceScale('right').applyOptions({ autoScale: false }); } catch (e) {} }, 400); }; // เปิดแอป/เปลี่ยน TF · V4.9.67 ปิด AUTO = ค้างแกนหลังโหลด
+  setInterval(() => {
+    if (!autoOn || lastClose === null || lastClose === undefined || Date.now() - viewUserAt < 1500 || document.visibilityState !== 'visible') return; // V4.9.67 ปิด AUTO = ไม่ดึงกลับ
+    try { const y = series.priceToCoordinate(lastClose), H = plotH(); if (y === null || !H) return;
+      if (vLock) { if (y < H * 0.06 || y > H * 0.94) vCenter(); } // ใกล้ตกขอบ → กลับตำแหน่งเดิม คงซูม
+      else if (y < 4 || y > H - 4) chart.priceScale('right').applyOptions({ autoScale: true }); // V4.9.35 (ยังไม่เคยซูมเอง)
+    } catch (e) {}
+  }, 1000);
+  setInterval(() => { // แท่งใหม่ → คงระยะเดิม
+    if (lastBarTime === null || lastBarTime === viewLast) return; const prev = viewLast; viewLast = lastBarTime;
+    if (prev === null || !autoOn || Date.now() - viewUserAt < 1500) return; const V = viewGet(); if (!V) return; // V4.9.67 ปิด AUTO = ไม่เลื่อนตาม
+    try { const ts = chart.timeScale(); if (Math.abs(ts.scrollPosition() - V.sp) > 0.5) ts.scrollToPosition(V.sp, false); } catch (e) {}
+  }, 500);
 // V4.9.15: ไม่จำแหล่งเดี่ยวที่เคยใช้แล้ว — เริ่มจากแท่งรวมเสมอ ทุกเครื่องจะได้ตรงกัน
 
   // ส่วนต่าง perp − GC เปลี่ยนไปทุกวัน (ค่าถือครอง/funding) ถ้าใช้ offset ปัจจุบันค่าเดียวกับทั้งกราฟ แท่งย้อนหลังหลายวันจะเพี้ยน
@@ -1808,10 +2044,31 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     if (changed) loadDayOpen().then(showPrice);
   }
 
+  // V4.9.80: ดึงแท่งดิบเป็นช่วงเวลา ไล่หน้าละ 1000 แท่ง (Bybit → Binance) · ใช้ทั้งแบ็กเทสในอินดี้ และกราฟ M1/M5 ช่วงเสาร์-อาทิตย์ (800 แท่งล่าสุดตกอยู่ในช่วงตลาดปิดหมด)
+  async function fetchRangeRaw(t, fromMs, toMs) {
+    if (SYMBOL !== 'XAUUSDT') return null;
+    const step = (tfSec[t] || 60) * 1000, srcs = [
+      async end => { const j = await (await fetch(`https://api.bybit.com/v5/market/kline?category=linear&symbol=${SYMBOL}&interval=${BYBIT_TF[t]}&end=${end}&limit=1000`, { cache: 'no-store' })).json(); if (j.retCode !== 0) throw new Error(j.retMsg); return j.result.list.map(k => [+k[0], +k[1], +k[2], +k[3], +k[4], +k[5] || 0]); },
+      async end => { const j = await (await fetch(`https://fapi.binance.com/fapi/v1/klines?symbol=${SYMBOL}&interval=${t}&endTime=${end}&limit=1000`, { cache: 'no-store' })).json(); if (!Array.isArray(j)) throw new Error(j.msg || 'bad'); return j.map(k => [+k[0], +k[1], +k[2], +k[3], +k[4], +k[5] || 0]); },
+    ];
+    for (const get of srcs) {
+      try {
+        const all = new Map(); let end = toMs;
+        for (let g = 0; g < 40 && end > fromMs; g++) {
+          const rows = await get(end); if (!rows.length) break;
+          rows.forEach(k => { if (k[0] >= fromMs && k[0] < toMs) all.set(k[0], k); });
+          const mn = Math.min(...rows.map(k => k[0])); if (!(mn < end)) break; end = mn - step;
+        }
+        if (all.size) return [...all.values()].sort((a, b) => a[0] - b[0]);
+      } catch (e) {}
+    }
+    return null;
+  }
+
   async function loadTF(next) {
     tf = next;
     try { localStorage.setItem('oit_tf' + PSFX, tf); } catch (e) {}
-    document.querySelectorAll('#tfs button').forEach(b => b.classList.toggle('on', b.dataset.tf === tf));
+    document.querySelectorAll('#tfs button[data-tf]').forEach(b => b.classList.toggle('on', b.dataset.tf === tf));
     $('msg').hidden = false; $('msg').textContent = 'กำลังโหลดกราฟ…';
     window.OISplash && OISplash.status('กำลังเชื่อมต่อราคา…');
     const order = prov ? [prov, ...PROVIDERS.filter(p => p !== prov)] : PROVIDERS;
@@ -1819,7 +2076,11 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     for (const p of order) {
       try {
         if (p !== order[0]) window.OISplash && OISplash.status(`สลับแหล่งราคาสำรอง (${p.name})…`);
-        const rows = (await fetchBars(p, tf, 800)).filter(k => !cmeClosed(k[0]));
+        let rows = (await fetchBars(p, tf, 800)).filter(k => !cmeClosed(k[0]));
+        if (rows.length < 50 && (tfSec[tf] || 60) <= 300) { // เสาร์-อาทิตย์: ย้อนไปเอาแท่งก่อนตลาดปิด
+          const r2 = await fetchRangeRaw(tf, Date.now() - 3.5 * 86400e3, Date.now() + 60e3);
+          if (r2) rows = r2.filter(k => !cmeClosed(k[0])).slice(-800);
+        }
         if (!rows.length) throw new Error('no data');
         rawBars = rows;
         const bars = rows.map(toBar);
@@ -1834,8 +2095,13 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
         showPrice();
         if (SC.yahoo) paintOff();
         // V4.9.26: ค่าเริ่มเว้นที่ว่างขวา ~40% ของกราฟ (แท่งล่าสุดอยู่ราวกลางจอ เห็นแถบ 👥/OI ด้านขวาไม่ทับแท่ง)
-        const room = (k = 0) => { try { const ts = chart.timeScale(), bs = ts.options().barSpacing || 6, w = ts.width() || chartEl.clientWidth; if (!w) { if (k < 20) setTimeout(() => room(k + 1), 300); return; } ts.applyOptions({ rightOffset: Math.max(8, Math.round(w * 0.4 / bs)) }); ts.scrollToRealTime(); } catch (e) {} };
+        // V4.9.34: ถ้าผู้ใช้เคยเลื่อน/ซูมเอง ใช้มุมมองล่าสุด (ขนาดแท่ง + ระยะแท่งล่าสุดถึงขอบขวา) เป็นค่าเริ่ม
+        const room = (k = 0) => { try { const ts = chart.timeScale(), w = ts.width() || chartEl.clientWidth; if (!w) { if (k < 20) setTimeout(() => room(k + 1), 300); return; }
+          if (window.OI_footprint?.active) { window.OI_footprint.fit(); viewLast = lastBarTime; return; }
+          const V = viewGet(); if (V) { ts.applyOptions({ barSpacing: V.bs, rightOffset: V.sp }); ts.scrollToPosition(V.sp, false); viewLast = lastBarTime; return; }
+          const bs = ts.options().barSpacing || 6; ts.applyOptions({ rightOffset: Math.max(8, Math.round(w * 0.4 / bs)) }); ts.scrollToRealTime(); viewLast = lastBarTime; } catch (e) {} };
         room(); // กราฟยังไม่มีขนาด (ซ่อน/ยังไม่วาง) → ลองใหม่ทุก 0.3 วิ
+        vLoad(); // V4.9.40 ซูมแนวตั้งที่ล็อกไว้ของ TF นี้
         chart.timeScale().scrollToRealTime();
         $('msg').hidden = true;
         window.OISplash && OISplash.done(lastClose, SC.name);
@@ -1848,6 +2114,30 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     $('msg').textContent = 'ดึงราคาไม่ได้จากทุกแหล่ง (' + errs.join(' / ') + ') ลองกดเปลี่ยนไทม์เฟรมอีกครั้ง';
     window.OISplash && OISplash.done();
   }
+
+  // V4.9.82: เลื่อนกราฟไปซ้ายจนเกือบสุด → โหลดแท่งเก่าเพิ่มทีละ ~1000 แท่ง (Bybit → Binance ไล่หน้า) ต่อหน้าแท่งเดิม · ทอง XAUUSD เท่านั้น · สูงสุด 30,000 แท่ง
+  let olderBusy = false, olderEnd = false, olderTF = null;
+  async function loadOlder() {
+    if (olderBusy || SYMBOL !== 'XAUUSDT' || SC.yahoo || !rawBars.length || rawBars.length >= 30000) return;
+    if (olderTF !== tf) { olderTF = tf; olderEnd = false; }
+    if (olderEnd) return;
+    olderBusy = true; const myTF = tf, step = (tfSec[tf] || 60) * 1000, first = rawBars[0][0];
+    try {
+      let rows = null;
+      for (let span = 1500; span <= 6000 && !(rows && rows.length); span *= 2) { // ข้ามช่วงตลาดปิด (เสาร์-อาทิตย์/พักรายวัน)
+        const r = await fetchRangeRaw(myTF, first - span * step, first);
+        if (myTF !== tf || !rawBars.length || rawBars[0][0] !== first) return; // เปลี่ยน TF ระหว่างโหลด
+        rows = r ? r.filter(k => k[0] < first && !cmeClosed(k[0])) : null;
+      }
+      if (!rows || !rows.length) { olderEnd = true; return; }
+      const ts = chart.timeScale(), vr = ts.getVisibleLogicalRange();
+      rawBars = rows.concat(rawBars);
+      series.setData(rawBars.map(toBar));
+      if (vr) ts.setVisibleLogicalRange({ from: vr.from + rows.length, to: vr.to + rows.length });
+      indRefresh(); dirty = true;
+    } catch (e) {} finally { olderBusy = false; }
+  }
+  try { chart.timeScale().subscribeVisibleLogicalRangeChange(r => { if (r && r.from < 30) loadOlder(); }); } catch (e) {}
 
   // V3.5.6: วาดแท่งจากข้อมูลสด/ที่ดึงมาเติม — อัปเดตเฉพาะแท่งล่าสุดหรือใหม่กว่า (snapshot บางแหล่งส่งแท่งเก่ามาด้วย)
   function applyRows(rows) {
@@ -1881,20 +2171,50 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   // กันแท่งเพี้ยนสะสม: ทุก 1 นาทีดึงแท่งล่าสุดมาทับ (เบา 30 แท่ง)
   setInterval(() => { if (prov && prov.ws && document.visibilityState !== 'hidden' && !cmeClosed(Date.now())) backfill(prov, tf); }, 60000);
 
+  // V4.9.43: แท่งรวม (/mix) ดึงเป็นรอบ ราคาขยับเป็นช่วง ๆ (ดูเหมือนค้าง) → เปิดสายสดของ Bybit (ไม่ได้ลอง Bitget) อัปเดตแท่งล่าสุดทุกไม้
+  //          แล้วให้ /mix (ค่ากลาง 3 แหล่ง) มาปรับแท่งทุก ~6 วิ · สายสดใช้แค่ราคาปิด (ไส้ขยายตาม) ไม่แทนค่าเปิด/ไส้ของแท่งรวม
+  let lws = null, lwsTimer = null, lwsPing = null, lwsAt = 0, lwsRaw = null, lwsBasis = null; // basis = ค่ากลาง /mix − ราคาสายสด (ต่างตลาดกัน ~$0–3)
+  function closeLive() { clearTimeout(lwsTimer); clearInterval(lwsPing); if (lws) { lws.onclose = null; try { lws.close(); } catch (e) {} lws = null; } }
+  function liveTick(k) {
+    const last = rawBars[rawBars.length - 1]; lwsRaw = k[4]; if (!last || !(k[4] > 0) || k[0] < last[0] || lwsBasis === null) return; // ยังไม่รู้ส่วนต่าง → รอ /mix รอบแรก
+    const c = Math.round((k[4] + lwsBasis) * 100) / 100, row = k[0] === last[0] ? [last[0], last[1], Math.max(last[2], c), Math.min(last[3], c), c, last[5]] : [k[0], last[4], Math.max(last[4], c), Math.min(last[4], c), c, 0];
+    applyRows([row]);
+  }
+  function openLive(t) {
+    closeLive(); const cands = PROVIDERS.filter(q => q.ws && (q.id === 'bybit' || q.id === 'bitget')); let idx = 0;
+    const go = () => {
+      const q = cands[idx % cands.length]; if (!q || tf !== t || prov !== MIX_PROV) return;
+      try { lws = new WebSocket(q.ws(t)); } catch (e) { return; }
+      const me = lws;
+      me.onopen = () => { try { if (q.sub) me.send(JSON.stringify(q.sub(t))); } catch (e) {} clearInterval(lwsPing); if (q.ping) lwsPing = setInterval(() => { try { me.send(q.ping); } catch (e) {} }, q.pingMs || 20000); };
+      me.onmessage = ev => { let m; try { m = JSON.parse(ev.data); } catch (e) { return; } const rows = q.msg(m, t); if (!rows || !rows.length || tf !== t) return; lwsAt = Date.now(); window.__live = { src: q.id, at: lwsAt, raw: rows[rows.length - 1][4], basis: lwsBasis }; rows.sort((a, b) => a[0] - b[0]).forEach(liveTick); showPrice(); indTick(); checkAlerts(lastClose); zoneBanner(lastClose); };
+      me.onclose = () => { clearInterval(lwsPing); if (lws !== me) return; lws = null; if (tf !== t || prov !== MIX_PROV) return; if (Date.now() - lwsAt > 30000) idx++; lwsTimer = setTimeout(go, 3000); };
+      me.onerror = () => { try { me.close(); } catch (e) {} };
+    };
+    go();
+  }
   function openWS() {
-    clearTimeout(wsTimer); clearInterval(pingTimer); clearInterval(pollTimer);
+    clearTimeout(wsTimer); clearInterval(pingTimer); clearInterval(pollTimer); closeLive();
     if (ws) { ws.onclose = null; ws.close(); }
     if (!prov) return;
     const p = prov, t = tf;
-    if (!p.ws) { // ไม่มี websocket: ดึงซ้ำเป็นระยะ (ค่าเริ่ม 30 วินาที, กราฟ Yahoo ผสม 5 วินาที)
+    if (!p.ws) {
+      if (p === MIX_PROV) openLive(t); // ไม่มี websocket: ดึงซ้ำเป็นระยะ (ค่าเริ่ม 30 วินาที, กราฟ Yahoo ผสม 5 วินาที)
       $('dot').classList.add('live');
       let polling = false;
+      let pk = 0, quiet = 0, lastC = null;
       pollTimer = setInterval(async () => {
-        if (document.visibilityState === 'hidden' || tf !== t || polling) return;
+        if (document.visibilityState === 'hidden' || paused || tf !== t || polling) return;
+        // V4.9.29: ตลาดปิด → ดึงทุก ~60 วิ · ราคาไม่ขยับ 3 รอบติด (ตลาดเงียบ) → ดึงทุก 3 รอบ (2 วิ → 6 วิ) · ราคาขยับ = กลับมาเร็วทันที
+        pk++; const liveOn = Date.now() - lwsAt < 10000; // V4.9.43 สายสดทำงาน → /mix ทุก 3 รอบ (~6 วิ) ไว้ปรับค่ากลาง
+        if (p.pollMs && p.pollMs < 5000) { if (cmeClosed(Date.now()) ? pk % Math.round(60000 / p.pollMs) : ((liveOn || quiet >= 3) && pk % 3)) return; }
         polling = true;
         try {
           const rows = (await fetchBars(p, t, p.pollN || 800)).filter(k => !cmeClosed(k[0]));
+          { const c = rows.length ? rows[rows.length - 1][4] : null; quiet = c !== null && c === lastC ? quiet + 1 : 0; lastC = c; }
           rows.forEach(k => {
+            // V4.9.43: แท่งล่าสุดจาก /mix = ค่าจริง (ค่ากลาง 3 ตลาด) → อัปเดตส่วนต่างกับสายสด ให้ราคาสดถัดไปเลื่อนตามค่ากลาง (ไม่กระโดด)
+            { const lr = rawBars[rawBars.length - 1]; if (lr && lr[0] <= k[0] && lwsRaw > 0 && Date.now() - lwsAt < 10000) { const nb = k[4] - lwsRaw; lwsBasis = lwsBasis === null ? nb : lwsBasis * 0.5 + nb * 0.5; } }
             const b = toBar(k);
             if (lastBarTime !== null && b.time < lastBarTime) return;
             series.update(b); lastBarTime = b.time; rawClose = k[4]; lastClose = rawClose - adj;
@@ -2308,9 +2628,21 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     } else { $('chg').textContent = ''; }
   }
 
+  // V4.9.29: ไม่ได้ดูกราฟ (สลับแอป หรือเปิดหน้าอื่นในแอปทับกราฟ) เกิน 20 วิ → หยุดดึงข้อมูล · กลับมาดูกราฟ = โหลดใหม่
+  let paused = false, awayMs = 0;
+  function chartSeen() {
+    if (document.visibilityState !== 'visible') return false;
+    const r = chartEl.getBoundingClientRect(); if (r.width < 10 || r.height < 10) return false;
+    const el = document.elementFromPoint(r.left + r.width / 2, r.top + r.height / 2); return !!el && $('wrap').contains(el);
+  }
+  setInterval(() => {
+    if (!started) return;
+    if (chartSeen()) { awayMs = 0; if (paused) { paused = false; loadTF(tf); document.dispatchEvent(new Event('oiresume')); } }
+    else { awayMs += 2000; if (awayMs >= 20000) paused = true; }
+  }, 2000);
   // กลับมาเปิดแอปจากหน้าจอโฮม: ต่อ websocket ใหม่และเติมแท่งที่ขาด
   document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'visible') { if (started) { loadTF(tf); loadNews(); } if (!oi && authCode) loadSheet(); keepAwake(); try { actx && actx.resume(); } catch (e) {} }
+    if (document.visibilityState === 'visible') { if (paused) { paused = false; awayMs = 0; document.dispatchEvent(new Event('oiresume')); } if (started) { loadTF(tf); loadNews(); } if (!oi && authCode) loadSheet(); keepAwake(); try { actx && actx.resume(); } catch (e) {} }
   });
 
   setInterval(() => {
@@ -2353,7 +2685,21 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     window.OISplash && OISplash.login();
     $('loginBtn').disabled = false; $('loginBtn').textContent = 'เข้าสู่ระบบ';
   }
+  // V4.9.30: ปิดอินดี้ทั้งหมดครั้งเดียวสำหรับทุกผู้ใช้ที่รหัสมีวันหมดอายุ (รหัสไม่จำกัดวันไม่แตะ) → เหลือแค่ OI ให้เปิดเอง
+  function indOffOnce(expire) {
+    try {
+      if (!expire || String(expire) >= '9999' || localStorage.getItem('oit_indoff_v1')) return false;
+      const off = k => { let c = {}; try { c = JSON.parse(localStorage.getItem(k) || '{}') || {}; } catch (e) {} c.on = false; localStorage.setItem(k, JSON.stringify(c)); };
+      ['oi_dealer', 'oi_dbox', 'oi_step3', 'oi_sfade', 'oi_retail', 'oi_trap', 'oi_volreg', 'oi_bigtr', 'oi_intra'].forEach(k => ['', '_b'].forEach(sf => off(k + sf)));
+      for (let i = 0; i < localStorage.length; i++) { const k = localStorage.key(i) || ''; if (/^oi_gs/.test(k)) off(k); }
+      ['', '_b'].forEach(sf => { let c = {}; try { c = JSON.parse(localStorage.getItem('oit_ind2' + sf) || '{}') || {}; } catch (e) {} Object.keys(c).forEach(id => { c[id] = Object.assign({}, c[id], { on: false }); }); localStorage.setItem('oit_ind2' + sf, JSON.stringify(c)); });
+      off('oih-settings');
+      localStorage.setItem('oit_indoff_v1', '1');
+      return true;
+    } catch (e) { return false; }
+  }
   function enterApp(code, expire, name) {
+    if (indOffOnce(expire)) { try { localStorage.setItem('oit_code', code); } catch (e) {} location.reload(); return; }
     authCode = code; authExpire = expire || null;
     try { localStorage.setItem('oit_code', code); } catch (e) {}
     $('login').hidden = true;
@@ -2408,13 +2754,27 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   let saved = null;
   try { saved = localStorage.getItem('oit_code'); } catch (e) {}
   $('symName').textContent = SC.name;
+  const ftCache = new Map();
   window.OI = {
-    fetchTF: async (t, n) => {
-      const order = prov ? [prov, ...PROVIDERS.filter(p => p !== prov)] : PROVIDERS;
-      for (const p of order) { try { return (await fetchBars(p, t, n)).filter(k => !cmeClosed(k[0])).map(k => Object.assign(toBar(k), { volume: k[5] || 0 })); } catch (e) {} }
-      return null;
+    // V4.9.29: แคช 15 วิ แชร์ทุกอินดี้ (เดิมแต่ละอินดี้ดึงเอง ~10 ครั้ง/นาที) · ปัดจำนวนแท่งเป็น 300/1000 · พักอยู่ = ใช้ของเดิม ไม่ดึงใหม่
+    fetchTF: async (t, n, force) => { // force = ดึงแม้พัก (เช่นกดวิเคราะห์ AI ในหน้าต่างที่ทับกราฟ)
+      const nn = n <= 300 ? 300 : n <= 1000 ? 1000 : n, k = t + '|' + nn, c = ftCache.get(k);
+      if (c && ((paused && !force) || Date.now() - c.at < 15000)) { const v = await c.p; return v ? v.slice(-n) : null; }
+      if (paused && !force) return null;
+      const pr = (async () => {
+        const order = prov ? [prov, ...PROVIDERS.filter(p => p !== prov)] : PROVIDERS;
+        for (const p of order) { try { return (await fetchBars(p, t, nn)).filter(k => !cmeClosed(k[0])).map(k => Object.assign(toBar(k), { volume: k[5] || 0 })); } catch (e) {} }
+        return null;
+      })();
+      ftCache.set(k, { at: Date.now(), p: pr });
+      const v = await pr; if (!v) ftCache.delete(k); return v ? v.slice(-n) : null;
     },
-    get tf() { return tf; }, sym: SYM, cfg: SC, sfx: SYMSFX, psfx: PSFX,
+    // V4.9.79: ดึงแท่งย้อนหลังเป็นช่วงเวลา (ไล่หน้าละ 1000 แท่ง) สำหรับแบ็กเทสในอินดี้ · Bybit → Binance · ราคาปรับ offset รอบนั้นเหมือนกราฟ
+    // V4.9.79: ดึงแท่งย้อนหลังเป็นช่วงเวลา (ไล่หน้าละ 1000 แท่ง) สำหรับแบ็กเทสในอินดี้ · ราคาปรับ offset รอบนั้นเหมือนกราฟ
+    fetchHist: async (t, fromMs, toMs) => { const rows = await fetchRangeRaw(t, fromMs, toMs); return rows ? rows.filter(k => !cmeClosed(k[0])).map(k => Object.assign(toBar(k), { volume: k[5] || 0 })) : null; },
+    get paused() { return paused; },
+    get unlimited() { return !!authCode && (!authExpire || String(authExpire) >= '9999'); }, // V4.9.32 รหัสไม่จำกัดวัน
+    get tf() { return tf; }, tzShift: TZ_SHIFT, sym: SYM, cfg: SC, sfx: SYMSFX, psfx: PSFX,
     chart, series, chartEl, hooks: overlayHooks, bgHooks,
     get oi() { return oi; }, get lastClose() { return lastClose; }, get cfgData() { return lastCfg; }, setLevels, get rawBars() { return rawBars; }, get adj() { return adj; }, get src() { return prov ? prov.id : null; }, worker: GC_WORKER, beep: () => { try { beep(); } catch (e) {} },
     showToast, hideToast, lockChart,
@@ -2428,24 +2788,25 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   if (saved) { $('login').hidden = true; $('chips').innerHTML = '<span class="chip">กำลังตรวจสอบรหัสผ่าน…</span>'; tryLogin(saved, true); }
 })();
 </script>
-<script src="trade.js?v=0.11.00"></script>
-<script src="dash.js?v=0.11.00"></script>
-<script src="goldscalp.js?v=0.11.00"></script>
-<script src="live.js?v=0.11.00"></script>
-<script src="intraday.js?v=0.11.00"></script>
-<script src="retail.js?v=0.11.00"></script>
-<script src="bigtrade.js?v=0.11.00"></script>
-<script src="dealer.js?v=0.11.00"></script>
-<script src="ivbadge.js?v=0.11.00"></script>
-<script src="oistep.js?v=0.11.00"></script>
-<script src="squeeze.js?v=0.11.00"></script>
-<script src="cotgroups.js?v=0.11.00"></script>
-<script src="crowd.js?v=0.11.00"></script>
-<script src="oistat.js?v=0.11.00"></script>
-<script src="trap.js?v=0.11.00"></script>
-<script src="volreg.js?v=0.11.00"></script>
-<script src="oidiv.js?v=0.11.00"></script>
-<script src="dealerbox.js?v=0.11.00"></script>
-<script src="autoui.js?v=0.11.00"></script>
+<script src="trade.js?v=0.12.00"></script>
+<script src="dash.js?v=0.12.00"></script>
+<script src="goldscalp.js?v=0.12.00"></script>
+<script src="live.js?v=0.12.00"></script>
+<script src="intraday.js?v=0.12.00"></script>
+<script src="retail.js?v=0.12.00"></script>
+<script src="bigtrade.js?v=0.12.00"></script>
+<script src="dealer.js?v=0.12.00"></script>
+<script src="ivbadge.js?v=0.12.00"></script>
+<script src="oistep.js?v=0.12.00"></script>
+<script src="osf.js?v=0.12.00"></script>
+<script src="squeeze.js?v=0.12.00"></script>
+<script src="cotgroups.js?v=0.12.00"></script>
+<script src="crowd.js?v=0.12.00"></script>
+<script src="oistat.js?v=0.12.00"></script>
+<script src="trap.js?v=0.12.00"></script>
+<script src="volreg.js?v=0.12.00"></script>
+<script src="oidiv.js?v=0.12.00"></script>
+<script src="dealerbox.js?v=0.12.00"></script>
+<script src="autoui.js?v=0.12.00"></script>
 </body>
 </html>
