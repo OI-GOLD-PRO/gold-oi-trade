@@ -20,7 +20,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.7.10"
+#define FW_VER "0.7.11"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -311,6 +311,12 @@ void fireAlert(const char *txt, uint16_t col, uint8_t led, int kind) {  // kind:
 
 uint16_t zoneCol(char t) { return t == 'C' ? C_CALL : t == 'P' ? C_PUT : C_GOLD; }
 
+// ครึ่งความกว้างโซนตามช่วงเวลาไทย (แบบ 🌏 OI Session Fade): Asia เช้า 06–10 ±2 · Asia สาย 10–14 ±1 · London/NY/กลางคืน ±1.5
+float sessHalf() {
+  struct tm t; if (!getLocalTime(&t, 0)) return 1.5f;
+  int m = t.tm_hour * 60 + t.tm_min;
+  return m >= 360 && m < 600 ? 2.0f : m >= 600 && m < 840 ? 1.0f : 1.5f;
+}
 void evalAlerts() {
   float P = livePrice();
   if (!haveData || !okf(P) || !D.mkt) return;
@@ -322,9 +328,18 @@ void evalAlerts() {
   float m5 = NAN;
   if (m5b && bucket != m5b && okf(m5c)) m5 = m5c;
   m5b = bucket; m5c = P;
+  // v0.7.11: เตือนเฉพาะโซน OI อันดับ 1–3 (Call หรือ Put) แบบ oi ss · กว้างตามช่วงเวลา
+  Zone tz[16]; int ntz = 0; float zh = sessHalf();
+  for (int i = 0; i < D.ns && ntz < 16; i++) {
+    Strike &q = D.s[i];
+    bool c3 = q.rc && q.rc <= 3, p3 = q.rp && q.rp <= 3;
+    if (!c3 && !p3) continue;
+    bool useC = c3 && (!p3 || q.c >= q.p);
+    tz[ntz++] = {q.k, q.k - zh, q.k + zh, useC ? 'C' : 'P', q.c, q.p};
+  }
   ZState nw[16]; int n = 0;
-  for (int i = 0; i < D.nz && n < 16; i++) {
-    Zone &z = D.z[i];
+  for (int i = 0; i < ntz && n < 16; i++) {
+    Zone &z = tz[i];
     ZState s; bool found = false;
     for (int j = 0; j < nzst; j++) if (zst[j].k == z.k) { s = zst[j]; found = true; break; }
     bool in = P >= z.lo && P <= z.hi;
@@ -549,7 +564,7 @@ void drawChart() {
   int thick = max(1, min(4, gap / 2 - 1));
   int barMax = min((int)(PW * 0.30f), 100), volMax = min((int)(PW * 0.14f), 45), padL = 1;
   // ครึ่งความกว้างโซนตามช่วงเวลาไทย: Asia เช้า 06–10 ±2 · Asia สาย 10–14 ±1 · London/NY/กลางคืน ±1.5
-  float zHalf = 1.5f; { struct tm t; if (getLocalTime(&t, 0)) { int m = t.tm_hour * 60 + t.tm_min; zHalf = m >= 360 && m < 600 ? 2.0f : m >= 600 && m < 840 ? 1.0f : 1.5f; } }
+  float zHalf = sessHalf();
   for (int i = 0; i < D.ns; i++) {
     Strike &s = D.s[i];
     int y = Y(s.k); if (y < -10 || y > hChart + 10) continue;

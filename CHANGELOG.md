@@ -23,6 +23,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.7.11 — 2026-11-09 — Claude
+- ไฟล์: `mini/OIGoldProMini/OIGoldProMini.ino`
+- แก้อะไร: แจ้งเตือนโซน (`evalAlerts`) เหลือเฉพาะโซน OI อันดับ 1–3 ของฝั่ง Call หรือ Put (จาก `D.s[].rc/rp`) แบบ 🌏 oi ss · ขอบโซน = strike ± `sessHalf()` (06–10 ±2 · 10–14 ±1 · อื่น ±1.5) · กติกาเดิม: เข้าโซน (คูลดาวน์ 1 ชม.) / ปิด M5 เลยขอบ $2 (คูลดาวน์ 30 นาที) · ย้ายการคำนวณความกว้างไปที่ `sessHalf()` ใช้ร่วมกับ `drawChart`
+- ระวัง: แถบสถานะ (IN CALL ZONE / R / S) ยังใช้โซน `z` จาก Worker เหมือนเดิม
+
 ### Mini v0.7.10 — 2026-11-09 — Claude
 - ไฟล์: `mini/OIGoldProMini/OIGoldProMini.ino`
 - แก้อะไร: โซน OI อันดับ 1–3 มีกรอบสีทอง (`C_ZFRAME` #ffd60a, `drawRect` รอบแถบโซนเต็มความกว้างกราฟ) ตามที่ผู้ใช้ขอ — ในแอปยังไม่มีกรอบนี้
