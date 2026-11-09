@@ -143,3 +143,42 @@ console.log('ALL OK');
   }
   console.log('mix/retail ok', top);
 }
+
+// OSF closed-M1 contract shared by browser and EA.
+{
+  const { strict: assert } = await import('node:assert');
+  const { advanceOsf, osfBasis, osfDay, osfLevels, osfOpen, osfSnapshot, prepareOsf } = await import('./src/osf.js');
+  const t = Date.UTC(2026, 10, 9, 7) / 1000; // London 14:00 Thai
+  const day = osfDay(t), expiry = t + 8 * 3600;
+  const levels = osfLevels([{ k: 4100, t: 'C', oi: 100, vol: 20 }, { k: 4100, t: 'P', oi: 50 }, { k: 4200, t: 'P', oi: 999 }], 4100);
+  const book = { day, expiry, root: 'G2M', basis: 8, levels, last: 0, session: '', counters: {}, bars: [], events: [] };
+  const candle = (min, low, high, close) => [t + min * 60, close - 8, high - 8, low - 8, close - 8];
+  assert.deepEqual(levels, [{ k: 4100, p: 4100, side: 'C', grade: 'A' }]);
+  assert.equal(osfBasis([candle(0, 4105, 4106, 4106), candle(1, 4105, 4106, 4106)],
+    [[t, 0, 0, 0, 4106], [t + 60, 0, 0, 0, 4106]], t + 60), 8);
+  assert.equal(osfOpen(Date.UTC(2026, 10, 9, 22, 30) / 1000), false);
+  advanceOsf(book, [candle(0, 4105, 4107, 4106)], []);
+  prepareOsf(book, []);
+  const web = osfSnapshot(book, t + 61, [], false), ea = osfSnapshot(book, t + 61, [], true);
+  assert.equal(ea.ready, 1);
+  assert.deepEqual(ea.plans, web.plans);
+  assert.deepEqual(ea.plans[0].slice(0, 8), [4100, 'C', 'A', 1, 1, 1, 4101.5, 4095.5]);
+  assert.equal(ea.until, t + 120);
+  assert.equal(osfSnapshot(book, t + 120, [], true).ready, 0);
+  assert.equal(osfSnapshot(book, t + 61, null, true).plans.length, 0);
+  const reloaded = JSON.parse(JSON.stringify(book));
+  advanceOsf(reloaded, [candle(0, 4090, 4092, 4091), candle(1, 4101.3, 4104, 4103)], []);
+  assert.equal(reloaded.bars[0][4], 4106); // Ignore revised history.
+  assert.equal(reloaded.events[0].key, ea.plans[0][8]);
+  advanceOsf(reloaded, [candle(2, 4093, 4095, 4094)], []);
+  prepareOsf(reloaded, []);
+  const second = osfSnapshot(reloaded, t + 181, [], true).plans[0];
+  assert.deepEqual(second.slice(3, 8), [-1, 2, 0, 4098.5, 4104.5]);
+  advanceOsf(reloaded, [candle(3, 4095, 4099, 4097)], [t + 180]); // Published plan stays fixed.
+  assert.equal(reloaded.events[1].key, second[8]);
+  assert.equal(reloaded.events[1].real, false);
+  advanceOsf(reloaded, [candle(4, 4105, 4107, 4106)], []);
+  prepareOsf(reloaded, [t + 300]);
+  assert.equal(osfSnapshot(reloaded, t + 301, [], true).plans[0][5], 0);
+  console.log('OSF shared plans: London touches, preserved replay, expiry, news and common IDs passed');
+}

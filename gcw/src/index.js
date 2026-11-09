@@ -1,4 +1,5 @@
 import { MIX_SRC, MIX_TF, mixBars, mixN, rtAdd, retailZones, pullTrades, RT, RT_FRESH, RT_TRAP, invUpdate } from './mix.js';
+import { advanceOsf, osfBasis, osfDay, osfLevels, osfOpen, osfSnapshot, prepareOsf } from './osf.js';
 export { mixBars, retailZones, rtAdd, RT_FAST, RT_FRESH, RT_TRAP } from './mix.js';
 import { newVapid, sendPush } from './push.js';
 import { MINI_FLASH_PAGE, MINI_MANIFEST } from './flash.js';
@@ -254,8 +255,73 @@ const RT_WINS = [1, 2, 4, 8, 12, 24]; // V4.9.25 ช่วงย้อนหล�
 
 export class OptState {
   constructor(state, env) { this.state = state; this.env = env; }
+  async osf(compact) {
+    const now = Math.floor(Date.now() / 1000), last = Math.floor(now / 60) * 60 - 60;
+    let saved = await this.state.storage.get('osf:1');
+    if (osfOpen(now) && saved?.book?.last !== last) {
+      if (!this.osfRun && (!this.osfAt || now - this.osfAt >= 8)) {
+        this.osfAt = now;
+        this.osfRun = this.refreshOsf(saved, last).catch(e => console.log('OSF', String(e))).finally(() => { this.osfRun = null; });
+      }
+      if (this.osfRun) await this.osfRun;
+      saved = await this.state.storage.get('osf:1');
+    }
+    return osfSnapshot(saved?.book, Math.floor(Date.now() / 1000), saved?.news && now - saved.news.at < 3600 ? saved.news.events : null, compact);
+  }
+  async refreshOsf(saved, last) {
+    const day = osfDay(last + 60);
+    let book = saved?.book?.day === day ? saved.book : null;
+    let news = saved?.news;
+    const newNews = !news || last - news.at > 600;
+    const size = !book || last - book.last > 240 * 60 ? 1500 : 300;
+    const [sources, gold, opt, calendar] = await Promise.all([
+      Promise.allSettled(MIX_SRC.map(s => tvBars(s, '1', size, 8000))),
+      book ? null : tvBars('BLACKBULL:GOLD.F', '1', 40, 8000),
+      book ? null : this.env.OPT.get(this.env.OPT.idFromName('main')).fetch('https://do/get').then(r => r.json()),
+      newNews ? fetch('https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-pro/main/news.json?t=' + Math.floor(last / 600))
+        .then(r => { if (!r.ok) throw Error('calendar'); return r.json(); }).catch(() => null) : null,
+    ]);
+    if (Array.isArray(calendar?.events)) news = { at: last, events: calendar.events.filter(e => e.c === 'USD' && (e.i || 'H') === 'H')
+      .map(e => Date.parse(e.date) / 1000).filter(Number.isFinite) };
+    if (!news || last - news.at >= 3600) return;
+    const rows = mixBars(sources.flatMap(r => r.status === 'fulfilled' ? [r.value] : []))
+      .filter(b => b[0] <= last && b[6] >= 2 && b.slice(1, 5).every(Number.isFinite));
+    if (rows.at(-1)?.[0] !== last) return;
+    if (!book) {
+      const basis = osfBasis(rows, gold, last);
+      const open = rows.find(b => b[0] >= day && osfOpen(b[0]));
+      if (basis === null || !open || !opt?.root || opt.expTs <= last || !(opt.updated >= last - 300)) return;
+      const levels = osfLevels(Object.values(opt.rows || {}), open[1] + basis);
+      if (!levels.length) return;
+      book = { day, basis, root: opt.root, expiry: opt.expTs, levels, last: day - 61 * 60,
+        session: '', counters: {}, bars: [], events: [] };
+    }
+    const available = new Map(rows.map(b => [b[0], b]));
+    for (let t = Math.max(day, book.last + 60); t <= last; t += 60) if (osfOpen(t) && !available.has(t)) return;
+    advanceOsf(book, rows.filter(b => b[0] > book.last && osfOpen(b[0])), news.events);
+    prepareOsf(book, news.events);
+    const storage = this.state.storage;
+    if (saved?.book && saved.book.day !== day) {
+      const days = [saved.book.day, ...((await storage.get('osf:days:1')) || [])];
+      await storage.put({ 'osf:1': { book, news }, 'osf:days:1': days.slice(0, 20), ['osf:d:' + saved.book.day]: saved.book });
+      if (days.length > 20) await storage.delete(days.slice(20).map(t => 'osf:d:' + t));
+    } else {
+      await storage.put('osf:1', { book, news });
+    }
+  }
   async fetch(req) {
     const u = new URL(req.url);
+    if (u.pathname === '/osf/v1') {
+      const day = u.searchParams.get('day'), storage = this.state.storage;
+      if (day && /^\d{10}$/.test(day)) {
+        const book = await storage.get('osf:d:' + day);
+        return book ? Response.json(osfSnapshot(book, 0, null, false)) : Response.json({}, { status: 404 });
+      }
+      if (u.searchParams.get('view') === 'history') {
+        return Response.json({ days: (await storage.get('osf:days:1')) || [] });
+      }
+      return Response.json(await this.osf(u.searchParams.get('view') === 'ea'));
+    }
     if (u.pathname === '/pushkey') return new Response(JSON.stringify({ key: (await this.vapid()).pub }));
     if (u.pathname === '/pushsub') return new Response(JSON.stringify(await this.pushSub(await req.json().catch(() => null))));
     if (u.pathname === '/pushtest') { // ส่งทดสอบเฉพาะเครื่องที่ขอ
@@ -828,6 +894,9 @@ const marketOpen = now => { const d = new Date(now), wd = d.getUTCDay(), h = d.g
 
 export default {
   async scheduled(event, env, ctx) {
+    if (env.OPT && osfOpen(Math.floor(Date.now() / 1000))) {
+      ctx.waitUntil(env.OPT.get(env.OPT.idFromName('osf-v1')).fetch('https://do/osf/v1?view=ea'));
+    }
     if (!env.OPT || !marketOpen(Date.now())) return;
     const stub = env.OPT.get(env.OPT.idFromName('main'));
     ctx.waitUntil(stub.fetch('https://do/poll'));
@@ -836,6 +905,11 @@ export default {
   async fetch(request, env) {
     if (request.method === 'OPTIONS') return new Response(null, { headers: CORS });
     const url = new URL(request.url);
+    if (url.pathname === '/osf/v1' && request.method === 'GET') {
+      if (!env?.OPT) return Response.json({}, { status: 503, headers: CORS });
+      const r = await env.OPT.get(env.OPT.idFromName('osf-v1')).fetch('https://do/osf/v1' + url.search);
+      return new Response(r.body, { status: r.status, headers: { ...CORS, 'content-type': 'application/json', 'cache-control': 'no-store' } });
+    }
     if (url.pathname === '/mix') {
       // แท่งรวม 3 แหล่ง (median) · แคชร่วม 2 วินาที → ทุกเครื่องได้ชุดเดียวกัน
       const tf = url.searchParams.get('tf') || '5m', nb = mixN(Math.max(1, +url.searchParams.get('n') || 500));
