@@ -23,6 +23,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### Mini v0.7.10 — 2026-11-09 — Claude
+- ไฟล์: `mini/OIGoldProMini/OIGoldProMini.ino`
+- แก้อะไร: โซน OI อันดับ 1–3 มีกรอบสีทอง (`C_ZFRAME` #ffd60a, `drawRect` รอบแถบโซนเต็มความกว้างกราฟ) ตามที่ผู้ใช้ขอ — ในแอปยังไม่มีกรอบนี้
+- ระวัง: เวอร์ชันเป็น 0.7.10 (verNum = 710 > 709 ใช้ OTA ได้)
+
 ### Mini v0.7.9 — 2026-11-09 — Claude
 - ไฟล์: `mini/OIGoldProMini/OIGoldProMini.ino` (เฉพาะการวาดโซนใน `drawChart`)
 - แก้อะไร: วาดโซนกำแพง OI แบบใหม่ตามแอป OI Gold Pro V4.9.86–91 / 🌏 OI Session Fade

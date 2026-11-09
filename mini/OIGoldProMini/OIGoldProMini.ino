@@ -20,7 +20,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.7.9"
+#define FW_VER "0.7.10"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -79,14 +79,14 @@ uint16_t calData[8] = {291, 3625, 281, 205, 3806, 3629, 3834, 192};  // วั�
 
 // ---------------- สี (ชุดเดียวกับแอป) ----------------
 uint16_t C_BG, C_PANEL, C_LINE, C_TEXT, C_DIM, C_GOLD, C_UP, C_DN, C_CALL, C_PUT, C_GMI, C_GMM, C_MP, C_VOLC, C_VOLP, C_EM;
-uint16_t C_ZC, C_ZP, C_ZV, C_GRID, C_QGRID;
+uint16_t C_ZC, C_ZP, C_ZV, C_GRID, C_QGRID, C_ZFRAME;
 uint16_t rgb(uint8_t r, uint8_t g, uint8_t b) { return lcd.color565(r, g, b); }
 uint16_t hex(uint32_t h) { return lcd.color565(h >> 16, (h >> 8) & 255, h & 255); }
 uint16_t blend(uint32_t a, uint32_t b, float t) {  // ผสมสี a ทับพื้น b ความเข้ม t
   return rgb(((a >> 16) & 255) * t + ((b >> 16) & 255) * (1 - t), ((a >> 8) & 255) * t + ((b >> 8) & 255) * (1 - t), (a & 255) * t + (b & 255) * (1 - t));
 }
 void initColors() {
-  C_BG = hex(0x04060a); C_PANEL = hex(0x0b0e16); C_LINE = hex(0x262c3c); C_GRID = hex(0x11151f); C_QGRID = hex(0x4a3e22); C_TEXT = hex(0xe6e9f2); C_DIM = hex(0x8a93ab);
+  C_BG = hex(0x04060a); C_PANEL = hex(0x0b0e16); C_LINE = hex(0x262c3c); C_GRID = hex(0x11151f); C_QGRID = hex(0x4a3e22); C_ZFRAME = hex(0xffd60a); C_TEXT = hex(0xe6e9f2); C_DIM = hex(0x8a93ab);
   C_GOLD = hex(0xe0b44c); C_UP = hex(0x26a69a); C_DN = hex(0xef5350);
   C_CALL = hex(0x2fbf8f); C_PUT = hex(0xe5576b); C_GMI = hex(0x22d3ee); C_GMM = hex(0xf59e0b); C_MP = hex(0xff3fb4);
   C_VOLC = hex(0x8ccaff); C_VOLP = hex(0xffb98a); C_EM = hex(0x8a93ab);
@@ -566,7 +566,10 @@ void drawChart() {
       uint32_t wc = 0; for (int j = 0; j < 3; j++) wc = (wc << 8) | (uint8_t)roundf(f0[j] + (f1[j] - f0[j]) * rt);
       int y1 = Y(s.k + zHalf), y2 = Y(s.k - zHalf);
       spr.fillRect(0, y1, PW, max(1, y2 - y1), blend(wc, 0x04060a, top3 ? 0.34f : 0.07f));
-      if (top3) { uint16_t lc = blend(wc, 0x04060a, 0.95f - 0.28f * rt); spr.drawFastHLine(0, y, PW, lc); spr.drawFastHLine(0, y + 1, PW, lc); }
+      if (top3) {
+        uint16_t lc = blend(wc, 0x04060a, 0.95f - 0.28f * rt); spr.drawFastHLine(0, y, PW, lc); spr.drawFastHLine(0, y + 1, PW, lc);
+        spr.drawRect(0, y1, PW, max(2, y2 - y1 + 1), C_ZFRAME);  // v0.7.10: กรอบทองรอบโซนอันดับ 1–3
+      }
     }
     if (s.tv) spr.drawFastHLine(0, y, PW, C_GOLD);
   }
