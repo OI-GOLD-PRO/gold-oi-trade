@@ -4,6 +4,7 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 งานส่วนนี้ซับซ้อน ปกติ Claude เป็นคนแก้ ถ้า ChatGPT แก้ ต้องจดไว้ที่นี่ด้วย
 
 งาน OI Gold Pro Mini อ่าน [`mini/HANDOFF.md`](mini/HANDOFF.md) ก่อน
+งาน 🌏 OI Session Fade (แอป / Worker `/osf/v1` / EA) อ่าน [`ea/OSF_HANDOFF.md`](ea/OSF_HANDOFF.md) ก่อน
 
 ## กติกา
 1. ก่อนแก้: pull โค้ดล่าสุด แล้วอ่านไฟล์นี้ก่อน
@@ -22,6 +23,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 4. ห้ามใส่ token หรือ key ในโค้ด (TELEGRAM_BOT_TOKEN เป็น Cloudflare Secret และ wrangler.toml ต้องคง `keep_vars = true`)
 
 ## รายการ
+
+### EA OSS v1.55 + handoff — 2026-11-09 — Claude
+- ไฟล์: ea/OI_Session_Fade.mq5 (ใหม่ใน repo, v1.55), ea/OSF_HANDOFF.md (ใหม่)
+- แก้อะไร: เก็บ EA oi ss เข้า repo · v1.55 เพิ่ม `LotMode = LOT_MONEY` + `RiskMoney` (เสียเท่ากันทุกไม้เมื่อโดน SL, แบ่งเท่ากันเมื่อแบ่ง 3 ไม้, เตือนเมื่อ lot ขั้นต่ำเกิน) และบรรทัดโหมด lot บนแผง · เขียน handoff ละเอียดของ oi ss ทั้งระบบ
+- ระวัง: EA ยังไม่ได้ compile ใน sandbox
 
 ### Mini docs — 2026-11-09 — Claude
 - ไฟล์: `mini/HANDOFF.md`
