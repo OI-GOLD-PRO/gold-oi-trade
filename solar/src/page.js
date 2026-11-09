@@ -208,7 +208,7 @@ svg{display:block;width:100%;height:auto}
     <div id="today-summary"></div>
     <section class="card"><h2>กราฟวันนี้ <span class="label">· แตะหรือลากบนกราฟเพื่อดูค่า</span></h2><div id="today-charts"></div></section>
 
-    <section class="card" id="pushcard"><h2>แจ้งเตือน <span class="label">· แบตหมด (50 V) · แบตเต็ม 100%</span></h2>
+    <section class="card" id="pushcard"><h2>แจ้งเตือน <span class="label">· แบตหมด (50 V) · แบตเต็ม 100% · เช้าเลิกใช้ไฟการไฟฟ้า</span></h2>
       <div class="label" id="pushstate" style="line-height:1.5;margin:6px 0 10px">–</div>
       <div style="display:flex;gap:8px"><button class="btn" id="pushbtn" style="margin:0;flex:1" onclick="pushToggle()">เปิดแจ้งเตือน</button><button class="btn" id="pushtest" style="margin:0;flex:1;display:none" onclick="pushTest(this)">ส่งทดสอบ</button></div>
     </section>
@@ -236,7 +236,7 @@ svg{display:block;width:100%;height:auto}
 
 <script>
 const $ = (id) => document.getElementById(id);
-const APP_VERSION = 'v2.15';
+const APP_VERSION = 'v2.16';
 document.addEventListener('DOMContentLoaded', () => { $('ver').textContent = APP_VERSION; });
 let KEY = '';
 try { KEY = localStorage.getItem('solar_key') || ''; } catch (e) {}

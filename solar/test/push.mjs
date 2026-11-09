@@ -72,3 +72,26 @@ globalThis.fetch = async () => new Response('', { status: 410 });
 await call('/api/push/test');
 assert.equal((await (await call('/api/push/key')).json()).devices, 0);
 console.log('push OK');
+
+// morning: night on grid (Line Mode, 800 W), switch to solar at 07:10 → one event with the time, %, and night kWh
+{
+  const { morningEvent } = await import('../src/push.js');
+  const { gridW } = await import('../src/calc.js');
+  const sw = Date.parse('2026-11-09T07:10:00+07:00');
+  const mk = (t) => t < sw
+    ? { ts: t, inv_mode: 'Line Mode', grid_v: 230, load_w: 800, inv_pv_w: 0, inv_chg_a: 0, inv_dis_a: 0, batt_v: 50.5, soc_calc: 12 }
+    : { ts: t, inv_mode: 'Invert Mode', grid_v: 230, load_w: 700, inv_pv_w: 900, inv_chg_a: 3, inv_dis_a: 0, batt_v: 51, soc_calc: 12 };
+  const night = []; for (let t = Date.parse('2026-11-08T18:00:00+07:00'); t <= sw + 4 * 60000; t += 60000) night.push(mk(t));
+  const at = (t) => night.filter((s) => s.ts <= t).slice(-20);
+  assert.equal(morningEvent(at(sw + 3 * 60000), night, sw + 3 * 60000, gridW), null, 'needs 5 min off grid');
+  const ev = morningEvent(at(sw + 4 * 60000), night, sw + 4 * 60000, gridW);
+  assert.ok(ev && ev.body.includes('07:10') && ev.pct === 3, JSON.stringify(ev));
+  assert.ok(Math.abs(ev.kwh - 0.8 * (13 + 10 / 60)) < 0.1, 'night kWh ' + ev.kwh);
+  console.log('morning', ev.body);
+  // no grid overnight → nothing; afternoon → nothing
+  const off = night.map((s) => ({ ...mk(sw + 60000), ts: s.ts }));
+  assert.equal(morningEvent(off.slice(-20), off, sw + 4 * 60000, gridW), null);
+  const pm = night.map((s) => ({ ...s, ts: s.ts + 8 * 3600000 }));
+  assert.equal(morningEvent(pm.slice(-20), pm, sw + 8 * 3600000 + 4 * 60000, gridW), null);
+  console.log('morning OK');
+}

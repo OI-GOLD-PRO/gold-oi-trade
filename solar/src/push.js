@@ -131,3 +131,33 @@ self.addEventListener('notificationclick', (e) => {
   }));
 });
 `;
+
+/**
+ * Morning event: the inverter handed the house back from the grid to solar/battery.
+ * recent = the last ~20 samples (ascending), night = samples since 18:00 yesterday (ascending).
+ * Fires when the last 5 minutes are all off-grid and at least 3 of the 15 minutes before were on grid,
+ * between 05:00 and 13:00 Bangkok time. Caller makes sure it's sent once per day.
+ */
+export function morningEvent(recent, night, nowTs, gridOf, nominalV = 51.2) {
+  const hour = new Date(nowTs + 7 * 3600000).getUTCHours();
+  if (hour < 5 || hour >= 13 || recent.length < 8) return null;
+  const onGrid = (s) => (s.inv_mode && /line/i.test(s.inv_mode)) || (gridOf(s, nominalV) ?? 0) > 0;
+  const offGrid = (s) => s.load_w != null && !onGrid(s);
+  const tail = recent.slice(-5), before = recent.slice(-20, -5);
+  if (tail.length < 5 || !tail.every(offGrid) || before.filter(onGrid).length < 3) return null;
+  const at = tail[0].ts;
+  let kwh = 0;
+  for (let i = 1; i < night.length; i++) {
+    const dt = night[i].ts - night[i - 1].ts;
+    if (dt <= 0 || dt > 10 * 60000 || night[i].ts > at) continue;
+    const g = gridOf(night[i], nominalV) ?? 0;
+    if (g > 0) kwh += (g * dt) / 3600000 / 1000;
+  }
+  const last = recent[recent.length - 1];
+  const pct = last.soc_calc != null ? Math.max(0, Math.min(100, Math.round(((last.soc_calc - 10) / 80) * 100))) : null;
+  return {
+    kind: 'morning', title: '☀️ บ้านใช้โซล่าแล้ว',
+    body: `เลิกใช้ไฟการไฟฟ้าเวลา ${hhmm(at)}${pct != null ? ' · แบต ' + pct + '%' : ''} · เมื่อคืนใช้ไฟการไฟฟ้า ${kwh.toFixed(1)} kWh`,
+    tag: 'morning-solar', at, kwh: Math.round(kwh * 100) / 100, pct,
+  };
+}

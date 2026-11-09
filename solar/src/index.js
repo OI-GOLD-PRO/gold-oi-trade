@@ -4,7 +4,7 @@ import { summarizeDay, timeToCutoff, netBatteryA, gridW } from './calc.js';
 import { localDate, dayRange, kvGet, kvSet, DAY_START_H, validBattV, BATT_V_MIN, BATT_V_MAX } from './util.js';
 import { PAGE } from './page.js';
 import { stepSoc } from './soc.js';
-import { vapidKeys, addSub, removeSub, pushAll, batteryEvent, notifyBattery, SW_JS } from './push.js';
+import { vapidKeys, addSub, removeSub, pushAll, batteryEvent, notifyBattery, morningEvent, SW_JS } from './push.js';
 import { sanitizeLive, despike, cleanHistory, FIELDS } from './clean.js';
 import { parseBms, parseLabels } from './bms.js';
 import { FLASH_PAGE, FLASH_MANIFEST } from './flash.js';
@@ -148,6 +148,23 @@ export async function poll(env, { force = false } = {}) {
       await rebaseSoc(env, row.ts);
     }
   }
+
+  // Morning notification: the inverter switched the house from the grid back to solar/battery (once a day).
+  try {
+    const today = localDate(row.ts);
+    if ((await kvGet(env.DB, 'push_morning')) !== today) {
+      const { results: rec } = await env.DB.prepare('SELECT * FROM samples ORDER BY ts DESC LIMIT 20').all();
+      const recent = rec.reverse();
+      const eveningTs = Date.parse(localDate(row.ts - 86400000) + 'T18:00:00+07:00');
+      const quick = morningEvent(recent, [], row.ts, gridW, cfg(env).nominalV);
+      if (quick) {
+        const night = await samplesBetween(env, eveningTs, row.ts + 1);
+        const ev = morningEvent(recent, night, row.ts, gridW, cfg(env).nominalV);
+        await kvSet(env.DB, 'push_morning', today);
+        await pushAll(env, { title: ev.title, body: ev.body, tag: ev.tag });
+      }
+    }
+  } catch (e) { /* never block the poll */ }
 
   await kvSet(env.DB, 'last_raw', {
     ts: row.ts,
