@@ -20,7 +20,7 @@
 #include <math.h>
 #include "logo.h"
 
-#define FW_VER "0.7.8"
+#define FW_VER "0.7.9"
 // อัปเดตผ่าน WiFi: GitHub Actions คอมไพล์แล้ววางไฟล์ไว้ที่ mini/dist/ (version.json + firmware.bin)
 static const char *OTA_BASE = "https://raw.githubusercontent.com/OI-GOLD-PRO/gold-oi-trade/main/mini/dist/";
 char newVer[16] = "";  // เวอร์ชันใหม่ที่พบ ("" = ล่าสุดแล้ว)
@@ -548,16 +548,25 @@ void drawChart() {
   int gap = 999; { int py = -999; for (int i = 0; i < D.ns; i++) { int y = Y(D.s[i].k); if (py != -999) gap = min(gap, abs(y - py)); py = y; } }
   int thick = max(1, min(4, gap / 2 - 1));
   int barMax = min((int)(PW * 0.30f), 100), volMax = min((int)(PW * 0.14f), 45), padL = 1;
+  // ครึ่งความกว้างโซนตามช่วงเวลาไทย: Asia เช้า 06–10 ±2 · Asia สาย 10–14 ±1 · London/NY/กลางคืน ±1.5
+  float zHalf = 1.5f; { struct tm t; if (getLocalTime(&t, 0)) { int m = t.tm_hour * 60 + t.tm_min; zHalf = m >= 360 && m < 600 ? 2.0f : m >= 600 && m < 840 ? 1.0f : 1.5f; } }
   for (int i = 0; i < D.ns; i++) {
     Strike &s = D.s[i];
     int y = Y(s.k); if (y < -10 || y > hChart + 10) continue;
+    // v0.7.9 โซนแบบแอป V4.9.86–91 (ตาม 🌏 OI Session Fade): ทุกอันดับกว้างเท่ากันตามช่วงเวลา · อันดับ 1–3 เข้ม + เส้นทึบ · 4–10 จาง
+    bool in5C = s.rc && s.rc <= 5, in5P = s.rp && s.rp <= 5;
+    bool top3 = (s.rc && s.rc <= 3) || (s.rp && s.rp <= 3);
+    if (in5C || in5P) hDash(0, PW, y, blend(in5C && (!in5P || s.c >= s.p) ? 0x2fbf8f : 0xe5576b, 0x04060a, top3 ? 0.75f : 0.3f), 4, 3);
     if (s.rc || s.rp) {
       bool useC = s.rc && (!s.rp || s.c >= s.p);
       int rk = useC ? s.rc : s.rp;
-      float half = rk <= 5 ? 2.5f : 1.25f;
-      int y1 = Y(s.k + half), y2 = Y(s.k - half);
-      spr.fillRect(0, y1, PW, max(1, y2 - y1), useC ? C_ZC : C_ZP);
-      if (rk <= 5) spr.drawFastHLine(0, y, PW, useC ? C_CALL : C_PUT);
+      float rt = max(0.0f, min(1.0f, (rk - 1) / 9.0f));
+      static const uint8_t WF[2][2][3] = {{{185, 28, 28}, {253, 186, 116}}, {{4, 120, 87}, {134, 239, 172}}};  // [put/call][จาก อันดับ1 / ถึง อันดับ10]
+      const uint8_t *f0 = WF[useC][0], *f1 = WF[useC][1];
+      uint32_t wc = 0; for (int j = 0; j < 3; j++) wc = (wc << 8) | (uint8_t)roundf(f0[j] + (f1[j] - f0[j]) * rt);
+      int y1 = Y(s.k + zHalf), y2 = Y(s.k - zHalf);
+      spr.fillRect(0, y1, PW, max(1, y2 - y1), blend(wc, 0x04060a, top3 ? 0.34f : 0.07f));
+      if (top3) { uint16_t lc = blend(wc, 0x04060a, 0.95f - 0.28f * rt); spr.drawFastHLine(0, y, PW, lc); spr.drawFastHLine(0, y + 1, PW, lc); }
     }
     if (s.tv) spr.drawFastHLine(0, y, PW, C_GOLD);
   }
