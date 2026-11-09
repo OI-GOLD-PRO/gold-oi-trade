@@ -1,5 +1,5 @@
 import { MIX_SRC, MIX_TF, mixBars, mixN, rtAdd, retailZones, pullTrades, RT, RT_FRESH, RT_TRAP, invUpdate } from './mix.js';
-import { advanceOsf, osfBasis, osfDay, osfLevels, osfOpen, osfSnapshot, prepareOsf } from './osf.js';
+import { advanceOsf, osfBasis, osfDay, osfLevels, osfOpen, osfSnapshot, osfWarm, prepareOsf } from './osf.js';
 export { mixBars, retailZones, rtAdd, RT_FAST, RT_FRESH, RT_TRAP } from './mix.js';
 import { newVapid, sendPush } from './push.js';
 import { MINI_FLASH_PAGE, MINI_MANIFEST } from './flash.js';
@@ -273,7 +273,7 @@ export class OptState {
     let book = saved?.book?.day === day ? saved.book : null;
     let news = saved?.news;
     const newNews = !news || last - news.at > 600;
-    const size = !book || last - book.last > 240 * 60 ? 1500 : 300;
+    const size = !book ? 3600 : last - book.last > 240 * 60 ? 1500 : 300; // new day: reach back past the weekend for ATR warm-up
     const [sources, gold, opt, calendar] = await Promise.all([
       Promise.allSettled(MIX_SRC.map(s => tvBars(s, '1', size, 8000))),
       book ? null : tvBars('BLACKBULL:GOLD.F', '1', 40, 8000),
@@ -293,8 +293,8 @@ export class OptState {
       if (basis === null || !open || !opt?.root || opt.expTs <= last || !(opt.updated >= last - 300)) return;
       const levels = osfLevels(Object.values(opt.rows || {}), open[1] + basis);
       if (!levels.length) return;
-      book = { day, basis, root: opt.root, expiry: opt.expTs, levels, last: day - 61 * 60,
-        session: '', counters: {}, bars: [], events: [] };
+      book = { day, basis, root: opt.root, expiry: opt.expTs, levels, last: day - 60,
+        session: '', counters: {}, bars: osfWarm(rows, basis, day), events: [] };
     }
     const available = new Map(rows.map(b => [b[0], b]));
     for (let t = Math.max(day, book.last + 60); t <= last; t += 60) if (osfOpen(t) && !available.has(t)) return;

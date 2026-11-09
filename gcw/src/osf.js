@@ -25,6 +25,11 @@ export function osfOpen(t) {
 }
 
 const round = n => Math.round(n * 100) / 100;
+// ATR(60) at the first 06:00 bar needs the last open-market bars before the day
+// (skipping the 05:00-06:00 break and, on Monday, the weekend) — same as the backtest.
+export const OSF_WARM = 70;
+export const osfWarm = (rows, basis, day) => rows.filter(b => b[0] < day && osfOpen(b[0])).slice(-OSF_WARM)
+  .map(b => [b[0], ...b.slice(1, 5).map(p => round(p + basis))]);
 export function osfBasis(bars, gold, last) {
   const prices = new Map(bars.map(b => [b[0], b[4]]));
   const d = gold.filter(b => b[0] <= last && b[0] >= last - 600 && prices.has(b[0]))

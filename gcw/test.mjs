@@ -181,4 +181,21 @@ console.log('ALL OK');
   prepareOsf(reloaded, [t + 300]);
   assert.equal(osfSnapshot(reloaded, t + 301, [], true).plans[0][5], 0);
   console.log('OSF shared plans: London touches, preserved replay, expiry, news and common IDs passed');
+  // ATR warm-up: the 05:00-06:00 break (and the weekend) must not leave the 06:00 hour without the momentum filter.
+  const { osfWarm } = await import('./src/osf.js');
+  const mon = osfDay(Date.UTC(2026, 10, 9, 0) / 1000); // Monday 06:00 Thai
+  const fri = Date.UTC(2026, 10, 6, 21, 0) / 1000;      // Friday 16:00 ET, last open hour
+  const pre = [];
+  for (let i = 0; i < 120; i++) pre.push([fri - 7200 + i * 60, 4000, 4001, 3999, 4000]); // Fri 14:00-16:00 ET
+  for (let t2 = fri + 3600; t2 < mon; t2 += 60) pre.push([t2, 4100, 4100, 4100, 4100]); // weekend perp bars (closed market)
+  const warm = osfWarm(pre, 8, mon);
+  assert.equal(warm.length, 70);
+  assert.ok(warm.every(b => b[0] < fri && b[4] === 4008));
+  const mb = { day: mon, expiry: mon + 86400, root: 'G2M', basis: 8, levels: [{ k: 4100, p: 4100, side: 'C', grade: 'A' }],
+    last: mon - 60, session: '', counters: { 4100: { arm: 1, k: 0 } }, bars: warm, events: [] };
+  mb.session = 'AM';
+  prepareOsf(mb, []);
+  const plan = mb.next.plans[0];
+  assert.ok(plan.atr > 0 && plan.mv !== null, 'momentum must be known at 06:00');
+  console.log('OSF ATR warm-up across the daily break / weekend passed');
 }
