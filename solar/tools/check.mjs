@@ -20,3 +20,23 @@ for (const d of devs) {
   const keep = Object.fromEntries(Object.entries(d).filter(([k]) => /pn|sn|devcode|devaddr|status|alias|name|lts|time|energy|outpower/i.test(k)));
   console.log(`::notice title=device::${JSON.stringify(keep)}`);
 }
+
+// ---- Tuya: is the MPPT online, and did re-pairing create a new device id? ----
+{
+  const { call } = await import('../src/tuya.js');
+  const env = { TUYA_CLIENT_ID: process.env.TUYA_CLIENT_ID, TUYA_SECRET: process.env.TUYA_SECRET, TUYA_REGION: 'sg' };
+  const id = process.env.TUYA_DEVICE_ID;
+  try {
+    const tok = (await call(env, '/v1.0/token?grant_type=1')).access_token;
+    let uid = null;
+    try {
+      const d = await call(env, `/v1.0/devices/${id}`, tok);
+      uid = d.uid;
+      console.log(`::notice title=tuya configured device::${JSON.stringify({ id: d.id, name: d.name, online: d.online, product: d.product_name, update_time: d.update_time })}`);
+    } catch (e) { console.log(`::notice title=tuya configured device::${e.message}`); }
+    if (uid) {
+      const list = await call(env, `/v1.0/users/${uid}/devices`, tok);
+      for (const d of list || []) console.log(`::notice title=tuya device::${JSON.stringify({ id: d.id, name: d.name, online: d.online, product: d.product_name, create_time: d.create_time, update_time: d.update_time })}`);
+    }
+  } catch (e) { console.log(`::notice title=tuya::${e.message}`); }
+}

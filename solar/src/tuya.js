@@ -17,7 +17,7 @@ export async function tuyaSign({ clientId, secret, accessToken = '', t, nonce = 
   return (await hmacSha256(secret, clientId + accessToken + t + nonce + stringToSign)).toUpperCase();
 }
 
-async function call(env, path, accessToken = '') {
+export async function call(env, path, accessToken = '') {
   const host = HOSTS[(env.TUYA_REGION || 'sg').toLowerCase()] || HOSTS.sg;
   const t = Date.now().toString();
   const sign = await tuyaSign({
