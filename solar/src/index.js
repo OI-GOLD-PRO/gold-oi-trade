@@ -86,6 +86,33 @@ export async function poll(env, { force = false } = {}) {
     await rebaseSoc(env, row.ts);
     await kvSet(env.DB, 'soc_rebase_v1', { at: row.ts });
   }
+  // Frozen inverter: the same reading for 20 minutes means SmartESS is answering for a dead/replaced dongle.
+  // Forget the cached device so the next poll finds the current one, and say so in the error column.
+  if (row.load_w != null) {
+    const { results: last } = await env.DB.prepare(`SELECT ${INV_FIELDS.join(',')} FROM samples ORDER BY ts DESC LIMIT 20`).all();
+    if (last.length === 20 && last.every((s) => sameInv(s, row))) {
+      const at = (await kvGet(env.DB, 'dess_stale_at')) || 0;
+      if (row.ts - at > 30 * 60000) {
+        await kvSet(env.DB, 'dess_device', null);
+        await kvSet(env.DB, 'dess_stale_at', row.ts);
+      }
+      row.err = (row.err ? row.err + ' | ' : '') + 'SmartESS: ค่าอินเวอร์เตอร์ค้าง 20 นาที';
+    }
+  }
+  // One-time repair (v2.17): values frozen while the app still read the old dongle → blank them, replay the counter.
+  if (!(await kvGet(env.DB, 'dess_stale_repair_v1'))) {
+    const from = dayRange(localDate(row.ts - 2 * 86400000))[0];
+    const list = await samplesBetween(env, from, row.ts + 1);
+    const runs = frozenRuns(list, 30);
+    const stmts = [];
+    for (const [a, b] of runs) {
+      stmts.push(env.DB.prepare(`UPDATE samples SET ${INV_FIELDS.map((f) => f + ' = NULL').join(', ')} WHERE ts >= ? AND ts <= ?`).bind(a, b));
+    }
+    if (stmts.length) await env.DB.batch(stmts);
+    await rebaseSoc(env, row.ts);
+    for (let d = 0; d < 3; d++) await saveDay(env, localDate(row.ts - d * 86400000));
+    await kvSet(env.DB, 'dess_stale_repair_v1', { at: row.ts, runs: runs.map(([a, b]) => [a, b, Math.round((b - a) / 60000)]) });
+  }
   // Garbage from the inverter (1,900 A, a minute of zeros) never reaches the counter, charts or grid estimate.
   {
     const prev = await env.DB.prepare('SELECT * FROM samples ORDER BY ts DESC LIMIT 1').first();
@@ -184,6 +211,22 @@ export async function poll(env, { force = false } = {}) {
     await env.DB.prepare('DELETE FROM bms WHERE ts < ?').bind(Date.now() - 120 * 86400000).run();
   }
   return row;
+}
+
+// Inverter-sourced columns (MPPT and BMS columns are not touched by a frozen SmartESS).
+const INV_FIELDS = ['batt_v', 'inv_chg_a', 'inv_dis_a', 'inv_pv_w', 'load_w', 'grid_v', 'inv_mode'];
+const sameInv = (a, b) => INV_FIELDS.every((f) => (a[f] ?? null) === (b[f] ?? null));
+/** [startTs, endTs] of runs where every inverter column stays exactly the same for at least `min` samples. */
+export function frozenRuns(list, min) {
+  const out = [];
+  let i = 0;
+  while (i < list.length) {
+    let j = i;
+    while (j + 1 < list.length && list[i].load_w != null && sameInv(list[i], list[j + 1])) j++;
+    if (j - i + 1 >= min) out.push([list[i].ts, list[j].ts]);
+    i = j + 1;
+  }
+  return out;
 }
 
 async function writeFields(env, rows) {

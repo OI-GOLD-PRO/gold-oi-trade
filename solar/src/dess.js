@@ -81,7 +81,7 @@ function dayEnergyFromPars(m) {
   return null;
 }
 
-async function getDevice(env) {
+export async function getDevice(env) {
   const cached = await kvGet(env.DB, 'dess_device');
   if (cached) return cached;
   const dat = await request(env, { action: 'webQueryDeviceEs', i18n: 'en_US', source: '1', page: '0', pagesize: '50' });
@@ -129,7 +129,7 @@ function flowPick(flow, group, par) {
 }
 
 /** Read the inverter's latest values in a normalised shape. */
-export async function readInverter(env) {
+export async function readInverter(env, retried = false) {
   const dev = await getDevice(env);
   const base = { pn: dev.pn, devcode: dev.devcode, devaddr: dev.devaddr, sn: dev.sn };
   const [last, flow, list] = await Promise.all([
@@ -137,6 +137,12 @@ export async function readInverter(env) {
     request(env, { action: 'webQueryDeviceEnergyFlowEs', ...base, source: '1' }).catch(() => null),
     request(env, { action: 'webQueryDeviceEs', i18n: 'en_US', source: '1', page: '0', pagesize: '15', pn: dev.pn }).catch(() => null),
   ]);
+  // The Wi-Fi dongle was replaced / re-paired → SmartESS registers a new device (new sn, maybe new pn) and the old
+  // one keeps answering with its last frozen values. If the cached device is no longer listed, find it again.
+  if (list && !(list.device || []).some((d) => String(d.sn) === dev.sn) && !retried) {
+    await kvSet(env.DB, 'dess_device', null);
+    return readInverter(env, true);
+  }
   const row = (list?.device || []).find((d) => String(d.sn) === dev.sn) || list?.device?.[0];
   const m = indexPars(last.pars);
   const out = {

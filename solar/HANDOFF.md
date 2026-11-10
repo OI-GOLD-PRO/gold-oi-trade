@@ -1,6 +1,6 @@
 # Stamp HOME (โซลาร์บ้าน): Hand off
 
-อัปเดตล่าสุด: 2026-11-09 · เวอร์ชันแอป **v2.16** · เฟิร์มแวร์ ESP32 **1.0.1**
+อัปเดตล่าสุด: 2026-11-09 · เวอร์ชันแอป **v2.17** · เฟิร์มแวร์ ESP32 **1.0.1**
 
 เอกสารนี้มีไว้ให้เซสชันใหม่ (หรือคนใหม่) ทำงานต่อได้ทันทีโดยไม่ต้องย้อนอ่านแชทเก่า
 อ่านส่วนที่ 1 และ 2 ก่อนแก้อะไร
@@ -148,19 +148,25 @@ SmartESS ไม่มีค่าวัตต์ของกริด จึง�
 - **สถานะ:** `soc_state` (ตัวนับ %), `zero_pending`, `clean_last`, `last_raw`, `mppt_last`, `bms_last`, `bms_device`, `bms_pause_until`, `soc_rebase_info`
 - **การเชื่อมต่อ:** `dess_auth`, `dess_device`, `tuya_token`
 - **Push:** `vapid`, `push_subs`, `push_last`, `push_morning`
-- **ธงงานซ่อมครั้งเดียว** (ลบ key เพื่อให้รันซ้ำในรอบ cron ถัดไป): `soc_rebase_v1`, `bad_v_repair_v1`, `soc_pure_v1`, `daily_recalc_grid_v1`, `spike_repair_v1`
+- **ธงงานซ่อมครั้งเดียว** (ลบ key เพื่อให้รันซ้ำในรอบ cron ถัดไป): `soc_rebase_v1`, `bad_v_repair_v1`, `soc_pure_v1`, `daily_recalc_grid_v1`, `spike_repair_v1`, `dess_stale_repair_v1`
+- `dess_stale_at` = เวลาที่ตรวจพบค่าอินเวอร์เตอร์ค้างล่าสุด
 - ถ้าต้องการซ่อมข้อมูลแบบใหม่ ให้เพิ่มบล็อกครั้งเดียวพร้อม key ใหม่ (เช่น `xxx_v1`) ตามแบบเดิมใน `poll()`
 
 ## 7. การทดสอบก่อน push
 ```bash
 cd solar
-for t in run e2e bms-e2e glitch spike spike-worker push; do node test/$t.mjs >/dev/null 2>&1 && echo "$t ok" || echo "$t FAIL"; done
+for t in run e2e bms-e2e glitch spike spike-worker push stale; do node test/$t.mjs >/dev/null 2>&1 && echo "$t ok" || echo "$t FAIL"; done
 # ตรวจว่า JS ในหน้าเว็บ parse ได้ (กันพลาดเรื่อง escape ใน template)
 node -e "import('./src/page.js').then(m=>{const h=Object.values(m).find(x=>typeof x==='string'&&x.includes('<script'));new Function(h.match(/<script>([\s\S]*?)<\/script>/)[1]);console.log('page ok')})"
 ```
 - เทสต์ใช้ `node:sqlite` จำลอง D1 (Node 22+, จะมี ExperimentalWarning ซึ่งไม่เป็นไร)
 - CI รันแค่ `test/run.mjs` ส่วนที่เหลือต้องรันเองก่อน push
 - เครื่องในเซสชัน cloud **เข้าโดเมนแอป (workers.dev) ไม่ได้** (proxy บล็อก) ตรวจผลจริงได้จากภาพหน้าจอของเจ้าของ หรือจาก `gh run list --workflow deploy-solar.yml`
+
+### ตรวจระบบจากฝั่ง cloud
+Actions → **Solar check** (`.github/workflows/solar-check.yml`, อ่านอย่างเดียว) แสดงแถวล่าสุดใน D1, error 24 ชม., `dess_device`, `bms_last` และรายชื่ออุปกรณ์ใน SmartESS อ่านผลผ่าน annotations:
+`gh workflow run solar-check.yml --ref main` แล้ว `gh api repos/OI-GOLD-PRO/gold-oi-trade/check-runs/<job id>/annotations`
+(ดาวน์โหลด job log ตรงๆ จะได้ 403)
 
 ## 8. ขั้นตอนปล่อยเวอร์ชัน
 1. ได้รับอนุมัติจากเจ้าของ
@@ -185,6 +191,7 @@ node -e "import('./src/page.js').then(m=>{const h=Object.values(m).find(x=>typeo
 | v2.14 | ปัดขวาเพื่อปิดหน้ารายละเอียด |
 | v2.15 | Web Push แบตหมด/เต็ม |
 | v2.16 | แจ้งเตือนเช้าเมื่อเลิกใช้ไฟการไฟฟ้า |
+| v2.17 | เปลี่ยนดองเกิล Wi-Fi อินเวอร์เตอร์ → SmartESS ได้ sn ใหม่ แอปหาเครื่องใหม่เอง, ตรวจค่าค้าง 20 นาที, ล้างช่วงค่าค้างย้อนหลัง (`dess_stale_repair_v1`) |
 
 ## 10. เรื่องค้าง / ไอเดีย (**ห้ามเริ่มโดยไม่ถามเจ้าของ**)
 - ยืนยันว่า Web Push เด้งจริงบน iPhone/Android และแจ้งเตือนเช้าทำงานจริง
