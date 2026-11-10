@@ -35,7 +35,8 @@ const r2 = (x) => (x == null ? null : Math.round(x * 100) / 100);
 // Night pause: once the MPPT string goes dark after 17:00 (or any time before 05:00) stop calling Tuya
 // until 05:00 — saves ~half the monthly API quota. Cached counters (day kWh, temp) are kept.
 export const MPPT_STALE_MS = 60 * 60000;
-const mpptStale = (data) => !!(data && data.newest && Date.now() - data.newest > MPPT_STALE_MS);
+const mpptNewest = (data) => data?.newest || (Array.isArray(data?.raw) ? data.raw.reduce((m, x) => Math.max(m, Number(x.time) || 0), 0) : 0) || null;
+const mpptStale = (data) => { const n = mpptNewest(data); return !!(n && Date.now() - n > MPPT_STALE_MS); };
 
 function mpptAsleep(cached) {
   const h = new Date(Date.now() + 7 * 3600000).getUTCHours();
@@ -48,7 +49,7 @@ function mpptAsleep(cached) {
 async function readMpptThrottled(env, force) {
   const data = await readMpptRaw(env, force);
   if (!data?.values?.sleeping && mpptStale(data)) {
-    const t = new Date(data.newest + 7 * 3600000).toISOString().replace('T', ' ').slice(0, 16);
+    const t = new Date(mpptNewest(data) + 7 * 3600000).toISOString().replace('T', ' ').slice(0, 16);
     throw new Error(`MPPT ออฟไลน์ ไม่มีค่าใหม่ตั้งแต่ ${t} · ตรวจ Wi-Fi ของ MPPT ในแอป Smart Life/Tuya`);
   }
   return data;
@@ -128,7 +129,7 @@ export async function poll(env, { force = false } = {}) {
     await kvSet(env.DB, 'dess_stale_repair_v1', { at: row.ts, runs: runs.map(([a, b]) => [a, b, Math.round((b - a) / 60000)]) });
   }
   // One-time repair (v2.17): the MPPT went offline with the Wi-Fi change; blank its frozen values since then.
-  if (!(await kvGet(env.DB, 'mppt_stale_repair_v1'))) {
+  if (!(await kvGet(env.DB, 'mppt_stale_repair_v2'))) {
     const last = await kvGet(env.DB, 'mppt_last');
     const raw = last?.data?.raw || [];
     const newest = last?.data?.newest || raw.reduce((m, x) => Math.max(m, Number(x.time) || 0), 0);
@@ -140,7 +141,7 @@ export async function poll(env, { force = false } = {}) {
       await rebaseSoc(env, row.ts);
       for (let d = 0; d < 3; d++) await saveDay(env, localDate(row.ts - d * 86400000));
     }
-    await kvSet(env.DB, 'mppt_stale_repair_v1', { at: row.ts, newest: newest || null, blanked: n });
+    await kvSet(env.DB, 'mppt_stale_repair_v2', { at: row.ts, newest: newest || null, blanked: n });
   }
   // Garbage from the inverter (1,900 A, a minute of zeros) never reaches the counter, charts or grid estimate.
   {
