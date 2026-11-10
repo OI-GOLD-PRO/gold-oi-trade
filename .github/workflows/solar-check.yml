@@ -1,0 +1,32 @@
+# Read-only health check for the home-solar Worker: D1 state + SmartESS device list. Changes nothing.
+name: Solar check
+on:
+  workflow_dispatch:
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: solar
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - run: npm install --no-save wrangler@4 >/dev/null 2>&1
+      - name: D1 state
+        run: |
+          q() { npx wrangler d1 execute solar-monitor-db --remote --json --command "$1" 2>/dev/null | jq -c '.[0].results' | cut -c1-900; }
+          echo "::notice title=last samples::$(q "SELECT datetime(ts/1000,'unixepoch','+7 hours') t, batt_v, load_w, inv_pv_w, mppt_pv_w, inv_mode, err FROM samples ORDER BY ts DESC LIMIT 3")"
+          echo "::notice title=last good inverter sample::$(q "SELECT datetime(ts/1000,'unixepoch','+7 hours') t, batt_v, load_w FROM samples WHERE load_w IS NOT NULL ORDER BY ts DESC LIMIT 1")"
+          echo "::notice title=distinct errors 24h::$(q "SELECT substr(err,1,200) e, COUNT(*) n, datetime(MAX(ts)/1000,'unixepoch','+7 hours') last FROM samples WHERE ts > (strftime('%s','now')-86400)*1000 GROUP BY e ORDER BY last DESC LIMIT 4")"
+          echo "::notice title=dess_device::$(q "SELECT v FROM kv WHERE k='dess_device'")"
+          echo "::notice title=bms_last::$(q "SELECT substr(v,1,200) v FROM kv WHERE k='bms_last'")"
+      - name: SmartESS devices
+        env:
+          DESS_USER: ${{ secrets.DESS_USER }}
+          DESS_PASSWORD: ${{ secrets.DESS_PASSWORD }}
+        run: node tools/check.mjs
