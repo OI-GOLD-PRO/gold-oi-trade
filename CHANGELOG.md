@@ -24,6 +24,11 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### gcw /osf/v1 counters — 2026-11-10 — Claude
+- ไฟล์: gcw/src/osf.js, gcw/test.mjs
+- แก้อะไร: `/osf/v1` (แบบเต็ม ไม่ใช่ `?view=ea`) เพิ่ม `counters: { session, c: { strike: [arm, touches] } }` ของช่วงที่แท่งล่าสุดอยู่ — แอป OI Gold Pro V4.9.105 ใช้แสดงตัวนับแตะในหน้า OI / Gamma
+- ระวัง: EA ไม่ได้ใช้ (compact view ไม่เปลี่ยน)
+
 ### EA OSS v1.55 + handoff — 2026-11-09 — Claude
 - ไฟล์: ea/OI_Session_Fade.mq5 (ใหม่ใน repo, v1.55), ea/OSF_HANDOFF.md (ใหม่)
 - แก้อะไร: เก็บ EA oi ss เข้า repo · v1.55 เพิ่ม `LotMode = LOT_MONEY` + `RiskMoney` (เสียเท่ากันทุกไม้เมื่อโดน SL, แบ่งเท่ากันเมื่อแบ่ง 3 ไม้, เตือนเมื่อ lot ขั้นต่ำเกิน) และบรรทัดโหมด lot บนแผง · เขียน handoff ละเอียดของ oi ss ทั้งระบบ

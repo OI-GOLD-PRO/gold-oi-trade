@@ -121,5 +121,7 @@ export function osfSnapshot(state, now, news, compact) {
     day: state?.day || 0, root: state?.root || '', expiry: state?.expiry || 0, session: S?.id || '',
     zones: (state?.levels || []).map(z => [z.k, z.side, z.grade]),
     plans: plans.map(p => [p.z.k, p.z.side, p.z.grade, p.dir, p.k, p.real ? 1 : 0, p.entry, p.sl, p.key]) };
-  return compact ? payload : { ...payload, levels: state?.levels || [], events: state?.events || [], bars: state?.bars || [] };
+  // counters: ตัวนับแตะ/สถานะรอของช่วงที่แท่งล่าสุดอยู่ (แอปโชว์ในหน้า OI / Gamma) — { session, c: { strike: [arm, touches] } }
+  const counters = { session: state?.session || '', c: Object.fromEntries(Object.entries(state?.counters || {}).map(([k, c]) => [k, [c.arm, c.k]])) };
+  return compact ? payload : { ...payload, counters, levels: state?.levels || [], events: state?.events || [], bars: state?.bars || [] };
 }

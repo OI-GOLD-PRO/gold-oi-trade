@@ -198,4 +198,8 @@ console.log('ALL OK');
   const plan = mb.next.plans[0];
   assert.ok(plan.atr > 0 && plan.mv !== null, 'momentum must be known at 06:00');
   console.log('OSF ATR warm-up across the daily break / weekend passed');
+  { const full = osfSnapshot({ ...mb, counters: { 4100: { arm: -1, k: 2 } } }, mon + 60, [], false);
+    assert.deepEqual(full.counters, { session: 'AM', c: { 4100: [-1, 2] } });
+    assert.equal(osfSnapshot(mb, mon + 60, [], true).counters, undefined);
+    console.log('OSF counters in the full view passed'); }
 }
