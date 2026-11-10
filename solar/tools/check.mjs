@@ -34,6 +34,13 @@ for (const d of devs) {
       uid = d.uid;
       console.log(`::notice title=tuya configured device::${JSON.stringify({ id: d.id, name: d.name, online: d.online, product: d.product_name, update_time: d.update_time })}`);
     } catch (e) { console.log(`::notice title=tuya configured device::${e.message}`); }
+    for (const p of ['/v2.0/cloud/thing/device?page_size=20', '/v1.0/iot-01/associated-users/devices?size=20', '/v1.3/iot-03/devices?page_size=20']) {
+      try {
+        const r = await call(env, p, tok);
+        const list = Array.isArray(r) ? r : r.devices || r.list || [];
+        console.log(`::notice title=tuya list ${p.split('?')[0]}::${list.length} ${JSON.stringify(list.map((d) => ({ id: d.id, name: d.name || d.customName, online: d.online ?? d.isOnline, product: d.product_name || d.productName, uid: d.uid, active: d.active_time || d.activeTime, update: d.update_time || d.updateTime }))).slice(0, 900)}`);
+      } catch (e) { console.log(`::notice title=tuya list ${p.split('?')[0]}::${e.message}`); }
+    }
     if (uid) {
       const list = await call(env, `/v1.0/users/${uid}/devices`, tok);
       for (const d of list || []) console.log(`::notice title=tuya device::${JSON.stringify({ id: d.id, name: d.name, online: d.online, product: d.product_name, create_time: d.create_time, update_time: d.update_time })}`);
