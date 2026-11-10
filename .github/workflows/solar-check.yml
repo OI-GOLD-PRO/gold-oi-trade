@@ -26,6 +26,9 @@ jobs:
           echo "::notice title=last samples::$(q "SELECT datetime(ts/1000,'unixepoch','+7 hours') t, batt_v, load_w, inv_pv_w, mppt_pv_w, inv_mode, err FROM samples ORDER BY ts DESC LIMIT 3")"
           echo "::notice title=last good inverter sample::$(q "SELECT datetime(ts/1000,'unixepoch','+7 hours') t, batt_v, load_w FROM samples WHERE load_w IS NOT NULL ORDER BY ts DESC LIMIT 1")"
           echo "::notice title=distinct errors 24h::$(q "SELECT substr(err,1,200) e, COUNT(*) n, datetime(MAX(ts)/1000,'unixepoch','+7 hours') last FROM samples WHERE ts > (strftime('%s','now')-86400)*1000 GROUP BY e ORDER BY last DESC LIMIT 4")"
+          echo "::notice title=mppt 3h::$(q "SELECT COUNT(DISTINCT mppt_pv_w) distinct_pv, COUNT(DISTINCT mppt_a) distinct_a, MIN(mppt_pv_w) mn, MAX(mppt_pv_w) mx, datetime(MAX(ts)/1000,'unixepoch','+7 hours') last FROM samples WHERE ts > (strftime('%s','now')-10800)*1000")"
+          echo "::notice title=mppt_last::$(q "SELECT substr(v,1,300) v FROM kv WHERE k='mppt_last'")"
+          echo "::notice title=stale repair::$(q "SELECT v FROM kv WHERE k='dess_stale_repair_v1'")"
           echo "::notice title=dess_device::$(q "SELECT v FROM kv WHERE k='dess_device'")"
           echo "::notice title=bms_last::$(q "SELECT substr(v,1,200) v FROM kv WHERE k='bms_last'")"
       - name: SmartESS devices
