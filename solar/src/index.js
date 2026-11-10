@@ -34,13 +34,27 @@ const r2 = (x) => (x == null ? null : Math.round(x * 100) / 100);
 // Tuya free tier ≈ 26k API calls/month → read the MPPT every MPPT_EVERY_MIN minutes and reuse it in between.
 // Night pause: once the MPPT string goes dark after 17:00 (or any time before 05:00) stop calling Tuya
 // until 05:00 — saves ~half the monthly API quota. Cached counters (day kWh, temp) are kept.
+export const MPPT_STALE_MS = 60 * 60000;
+const mpptStale = (data) => !!(data && data.newest && Date.now() - data.newest > MPPT_STALE_MS);
+
 function mpptAsleep(cached) {
   const h = new Date(Date.now() + 7 * 3600000).getUTCHours();
   if (h < 5) return true;
-  return h >= 17 && cached && (cached.data?.values?.pvW ?? 0) < 5;
+  return h >= 17 && cached && ((cached.data?.values?.pvW ?? 0) < 5 || mpptStale(cached.data));
 }
 
+// An MPPT that dropped off Wi-Fi (e.g. the router changed) keeps returning its last values from Tuya;
+// treat that as an error so frozen numbers never reach the charts or the battery counter.
 async function readMpptThrottled(env, force) {
+  const data = await readMpptRaw(env, force);
+  if (!data?.values?.sleeping && mpptStale(data)) {
+    const t = new Date(data.newest + 7 * 3600000).toISOString().replace('T', ' ').slice(0, 16);
+    throw new Error(`MPPT ออฟไลน์ ไม่มีค่าใหม่ตั้งแต่ ${t} · ตรวจ Wi-Fi ของ MPPT ในแอป Smart Life/Tuya`);
+  }
+  return data;
+}
+
+async function readMpptRaw(env, force) {
   const every = Number(env.MPPT_EVERY_MIN || 2);
   const cached = await kvGet(env.DB, 'mppt_last');
   // Manual refresh: at most one real Tuya call per 30 s, so repeated taps can't burn the quota.
@@ -112,6 +126,21 @@ export async function poll(env, { force = false } = {}) {
     await rebaseSoc(env, row.ts);
     for (let d = 0; d < 3; d++) await saveDay(env, localDate(row.ts - d * 86400000));
     await kvSet(env.DB, 'dess_stale_repair_v1', { at: row.ts, runs: runs.map(([a, b]) => [a, b, Math.round((b - a) / 60000)]) });
+  }
+  // One-time repair (v2.17): the MPPT went offline with the Wi-Fi change; blank its frozen values since then.
+  if (!(await kvGet(env.DB, 'mppt_stale_repair_v1'))) {
+    const last = await kvGet(env.DB, 'mppt_last');
+    const raw = last?.data?.raw || [];
+    const newest = last?.data?.newest || raw.reduce((m, x) => Math.max(m, Number(x.time) || 0), 0);
+    let n = 0;
+    if (newest && row.ts - newest > MPPT_STALE_MS) {
+      const from = Math.max(newest + 10 * 60000, row.ts - 3 * 86400000);
+      const r = await env.DB.prepare('UPDATE samples SET mppt_a = NULL, mppt_pv_w = NULL WHERE ts >= ?').bind(from).run();
+      n = r?.meta?.changes ?? null;
+      await rebaseSoc(env, row.ts);
+      for (let d = 0; d < 3; d++) await saveDay(env, localDate(row.ts - d * 86400000));
+    }
+    await kvSet(env.DB, 'mppt_stale_repair_v1', { at: row.ts, newest: newest || null, blanked: n });
   }
   // Garbage from the inverter (1,900 A, a minute of zeros) never reaches the counter, charts or grid estimate.
   {

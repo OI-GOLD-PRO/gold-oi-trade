@@ -148,7 +148,7 @@ SmartESS ไม่มีค่าวัตต์ของกริด จึง�
 - **สถานะ:** `soc_state` (ตัวนับ %), `zero_pending`, `clean_last`, `last_raw`, `mppt_last`, `bms_last`, `bms_device`, `bms_pause_until`, `soc_rebase_info`
 - **การเชื่อมต่อ:** `dess_auth`, `dess_device`, `tuya_token`
 - **Push:** `vapid`, `push_subs`, `push_last`, `push_morning`
-- **ธงงานซ่อมครั้งเดียว** (ลบ key เพื่อให้รันซ้ำในรอบ cron ถัดไป): `soc_rebase_v1`, `bad_v_repair_v1`, `soc_pure_v1`, `daily_recalc_grid_v1`, `spike_repair_v1`, `dess_stale_repair_v1`
+- **ธงงานซ่อมครั้งเดียว** (ลบ key เพื่อให้รันซ้ำในรอบ cron ถัดไป): `soc_rebase_v1`, `bad_v_repair_v1`, `soc_pure_v1`, `daily_recalc_grid_v1`, `spike_repair_v1`, `dess_stale_repair_v1`, `mppt_stale_repair_v1`
 - `dess_stale_at` = เวลาที่ตรวจพบค่าอินเวอร์เตอร์ค้างล่าสุด
 - ถ้าต้องการซ่อมข้อมูลแบบใหม่ ให้เพิ่มบล็อกครั้งเดียวพร้อม key ใหม่ (เช่น `xxx_v1`) ตามแบบเดิมใน `poll()`
 
@@ -191,7 +191,7 @@ Actions → **Solar check** (`.github/workflows/solar-check.yml`, อ่าน�
 | v2.14 | ปัดขวาเพื่อปิดหน้ารายละเอียด |
 | v2.15 | Web Push แบตหมด/เต็ม |
 | v2.16 | แจ้งเตือนเช้าเมื่อเลิกใช้ไฟการไฟฟ้า |
-| v2.17 | เปลี่ยนดองเกิล Wi-Fi อินเวอร์เตอร์ → SmartESS ได้ sn ใหม่ แอปหาเครื่องใหม่เอง, ตรวจค่าค้าง 20 นาที, ล้างช่วงค่าค้างย้อนหลัง (`dess_stale_repair_v1`) |
+| v2.17 | เปลี่ยนดองเกิล Wi-Fi อินเวอร์เตอร์ → SmartESS ได้ sn ใหม่ แอปหาเครื่องใหม่เอง, ตรวจค่าค้าง 20 นาที, ล้างช่วงค่าค้างย้อนหลัง (`dess_stale_repair_v1`) · MPPT: ถ้า Tuya ไม่มีค่าใหม่เกิน 60 นาที → แสดง error "MPPT ออฟไลน์" แทนค่าค้าง + ล้างย้อนหลัง (`mppt_stale_repair_v1`) |
 
 ## 10. เรื่องค้าง / ไอเดีย (**ห้ามเริ่มโดยไม่ถามเจ้าของ**)
 - ยืนยันว่า Web Push เด้งจริงบน iPhone/Android และแจ้งเตือนเช้าทำงานจริง

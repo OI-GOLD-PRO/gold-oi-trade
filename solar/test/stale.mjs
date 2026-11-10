@@ -54,4 +54,24 @@ const blank = sql.prepare('SELECT COUNT(*) n FROM samples WHERE load_w IS NULL A
 assert.ok(blank >= 85 && blank <= 91, 'blanked ' + blank);
 assert.equal(sql.prepare('SELECT batt_v FROM samples ORDER BY ts DESC LIMIT 1').get().batt_v, 52.4);
 console.log('repair OK', JSON.parse(sql.prepare("SELECT v FROM kv WHERE k='dess_stale_repair_v1'").get().v));
+
+// MPPT offline (Tuya keeps serving 14-hour-old values) → error, no frozen numbers stored
+{
+  const prevFetch = globalThis.fetch;
+  const old = Date.now() - 14 * 3600000;
+  globalThis.fetch = async (url, init) => {
+    const u = String(url);
+    if (u.includes('/v1.0/token')) return Response.json({ success: true, result: { access_token: 'x', expire_time: 7200 } });
+    if (u.includes('shadow/properties')) return Response.json({ success: true, result: { properties: [
+      { code: 'cur_power', value: 0, time: old }, { code: 'phase_a', value: Buffer.from([6, 126, 0, 45, 29, 93]).toString('base64'), time: old } ] } });
+    return prevFetch(url, init);
+  };
+  env.TUYA_CLIENT_ID = 'c'; env.TUYA_SECRET = 's'; env.TUYA_DEVICE_ID = 'd';
+  sql.prepare("DELETE FROM kv WHERE k='mppt_last'").run();
+  await worker.fetch(new Request('https://x/api/poll', { headers: { 'x-key': 'demo' } }), env);
+  const last = sql.prepare('SELECT mppt_pv_w, err FROM samples ORDER BY ts DESC LIMIT 1').get();
+  assert.equal(last.mppt_pv_w, null);
+  assert.match(last.err || '', /MPPT ออฟไลน์/);
+  console.log('mppt offline OK', last.err);
+}
 console.log('stale OK');

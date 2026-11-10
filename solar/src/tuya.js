@@ -86,5 +86,8 @@ export async function readMppt(env) {
     if (/code 10(10|11|04)/.test(e.message)) result = await call(env, path, await token(env, true));
     else throw e;
   }
-  return { values: parseMppt(result.properties || []), raw: result.properties };
+  const props = result.properties || [];
+  // Newest report time from the device: Tuya keeps serving the last values when the MPPT is offline.
+  const newest = props.reduce((m, x) => Math.max(m, Number(x.time) || 0), 0) || null;
+  return { values: parseMppt(props), raw: props, newest };
 }
