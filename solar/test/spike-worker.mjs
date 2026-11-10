@@ -18,7 +18,7 @@ for (let t = start; t < now; t += 60000) {
   const drop = k === 100 || k === 101;
   ins.run(t, 52.5, 10, spike ? 1900 : 12, 0, drop ? 0 : 1800, drop ? 0 : 900);
 }
-sql.prepare("INSERT INTO kv (k, v) VALUES ('soc_rebase_v1', '{}'), ('daily_recalc_grid_v1', '{}'), ('bad_v_repair_v1','{}'), ('soc_pure_v1','{}')").run();
+sql.prepare("INSERT INTO kv (k, v) VALUES ('soc_rebase_v1', '{}'), ('daily_recalc_grid_v1', '{}'), ('bad_v_repair_v1','{}'), ('soc_pure_v1','{}'), ('dess_stale_repair_v1','{}')").run();
 globalThis.fetch = async () => { throw new Error('offline in test'); };
 await worker.fetch(new Request('https://x/api/poll', { headers: { 'x-key': 'demo' } }), env);
 assert.equal(sql.prepare('SELECT COUNT(*) n FROM samples WHERE inv_chg_a > 130').get().n, 0, 'spike gone');
