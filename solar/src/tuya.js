@@ -76,18 +76,39 @@ export function parseMppt(props) {
   };
 }
 
-export async function readMppt(env) {
-  const path = `/v2.0/cloud/thing/${env.TUYA_DEVICE_ID}/shadow/properties`;
+/**
+ * Re-paired MPPT (new Wi-Fi) → Tuya gives it a new device id and the old id answers "permission deny" (1106)
+ * or keeps serving frozen values. Find the MPPT among the project's devices (online first) and remember it.
+ */
+async function discoverMppt(env, tok, currentId) {
+  const last = (await kvGet(env.DB, 'tuya_discover_at')) || 0;
+  if (Date.now() - last < 30 * 60000) return null;
+  await kvSet(env.DB, 'tuya_discover_at', Date.now());
+  let r;
+  try { r = await call(env, '/v2.0/cloud/thing/device?page_size=20', tok); } catch (e) { return null; }
+  const list = (Array.isArray(r) ? r : r?.list || []).filter((d) => /mppt|charge/i.test(`${d.product_name || ''} ${d.name || ''}`));
+  list.sort((a, b) => (b.online === true) - (a.online === true) || (b.active_time || 0) - (a.active_time || 0));
+  const d = list[0];
+  if (!d || d.id === currentId) return null;
+  await kvSet(env.DB, 'tuya_device', { id: d.id, name: d.name, at: Date.now() });
+  return d.id;
+}
+
+export async function readMppt(env, retried = false) {
+  const id = (await kvGet(env.DB, 'tuya_device'))?.id || env.TUYA_DEVICE_ID;
+  const path = `/v2.0/cloud/thing/${id}/shadow/properties`;
   let result;
   try {
     result = await call(env, path, await token(env));
   } catch (e) {
     // token invalid/expired (1010/1011) → refresh once
     if (/code 10(10|11|04)/.test(e.message)) result = await call(env, path, await token(env, true));
+    else if (/code 1106/.test(e.message) && !retried && (await discoverMppt(env, await token(env), id))) return readMppt(env, true);
     else throw e;
   }
   const props = result.properties || [];
   // Newest report time from the device: Tuya keeps serving the last values when the MPPT is offline.
   const newest = props.reduce((m, x) => Math.max(m, Number(x.time) || 0), 0) || null;
-  return { values: parseMppt(props), raw: props, newest };
+  if (newest && Date.now() - newest > 60 * 60000 && !retried && (await discoverMppt(env, await token(env), id))) return readMppt(env, true);
+  return { values: parseMppt(props), raw: props, newest, id };
 }

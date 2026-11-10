@@ -37,5 +37,5 @@ jobs:
           DESS_PASSWORD: ${{ secrets.DESS_PASSWORD }}
           TUYA_CLIENT_ID: ${{ secrets.TUYA_CLIENT_ID }}
           TUYA_SECRET: ${{ secrets.TUYA_SECRET }}
-          TUYA_DEVICE_ID: a388c65aef93d7a41bfjah
+          TUYA_DEVICE_ID: a3b564e1d50ef5ab2btd0r
         run: node tools/check.mjs

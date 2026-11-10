@@ -74,4 +74,24 @@ console.log('repair OK', JSON.parse(sql.prepare("SELECT v FROM kv WHERE k='dess_
   assert.match(last.err || '', /MPPT ออฟไลน์/);
   console.log('mppt offline OK', last.err);
 }
+
+// MPPT re-paired: old id → 1106 permission deny; the project lists the new id → app switches to it
+{
+  const { readMppt } = await import('../src/tuya.js');
+  const now2 = Date.now();
+  globalThis.fetch = async (url) => {
+    const u = String(url);
+    if (u.includes('/v1.0/token')) return Response.json({ success: true, result: { access_token: 'x', expire_time: 7200 } });
+    if (u.includes('/v2.0/cloud/thing/device?')) return Response.json({ success: true, result: [{ id: 'NEWMPPT', name: 'MPPT Solar  Charge  Controller-HM', product_name: 'MPPT Solar  Charge  Controller-HM', online: true }] });
+    if (u.includes('/thing/OLD/')) return Response.json({ success: false, code: 1106, msg: 'permission deny' });
+    if (u.includes('/thing/NEWMPPT/')) return Response.json({ success: true, result: { properties: [{ code: 'cur_power', value: 5300, time: now2 }, { code: 'phase_b', value: Buffer.from([2, 12, 0, 100, 0, 0]).toString('base64'), time: now2 }] } });
+    throw new Error('unexpected ' + u);
+  };
+  sql.prepare("DELETE FROM kv WHERE k IN ('tuya_device','tuya_discover_at','tuya_token')").run();
+  const r = await readMppt({ ...env, TUYA_DEVICE_ID: 'OLD' });
+  assert.equal(r.id, 'NEWMPPT');
+  assert.equal(JSON.parse(sql.prepare("SELECT v FROM kv WHERE k='tuya_device'").get().v).id, 'NEWMPPT');
+  assert.ok(r.values.battA > 9);
+  console.log('mppt rediscover OK', r.values.battA);
+}
 console.log('stale OK');
