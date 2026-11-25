@@ -3,10 +3,19 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
+import { execFileSync } from 'node:child_process';
 const root = path.resolve(import.meta.dirname, '..');
 const html = fs.readFileSync(path.join(root,'index.html'),'utf8');
 for(const [,body] of html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/g)) new vm.Script(body);
-for(const file of fs.readdirSync(root).filter(f=>f.endsWith('.js'))) new vm.Script(fs.readFileSync(path.join(root,file),'utf8'),{filename:file});
+const modules = new Set(Array.from(html.matchAll(/<script type="module" src="([^"?]+)/g), m => m[1]));
+for (const file of fs.readdirSync(root).filter(f => /\.m?js$/.test(f))) {
+  const source = fs.readFileSync(path.join(root, file), 'utf8');
+  if (modules.has(file) || file.endsWith('.mjs')) {
+    execFileSync(process.execPath, ['--input-type=module', '--check'], { input: source });
+  } else {
+    new vm.Script(source, { filename: file });
+  }
+}
 for(const [,file] of html.matchAll(/(?:src|href)="([^"?]+\.(?:js|css))(?:\?[^" ]*)?"/g)) if(!file.includes('://')) assert.ok(fs.existsSync(path.join(root,file)),file);
 assert.match(html,/const GC_WORKER = 'https:\/\/gc-yahoo.oigoldpro.workers.dev'/);
 assert.doesNotMatch(html,/API_BASE/);

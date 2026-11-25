@@ -161,8 +161,9 @@
   .chip.warn { border-color: #7a5a1c; color: var(--gold); }
   .tfs { display: flex; gap: 3px; padding: 0 14px 6px; }
   .tfs button { flex: 1; background: transparent; border: 1px solid var(--line); color: var(--muted); border-radius: 6px; padding: 3px 0; font: 600 10.5px var(--mono); }
-  #tfs #footprintBtn { flex: 0 0 34px; padding: 0; line-height: 0; }
-  #footprintBtn svg { vertical-align: middle; }
+  #tfs .chart-type { position:relative; flex:0 0 36px; display:grid; place-items:center; min-height:35px; box-sizing:border-box; border:1px solid #35445b; border-radius:9px; background:#101d30; color:#e5cc8b; font:600 19px sans-serif; }
+  #tfs .chart-type select { position:absolute; inset:0; width:100%; height:100%; opacity:0; cursor:pointer; }
+  #tfs .chart-type:focus-within { outline:2px solid #f0d58d; }
   .tfs button.on { background: var(--gold); border-color: var(--gold); color: #1a1405; }
   .tfs button#oiBtn, .tfs button#indBtn, .tfs button#drawBtn { flex: none; padding: 3px 9px; font-style: italic; }
   .tfs button#oiBtn.has, .tfs button#indBtn.has, .tfs button#drawBtn.has { border-color: var(--gold); color: var(--gold); }
@@ -175,6 +176,7 @@
   #indMenu .ps { display: flex; gap: 4px; flex-wrap: wrap; }
   #indMenu label { display: flex; flex-direction: column; font: 9.5px var(--sans); color: var(--muted); }
   #indMenu input { width: 46px; padding: 3px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: 600 12px var(--mono); }
+  #indMenu .ps select { max-width: 160px; padding: 3px 4px; border-radius: 6px; border: 1px solid var(--line); background: var(--bg); color: var(--fg); font: 600 12px var(--mono); }
   #indMenu .reset { justify-content: center; font: 600 11px var(--sans); }
   /* Gold Scalping ในเมนู ƒx */
   #gsTbl { display: none; gap: 3px; padding: 0 14px 5px; }
@@ -240,8 +242,15 @@
   /* V3.5.7: แถบป้ายสถานะ (γ Flip, COT, Skew, EM) แยกเหนือกราฟ ไม่ซ้อนกับป้ายราคา/OI */
   #badges { position: absolute; left: 0; right: 0; top: 0; height: 22px; display: none; align-items: center; gap: 4px; padding: 0 6px; overflow-x: auto; white-space: nowrap; scrollbar-width: none; z-index: 3; background: var(--bg); border-bottom: 1px solid var(--line); }
   #badges::-webkit-scrollbar { display: none; }
-  #badges span[data-k] { cursor: pointer; -webkit-user-select: none; user-select: none; touch-action: manipulation; padding: 0 7px; }
-  #badges span { flex: none; font: bold 10px var(--mono); line-height: 14px; padding: 0 5px; border: 1px solid; border-radius: 3px; }
+  #badges button { background: transparent; }
+  #badges [data-k] { cursor: pointer; -webkit-user-select: none; user-select: none; touch-action: manipulation; padding: 0 7px; }
+  #badges :is(span, button) { flex: none; font: bold 10px var(--mono); line-height: 14px; padding: 0 5px; border: 1px solid; border-radius: 3px; }
+  /* V4.9.93: ป้าย ⚡ โมเมนตัม ATR = กรอบทองหนาเรืองแสง (สีตัวอักษรยังบอกระดับ เทา/เหลือง/แดง) */
+  #badges button[data-k="sfmom"] { border: 2px solid #f2a900 !important; border-radius: 5px; box-shadow: 0 0 6px rgba(242,169,0,.75), inset 0 0 4px rgba(242,169,0,.35); animation: sfmomGlow 2.4s ease-in-out infinite; }
+  /* V4.9.96 ป้าย ⚡ เกิน 3×ATR: พื้นแดงกระพริบ */
+  #badges button[data-k="sfmom-hot"] { border: 2px solid #ff6b82 !important; border-radius: 5px; font-weight: 700; animation: sfmomHot 0.8s steps(1, end) infinite; }
+  @keyframes sfmomHot { 0% { background: #d0142f; box-shadow: 0 0 10px rgba(255,40,70,.95); } 50% { background: #4a0612; box-shadow: none; } }
+  @keyframes sfmomGlow { 0%, 100% { box-shadow: 0 0 5px rgba(242,169,0,.6), inset 0 0 3px rgba(242,169,0,.3); } 50% { box-shadow: 0 0 11px rgba(242,169,0,.95), inset 0 0 5px rgba(242,169,0,.45); } }
   #wrap.bdg #badges { display: flex; }
   #wrap.bdg #chart, #wrap.bdg #ov { top: 22px; }
   #wrap.bdg #tip { top: 30px; }
@@ -359,8 +368,30 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   #zoneWait small { font: 500 10px var(--mono, monospace); color: #c9b8ff; }
   #zoneWait[hidden] { display: none; }
   @keyframes zwPulse { 50% { background: rgba(64,48,12,.96); border-color: #ffe08a; } }
+  #sfDetails { box-sizing: border-box; width: min(420px, calc(100% - 28px)); max-height: 85dvh; overflow: auto; padding: 18px; border: 1px solid var(--line); border-radius: 14px; background: var(--panel); color: var(--fg); }
+  #sfDetails::backdrop { background: rgba(0, 0, 0, .56); }
+  #sfDetails header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+  #sfDetails h2 { margin: 4px 0 12px; font-size: 18px; }
+  #sfDetails p { margin: 0 0 10px; line-height: 1.5; }
+  #sfDetails p#sfDetailsReason { margin-top: 4px; }
+  #sfDetailsZone, #sfDetailsStatus { color: var(--muted); }
+  #sfDetailsRisk { color: #7fd0ff; font-family: var(--mono); }
 </style>
-<link rel="stylesheet" href="trade.css?v=0.12.00">
+<style>
+  #tfs button[data-trend="up"] { background: #135439 !important; color: #e5fff1 !important; border-color: #25865d !important; }
+  #tfs button[data-trend="down"] { background: #702b37 !important; color: #fff0f2 !important; border-color: #a64856 !important; }
+  #tfs button[data-tf][data-trend="inside"] {
+    background: linear-gradient(rgb(255 220 0 / 76%), rgb(255 220 0 / 76%)) #fff !important;
+    color: #281f08 !important;
+    border-color: #b88c25 !important;
+  }
+  #tfs button[data-tf][data-trend="inside"].on {
+    border-color: #fff !important;
+    box-shadow: inset 0 0 0 1px #fff !important;
+  }
+  #tfs button[data-trend].on { border-color: #f0d58d !important; box-shadow: inset 0 0 0 1px #f0d58d !important; }
+</style>
+<link rel="stylesheet" href="trade.css?v=0.13.00">
 </head>
 <body>
   <div id="splash" aria-label="OI Trade กำลังเปิด">
@@ -429,8 +460,8 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   // อินโทร: ปิดเมื่อกราฟพร้อม (เล่นอย่างน้อย 1.2 วินาที) · เกิน 2.5 วินาทีแสดงสถานะ · เกิน 6 วินาทีเข้าแอปเลย · แตะเพื่อข้าม · ออฟไลน์มีปุ่มลองใหม่
   (function () {
     var el = document.getElementById('splash'), t0 = Date.now(), closed = false, pend = '', MIN = 1200, SHOW_ST = 2500, MAX = 6000;
-    var introKey = 'oi_intro_style', introStyle = 'modern';
-    try { if (localStorage.getItem(introKey) === 'classic') introStyle = 'classic'; } catch (e) {}
+    var introKey = 'oi_intro_style', introStyle = 'classic';
+    try { if (localStorage.getItem(introKey) === 'modern') introStyle = 'modern'; } catch (e) {}
     window.OIIntro = {
       get: function () { return introStyle; },
       set: function (value) {
@@ -593,10 +624,13 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     <button data-tf="1h">H1</button>
     <button data-tf="4h">H4</button>
     <button data-tf="1d">D1</button>
-    <button type="button" id="footprintBtn" hidden title="Footprint" aria-label="สลับ Footprint กับแท่งเทียน" aria-pressed="false">
-      <svg width="17" height="17" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" aria-hidden="true"><path d="M10 2v16M7 5H3m10 0h4M7 10H2m11 0h3M7 15H4m9 0h5"/></svg>
-    </button>
+    <label class="chart-type"><span id="chartTypeIcon" aria-hidden="true">▥</span>
+      <select id="chartType" aria-label="รูปแบบกราฟ">
+        <option value="candles">แท่งเทียน</option><option value="line">เส้นราคาปิด</option><option value="footprint">ฟุตพริ้นต์</option>
+      </select>
+    </label>
     <button id="oiBtn" class="has" aria-label="เปิด/ปิดข้อมูล OI บนกราฟ">OI</button>
+    <button id="trendPanelBtn" aria-label="ตาราง Donchian Trend" title="Donchian Trend" aria-haspopup="dialog">▦</button>
     <button id="indBtn" aria-label="เลือกอินดิเคเตอร์">ƒx</button>
     <button id="drawBtn" aria-label="เครื่องมือวาดกราฟ">✏️</button>
   </div>
@@ -626,6 +660,42 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   </div>
 
 <script>
+  window.bindRightSwipeDismiss = function (panel, dismiss) {
+    panel.setAttribute('data-swipe-dismiss', '');
+    let start = null;
+    const reset = () => { start = null; };
+    panel.addEventListener('touchstart', e => {
+      reset();
+      if (e.touches.length !== 1 || e.target.closest('[data-swipe-dismiss]') !== panel ||
+          e.target.closest('input, select, textarea, [contenteditable="true"]')) return;
+      // A horizontal scroller gets the gesture while it has content to scroll back to.
+      for (let el = e.target; el; el = el.parentElement) {
+        if (el.scrollLeft > 0 && /^(auto|scroll)$/.test(getComputedStyle(el).overflowX)) return;
+        if (el === panel) break;
+      }
+      const t = e.touches[0];
+      start = { id: t.identifier, x: t.clientX, y: t.clientY };
+    }, { passive: true });
+    panel.addEventListener('touchmove', e => {
+      if (!start) return;
+      const t = e.touches[0];
+      if (e.touches.length !== 1 || t.identifier !== start.id) { reset(); return; }
+      const dx = t.clientX - start.x, dy = Math.abs(t.clientY - start.y);
+      if (dx < -12 || dy > 32 || (dy > 12 && dy >= dx)) { reset(); return; }
+      if (dx > 12 && dx > dy * 1.5 && e.cancelable) e.preventDefault();
+    }, { passive: false });
+    panel.addEventListener('touchcancel', reset, { passive: true });
+    panel.addEventListener('touchend', e => {
+      const origin = start;
+      reset();
+      if (!origin || e.touches.length) return;
+      const t = Array.from(e.changedTouches).find(touch => touch.identifier === origin.id);
+      if (!t || t.clientX - origin.x < 65 || Math.abs(t.clientY - origin.y) > 32) return;
+      if (e.cancelable) e.preventDefault();
+      dismiss();
+    }, { passive: false });
+  };
+
   // ---------- ทะเบียนแจ้งเตือน: แต่ละอย่าง (และอินดี้ที่เพิ่มทีหลัง) ลงชื่อไว้ ผู้ใช้เลือกเปิด/ปิดได้ในเมนู ⚙️ ----------
   window.OIAlerts = (() => {
     const list = [], KEY = 'oi_alert_types'; let pref = {}, master = () => false, onChange = () => {};
@@ -654,8 +724,60 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   const IS_GOLD = SYM === 'gold' || SYM === 'gcy';
   const SYMBOL = SC.perp || (SC.yahoo === 'GC' ? 'XAUTUSDT' : null); // GC(Yahoo): ใช้ perp ทองต่อปลายกราฟ
   // เวอร์ชันแอป: แก้เล็กเพิ่มเลขท้าย (2 หลัก), เพิ่มฟีเจอร์ใหญ่เพิ่มเลขกลาง
-  const APP_VER = '0.12.00'; // based on OI Gold Pro V4.9.85
+  const APP_VER = '0.13.00'; // based on OI Gold Pro V4.9.163
   { const sv = document.getElementById('spVer'); if (sv) sv.textContent = 'V' + APP_VER; }
+  // ตรวจเวอร์ชันเมื่อเปิดแอป กลับจากพื้นหลัง หรือกลับมาออนไลน์
+  (() => {
+    if (EMBED) return; // หน้าหลักโหลดกราฟที่สองใหม่พร้อมกัน
+    const num = v => v.split('.').reduce((a, x) => a * 1000 + Number(x), 0);
+    let busy = false, last = 0;
+
+    async function checkForAppUpdate() {
+      const now = Date.now();
+      if (busy || now - last < 10e3 || !navigator.onLine) return;
+      busy = true;
+      last = now;
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 8000);
+      try {
+        const url = new URL(location.href);
+        url.searchParams.delete('v');
+        url.searchParams.set('vc', String(now));
+        const response = await fetch(url.href, { cache: 'no-store', signal: controller.signal });
+        if (!response.ok) return;
+
+        const html = await response.text();
+        const match = html.match(/const APP_VER = '(\d+\.\d+\.\d+)'/);
+        if (!match || num(match[1]) <= num(APP_VER)) return;
+
+        // เว้นระยะก่อนลองใหม่หากการเปิดหน้าครั้งแรกยังได้ไฟล์เดิม
+        const key = 'oi_vc_retry_' + match[1];
+        try {
+          if (now - Number(sessionStorage.getItem(key)) < 60e3) return;
+          sessionStorage.setItem(key, String(now));
+        } catch (error) {}
+        location.replace(url.href);
+      } catch (error) {
+        // เครือข่ายกลับมาแล้วจะตรวจได้อีกครั้ง
+      } finally {
+        clearTimeout(timeout);
+        busy = false;
+      }
+    }
+
+    setTimeout(checkForAppUpdate, 1000);
+    setInterval(checkForAppUpdate, 15 * 60e3);
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') checkForAppUpdate();
+    });
+    window.addEventListener('pageshow', event => {
+      if (event.persisted) checkForAppUpdate();
+    });
+    window.addEventListener('online', () => {
+      last = 0;
+      checkForAppUpdate();
+    });
+  })();
   const ZONE_HALF = SC.zone; // ครึ่งความกว้างโซนกำแพง OI ต่อสัญลักษณ์ (ทอง ±2.5 = $5)
   // V4.9.74: ทอง = ความกว้างโซนตามช่วงเวลา (ตรงกับ 🌏 OI Session Fade / แบ็กเทส) · Asia เช้า 06–10 ±2 · Asia สาย 10–14 ±1 · London 14–19:30 ±1.5 · NY/กลางคืน ±1.5
   const zoneHalf = () => {
@@ -855,7 +977,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   // ---------- overlay แท่ง OI ----------
   const ov = $('ov'), ctx = ov.getContext('2d');
   let dirty = true, lastKey = '';
-  { let zh0 = null; setInterval(() => { const z = zoneHalf(); if (z !== zh0) { zh0 = z; dirty = true; } }, 30000); } // เปลี่ยนช่วงเวลา → วาดโซนใหม่
+  { let zh0 = null; setInterval(() => { const z = zoneHalf(); if (z !== zh0) { zh0 = z; dirty = true; } }, 10000); } // เปลี่ยนช่วงเวลา → วาดโซนใหม่ (V4.9.104: เช็กทุก 10 วิ)
   const overlayHooks = []; const bgHooks = []; // V4.9.20 ชั้นใต้แถบ OI // ส่วนเสริม (เช่น goldscalp.js) วาดทับกราฟได้
   window.OIHistoryZonesRedraw = () => { dirty = true; };
   window.OIHistoryZonesWide=()=>{ document.querySelector('.tfs button[data-tf="1H"]')?.click(); const b=[...document.querySelectorAll('.tfs button')].find(b=>b.textContent.trim()==='H1');b?.click();setTimeout(()=>{chart.timeScale().fitContent();dirty=true;},2500); };
@@ -1038,8 +1160,10 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
       const hline = (x0, x1) => { ctx.beginPath(); ctx.moveTo(x0, yy); ctx.lineTo(x1, yy); ctx.stroke(); };
       // เส้นประเฉพาะ OI มากสุด 5 อันดับของแต่ละฝั่ง
       const in5C = oi.top5C.includes(r.strike), in5P = oi.top5P.includes(r.strike);
+      const top3 = SC.note === 'GC' && (((oi.rankC.get(r.strike) || 99) <= 3 && r.c > 0) || ((oi.rankP.get(r.strike) || 99) <= 3 && r.p > 0)); // V4.9.91: อันดับ 1–3 ฝั่งใดฝั่งหนึ่ง = เส้นที่แบ็กเทสแล้ว
+      const dimRank = SC.note === 'GC' && !top3;
       if (in5C || in5P) {
-        ctx.globalAlpha = 0.75;
+        ctx.globalAlpha = dimRank ? 0.3 : 0.75;
         ctx.strokeStyle = (in5C && (!in5P || r.c >= r.p)) ? callC : putC;
         ctx.lineWidth = 1;
         ctx.setLineDash([4, 3]); hline(0, plotW); ctx.setLineDash([]);
@@ -1049,22 +1173,26 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
       if (rC || rP) {
         const useC = rC && (!rP || r.c >= r.p);
         const rk = useC ? rC : rP;
-        const half = rk <= 5 ? zoneHalf() : zoneHalf() / 2;
+        const half = SC.note === 'GC' ? zoneHalf() : (rk <= 5 ? zoneHalf() : zoneHalf() / 2); // V4.9.86: ทอง = ทุกอันดับกว้างเท่ากันตามช่วงเวลา (เหมือน 🌏)
         const rankT = Math.max(0, Math.min(1, (rk - 1) / 9));
         const wallFrom = useC ? [4,120,87] : [185,28,28], wallTo = useC ? [134,239,172] : [253,186,116];
         const wallRgb = wallFrom.map((v,i) => Math.round(v + (wallTo[i] - v) * rankT));
         const wallC = 'rgb(' + wallRgb.join(',') + ')';
         const yTop = series.priceToCoordinate(r.price + half), yBot = series.priceToCoordinate(r.price - half);
         if (yTop !== null && yBot !== null) {
-          ctx.globalAlpha = .30 - .14 * rankT; ctx.fillStyle = wallC;
+          ctx.globalAlpha = SC.note === 'GC' ? (top3 ? .34 : .07) : .30 - .14 * rankT; ctx.fillStyle = wallC; // ทอง: อันดับ 1–3 เข้ม · 4–10 จาง
           ctx.fillRect(0, Math.min(yTop, yBot), plotW, Math.abs(yBot - yTop)); // สีเข้มตามอันดับ OI
         }
-        if (rk <= 5) { ctx.globalAlpha = .95 - .28 * rankT; ctx.lineWidth = 2; ctx.strokeStyle = wallC; hline(0, plotW); }
+        if (SC.note === 'GC' ? top3 : rk <= 5) { ctx.globalAlpha = .95 - .28 * rankT; ctx.lineWidth = 2; ctx.strokeStyle = wallC; hline(0, plotW); }
+
       }
-      // Volume วันนี้ 5 อันดับ: เส้นทึบสีเหลืองจากขอบซ้ายถึงขอบขวาของกราฟ (เต็มจอ)
+      // Volume วันนี้ 5 อันดับ: เส้นประสีเหลืองเต็มความกว้างกราฟ
       if (oi.topV && oi.topV.includes(r.strike)) {
+        ctx.save();
         ctx.globalAlpha = 0.95; ctx.lineWidth = 2; ctx.strokeStyle = volC;
+        ctx.setLineDash([6, 4]);
         hline(0, plotW);
+        ctx.restore();
       }
       // แท่ง Call (บนเส้น) และ Put (ใต้เส้น) ยื่นจากขอบขวา
       ctx.globalAlpha = 0.9;
@@ -1393,7 +1521,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   const isVolLine = r => !!(oi && oi.topV && oi.topV.includes(r.strike)); // เส้นเหลือง Volume วันนี้ 5 อันดับ
   const alertZones = () => (oi && oi.offset !== null) ? oi.rows.filter(r => zRank(r) > 0 || isVolLine(r)) : [];
   // ขอบโซนตรงกับที่วาด: อันดับ 1-5 โซนเต็ม, 6-10 ครึ่งความกว้าง
-  const zoneEdges = r => { const k = zRank(r), zh = zoneHalf(), h = k && k <= 5 ? zh : zh / 2; return { lo: r.price - h, hi: r.price + h }; };
+  const zoneEdges = r => { const k = zRank(r), zh = zoneHalf(), h = SC.note === 'GC' || (k && k <= 5) ? zh : zh / 2; return { lo: r.price - h, hi: r.price + h }; };
   const sessDay = () => Math.floor((Date.now() / 1000 + TZ_SHIFT - 5 * 3600) / 86400); // วันเทรดเริ่ม 05:00 น.
 
   // จำสถานะโซนไว้ตลอด: ซิงก์ชีต/ปรับ offset ทุกนาทีจะไม่รีเซ็ตสถานะ
@@ -1444,6 +1572,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     clearTimeout(hideToast.t); hideToast.t = setTimeout(() => { if (!el.classList.contains('show')) el.hidden = true; }, 360);
   }
   $('toast').addEventListener('click', hideToast);
+  window.bindRightSwipeDismiss($('toast'), hideToast);
   chartEl.addEventListener('pointerdown', () => { if (!$('toast').hidden) hideToast(); });
 
   // ---------- ท่าทางสัมผัส: ปัดแกนราคา (เปิด/ปิดแกน spot) และวัดระยะสองนิ้ว ----------
@@ -1555,7 +1684,9 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   }
 
   // V4.9.49: ป้ายลอยกลางบนสุดของจอ "รอดู PA" ค้างไว้ตลอดที่ราคาอยู่ในโซน OI/Vol (โซนเดียวกับที่แจ้งเตือน) · ออกจากโซนแล้วป้ายหายเอง
+  // V4.9.101: ผู้ใช้เลิกใช้ป้าย "รอดู PA" → ไม่แสดงแล้ว (ฟังก์ชันคงไว้ให้ที่เรียกอยู่ไม่พัง)
   function zoneBanner(price) {
+    { const w = $('zoneWait'); if (w) w.hidden = true; return; }
     let el = $('zoneWait');
     const zs = price === null ? [] : alertZones().filter(r => { if (!zRank(r)) return false; const { lo, hi } = zoneEdges(r); return price >= lo && price <= hi; }); // V4.9.23: เฉพาะโซน OI (ไม่รวมเส้น Vol)
     if (!zs.length) { if (el) el.hidden = true; return; }
@@ -1648,6 +1779,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   function closeSettings() { $('setPanel').hidden = true; }
   $('setBtn').addEventListener('click', openSettings);
   $('setClose').addEventListener('click', closeSettings);
+  window.bindRightSwipeDismiss($('setPanel'), closeSettings);
   $('introStyle').value = window.OIIntro.get();
   $('introStyle').addEventListener('change', e => window.OIIntro.set(e.target.value));
   $('setPanel').addEventListener('click', e => {
@@ -1795,7 +1927,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
       ws: null,
     });
   }
-  let prov = null, pingTimer = null, lastBarTime = null, pollTimer = null;
+  let prov = null, pingTimer = null, lastBarTime = null, pollTimer = null, displayedTF = null;
   // V4.9.34: จำมุมมองกราฟที่ผู้ใช้เลื่อน/ซูมล่าสุด (ขนาดแท่ง bs + ระยะจากแท่งล่าสุดถึงขอบขวา sp หน่วยแท่ง) → ค่าเริ่มครั้งต่อไป
   //          แท่งใหม่เกิด → เลื่อนตามโดยคงระยะเดิม (ไม่ว่าจะเลื่อนไปซ้าย/ขวา หรือซูมไว้แค่ไหน)
   const VKEY = 'oi_view' + PSFX; let viewUserAt = 0, viewLast = null, viewSaveT = null;
@@ -1931,13 +2063,13 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     if (SYM !== 'gold' || liveBusy || !prov || !oi) return;
     liveBusy = true;
     try {
-      const rows = await fetchBars(prov, '1m', 400);
+      const rows = await fetchBars(prov, '1m', 60); // V4.9.104: ใช้แค่แท่งล่าสุด (เรียกทุก 10 วิ)
       const pm = new Map(rows.map(k => [Math.floor(k[0] / 1000), k[4]])); // ราคาปิดแท่ง M1 ของ perp
       const nowS = Date.now() / 1000;
       let gfOk = false;
       // หลัก: Gold.F (BlackBull, เรียลไทม์) จับคู่แท่ง M1 ที่ปิดแล้ว 5 แท่งล่าสุด ใช้ค่ากลาง (median) → ไม่ดีเลย์แบบ Yahoo
       try {
-        const g = await fetch(`${GC_WORKER}/gf?t=${Math.floor(Date.now() / 20000)}`, { cache: 'no-store' });
+        const g = await fetch(`${GC_WORKER}/gf?t=${Math.floor(Date.now() / 10000)}`, { cache: 'no-store' });
         const gb = g.ok ? ((await g.json()).bars || []) : [];
         gfOk = gb.length > 0;
         const d = [];
@@ -1975,7 +2107,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     } catch (e) {}
     finally { liveBusy = false; }
   }
-  setInterval(pairYahoo, 60000); setTimeout(pairYahoo, 5000);
+  setInterval(pairYahoo, 10000); setTimeout(pairYahoo, 3000); // V4.9.104: offset ทุก 10 วิ (เดิม 60 วิ)
   // (เดิม) คำนวณ offset ใหม่: GC ประมาณ = spot ล่าสุด + carry → offset = GC − perp (ปิดใช้งาน)
   function refreshAdj(force) {
     return; // ปิดการลอยตาม spot/carry: offset ล็อกตามชีต
@@ -2082,9 +2214,11 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
           if (r2) rows = r2.filter(k => !cmeClosed(k[0])).slice(-800);
         }
         if (!rows.length) throw new Error('no data');
-        rawBars = rows;
+        if (tf !== next) return;
         const bars = rows.map(toBar);
         series.setData(bars);
+        rawBars = rows;
+        displayedTF = next;
         refreshQuarterPriceGrid();
         indRefresh();
         rawClose = rows[rows.length - 1][4];
@@ -2147,6 +2281,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
       if (lastBarTime !== null && b.time < lastBarTime) return;
       try {
         series.update(b); lastBarTime = b.time; rawClose = k[4]; lastClose = rawClose - adj;
+        if (tf === '1m') dirty = true;
         const lastRaw = rawBars[rawBars.length - 1];
         if (lastRaw && lastRaw[0] === k[0]) rawBars[rawBars.length - 1] = k; else if (!lastRaw || k[0] > lastRaw[0]) rawBars.push(k);
       } catch (e) {}
@@ -2218,6 +2353,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
             const b = toBar(k);
             if (lastBarTime !== null && b.time < lastBarTime) return;
             series.update(b); lastBarTime = b.time; rawClose = k[4]; lastClose = rawClose - adj;
+            if (tf === '1m') dirty = true;
             const lastRaw = rawBars[rawBars.length - 1];
             if (lastRaw && lastRaw[0] === k[0]) rawBars[rawBars.length - 1] = k; else rawBars.push(k);
           });
@@ -2257,6 +2393,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     { id: 'ema3', type: 'ema', name: 'EMA', p: { n: 200 }, col: '#ba68c8', w: 2 },
     { id: 'sma1', type: 'sma', name: 'SMA', p: { n: 20 }, col: '#e57373' },
     { id: 'sma2', type: 'sma', name: 'SMA', p: { n: 100 }, col: '#81c784' },
+    { id: 'env', type: 'env', name: 'Envelope', p: { n: 20, dev: 0.1, method: 'ema' }, col: '#80cbc4' },
     { id: 'bb', type: 'bb', name: 'Bollinger', p: { n: 20, k: 2 }, col: '#90a4ae' },
     { id: 'st', type: 'st', name: 'Supertrend', p: { n: 10, k: 3 }, col: '#26a69a' },
     { id: 'rsi', type: 'rsi', name: 'RSI', p: { n: 14, ob: 70, os: 30 }, col: '#ffb74d', osc: true },
@@ -2264,7 +2401,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     { id: 'stoch', type: 'stoch', name: 'Stochastic', p: { k: 14, d: 3, sm: 3, ob: 80, os: 20 }, col: '#4dd0e1', osc: true },
     { id: 'atr', type: 'atr', name: 'ATR', p: { n: 14 }, col: '#ce93d8', osc: true },
   ];
-  const PLABEL = { n: 'คาบ', k: 'ตัวคูณ', ob: 'บน', os: 'ล่าง', f: 'เร็ว', s: 'ช้า', g: 'สัญญาณ', sm: 'smooth' };
+  const PLABEL = { dev: 'Deviation (%)', n: 'คาบ', k: 'ตัวคูณ', ob: 'บน', os: 'ล่าง', f: 'เร็ว', s: 'ช้า', g: 'สัญญาณ', sm: 'smooth' };
   const PLABEL_STOCH = { k: '%K', d: '%D', sm: 'smooth', ob: 'บน', os: 'ล่าง' };
   let indCfg = {};
   try { indCfg = JSON.parse(localStorage.getItem('oit_ind2' + PSFX) || 'null') || {}; } catch (e) { indCfg = {}; }
@@ -2286,6 +2423,12 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   // ---- สูตร ----
   function emaArr(v, n) { const k = 2 / (n + 1), out = []; let e = null, cnt = 0; v.forEach(x => { if (x === null) { out.push(null); return; } cnt++; e = e === null ? x : x * k + e * (1 - k); out.push(cnt >= n ? e : null); }); return out; }
   function smaArr(v, n) { const out = []; let sum = 0; v.forEach((x, i) => { sum += x; if (i >= n) sum -= v[i - n]; out.push(i >= n - 1 ? sum / n : null); }); return out; }
+  function envelopeArr(v, p) {
+    const mid = p.method === 'sma' ? smaArr(v, p.n) : emaArr(v, p.n);
+    const fraction = p.dev / 100;
+    return [mid.map(x => x === null ? null : x * (1 + fraction)), mid,
+      mid.map(x => x === null ? null : x * (1 - fraction))];
+  }
   function rmaArr(v, n) { const out = []; let r = null; v.forEach((x, i) => { if (i < n - 1) { out.push(null); return; } if (r === null) { r = v.slice(0, n).reduce((a, b) => a + b, 0) / n; } else r = (r * (n - 1) + x) / n; out.push(r); }); return out; }
   function trArr(B) { return B.map((b, i) => i ? Math.max(b.high - b.low, Math.abs(b.high - B[i - 1].close), Math.abs(b.low - B[i - 1].close)) : b.high - b.low); }
 
@@ -2295,6 +2438,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     const on = IND.filter(d => cfgOf(d).on);
     on.filter(d => !d.osc).forEach(d => {
       if (d.type === 'ema' || d.type === 'sma') indSeries[d.id] = [add(lineOpt(d.col, { lineWidth: d.w || 1 }))];
+      else if (d.type === 'env') indSeries.env = [add(lineOpt(d.col)), add(lineOpt(d.col, { lineStyle: 2 })), add(lineOpt(d.col))];
       else if (d.type === 'bb') indSeries.bb = [add(lineOpt(d.col, { lineStyle: 2 })), add(lineOpt(d.col)), add(lineOpt(d.col, { lineStyle: 2 }))];
       else if (d.type === 'st') indSeries.st = [add(lineOpt('#26a69a', { lineWidth: 2 })), add(lineOpt('#ef5350', { lineWidth: 2 }))];
     });
@@ -2333,6 +2477,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
         const p = cfgOf(d).p;
         if (d.type === 'ema') S[0].setData(line(emaArr(C, p.n)));
         else if (d.type === 'sma') S[0].setData(line(smaArr(C, p.n)));
+        else if (d.type === 'env') envelopeArr(C, p).forEach((arr, i) => S[i].setData(line(arr)));
         else if (d.type === 'bb') {
           const n = p.n, up = [], mid = [], lo = [];
           C.forEach((_, i) => {
@@ -2392,10 +2537,11 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   function paintIndMenu() {
     $('indMenu').innerHTML = '<div class="t">อินดิเคเตอร์ · แตะชื่อเพื่อเปิด/ปิด แก้ตัวเลขเพื่อปรับค่า</div>' + IND.map(d => {
       const c = cfgOf(d), lab = d.type === 'stoch' ? PLABEL_STOCH : PLABEL;
-      const ins = Object.keys(d.p).map(k => `<label>${lab[k] || k}<input type="number" inputmode="decimal" step="any" data-id="${d.id}" data-k="${k}" value="${c.p[k]}"></label>`).join('');
+      const ins = Object.keys(d.p).map(k => k === 'method' ? `<label>วิธีเฉลี่ย<select data-id="${d.id}" data-k="method"><option value="sma" ${c.p.method === 'sma' ? 'selected' : ''}>Simple (SMA)</option><option value="ema" ${c.p.method === 'ema' ? 'selected' : ''}>Exponential (EMA)</option></select></label>` : `<label>${lab[k] || k}<input type="number" inputmode="decimal" step="any" data-id="${d.id}" data-k="${k}" value="${c.p[k]}"></label>`).join('');
       return `<div class="row"><button data-ind="${d.id}" class="${c.on ? 'on' : ''}"><i style="background:${d.col}"></i>${d.name}</button><span class="ps">${ins}</span></div>`;
     }).join('') + '<button class="reset" data-reset="1">คืนค่าเริ่มต้นทั้งหมด</button>';
   }
+  window.bindRightSwipeDismiss($('indMenu'), () => { $('indMenu').hidden = true; });
   $('indBtn').addEventListener('click', e => { e.stopPropagation(); const m = $('indMenu'); m.hidden = !m.hidden; $('drawBar').hidden = true; if (!m.hidden) paintIndMenu(); });
   $('indMenu').addEventListener('click', e => {
     e.stopPropagation();
@@ -2406,11 +2552,16 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     c.on = !c.on; saveInd(); paintIndMenu(); rebuildSeries();
   });
   $('indMenu').addEventListener('change', e => {
-    const inp = e.target.closest('input[data-id]'); if (!inp) return;
+    const inp = e.target.closest('input[data-id], select[data-id]'); if (!inp) return;
     const d = IND.find(x => x.id === inp.dataset.id), k = inp.dataset.k;
+    if (d.type === 'env' && k === 'method') {
+      const c = indCfg[d.id] = indCfg[d.id] || {};
+      c.p = Object.assign({}, c.p || {}, { method: inp.value === 'sma' ? 'sma' : 'ema' });
+      saveInd(); if (c.on) rebuildSeries(); return;
+    }
     let v = parseFloat(inp.value);
-    const isInt = !['k', 'ob', 'os'].includes(k) || d.type === 'stoch' && k === 'k';
-    if (!isFinite(v) || v <= 0) v = d.p[k];
+    const isInt = !['k', 'ob', 'os', 'dev'].includes(k) || d.type === 'stoch' && k === 'k';
+    if (!isFinite(v) || (k === 'dev' ? v < 0 || v >= 100 : v <= 0)) v = d.p[k];
     if (isInt) v = Math.max(1, Math.min(500, Math.round(v)));
     inp.value = v;
     const c = indCfg[d.id] = indCfg[d.id] || {};
@@ -2528,6 +2679,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     lockChart(!!k); paintDrawBar(); $('drawBtn').classList.toggle('has', !!k || drawings.length > 0);
     if (k) showToast(k === 'measure' ? 'แตะ/คลิกจุดแรก แล้วแตะ/คลิกจุดที่สอง (คอมใช้ Shift+คลิก ได้เลย · Esc ยกเลิก)' : k === 'erase' ? 'แตะที่เส้นที่ต้องการลบ' : k === 'hline' ? 'แตะที่ราคาที่ต้องการวางเส้น' : 'แตะค้างที่จุดแรก แล้วลากไปจุดที่สอง', 2500);
   }
+  window.bindRightSwipeDismiss($('drawBar'), () => { $('drawBar').hidden = true; setTool(null); });
   $('drawBtn').addEventListener('click', e => {
     e.stopPropagation(); const b = $('drawBar'); b.hidden = !b.hidden; $('indMenu').hidden = true;
     if (b.hidden) setTool(null); else paintDrawBar();
@@ -2653,6 +2805,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   $('tfs').addEventListener('click', e => { const b = e.target.closest('button'); if (b && b.dataset.tf) loadTF(b.dataset.tf); });
   // ปุ่ม ⟳: ขึ้นสัญลักษณ์โหลดบนกราฟ จนกว่าข้อมูลชีต + ข้อมูลสดโหลดเสร็จและกราฟวาดใหม่แล้ว
   let reloading = false;
+  window.bindRightSwipeDismiss($('reloadOv'), () => $('reloadOv').classList.remove('on'));
   $('reload').addEventListener('click', async () => {
     if (reloading) return; reloading = true;
     const ov = $('reloadOv'), btn = $('reload');
@@ -2755,6 +2908,54 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   try { saved = localStorage.getItem('oit_code'); } catch (e) {}
   $('symName').textContent = SC.name;
   const ftCache = new Map();
+  // Apply the same price and deviation to each TF's independent EMA 50.
+  const trendButtons = [...document.querySelectorAll('#tfs button[data-tf]')];
+  const trendHistory = new Map(), trendRequested = new Map();
+  const trendPending = new Set();
+  const trendEnvelope = IND.find(d => d.type === 'env');
+  function paintTfTrends() {
+    if (!started || paused || document.hidden || !Number.isFinite(lastClose)) return;
+    const stamp = Date.now();
+    const chartTime = stamp / 1000 + TZ_SHIFT;
+    const dev = cfgOf(trendEnvelope).p.dev;
+    for (const button of trendButtons) {
+      const frame = button.dataset.tf;
+      const active = frame === displayedTF && frame === tf;
+      const bars = active ? rawBars.slice(-300).map(toBar) : trendHistory.get(frame);
+      const last = bars?.at(-1);
+      if (!active && trendPending.size < 3 && !trendPending.has(frame) &&
+          stamp - (trendRequested.get(frame) ?? -Infinity) >= 60000 &&
+          (!last || (!cmeClosed(stamp) && chartTime >= last.time + tfSec[frame]) ||
+            stamp - trendRequested.get(frame) >= 300000)) {
+        trendRequested.set(frame, stamp);
+        trendPending.add(frame);
+        window.OI.fetchTF(frame, 300).then(rows => {
+          if (rows?.length >= 50) trendHistory.set(frame, rows);
+        }).catch(() => {}).finally(() => {
+          trendPending.delete(frame);
+          paintTfTrends();
+        });
+      }
+      if (!last || bars.length < 50) {
+        delete button.dataset.trend;
+        continue;
+      }
+      const closes = bars.map(bar => bar.close);
+      if (!cmeClosed(stamp) && chartTime >= last.time && chartTime < last.time + tfSec[frame]) {
+        closes[closes.length - 1] = lastClose;
+      }
+      const [upper, , lower] = envelopeArr(closes, { n: 50, method: 'ema', dev });
+      const hi = upper.at(-1), lo = lower.at(-1);
+      if (!Number.isFinite(hi) || !Number.isFinite(lo)) {
+        delete button.dataset.trend;
+        continue;
+      }
+      button.dataset.trend = lastClose > hi ? 'up' : lastClose < lo ? 'down' : 'inside';
+    }
+  }
+  setInterval(paintTfTrends, 2000);
+  document.addEventListener('visibilitychange', paintTfTrends);
+
   window.OI = {
     // V4.9.29: แคช 15 วิ แชร์ทุกอินดี้ (เดิมแต่ละอินดี้ดึงเอง ~10 ครั้ง/นาที) · ปัดจำนวนแท่งเป็น 300/1000 · พักอยู่ = ใช้ของเดิม ไม่ดึงใหม่
     fetchTF: async (t, n, force) => { // force = ดึงแม้พัก (เช่นกดวิเคราะห์ AI ในหน้าต่างที่ทับกราฟ)
@@ -2772,10 +2973,14 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
     // V4.9.79: ดึงแท่งย้อนหลังเป็นช่วงเวลา (ไล่หน้าละ 1000 แท่ง) สำหรับแบ็กเทสในอินดี้ · Bybit → Binance · ราคาปรับ offset รอบนั้นเหมือนกราฟ
     // V4.9.79: ดึงแท่งย้อนหลังเป็นช่วงเวลา (ไล่หน้าละ 1000 แท่ง) สำหรับแบ็กเทสในอินดี้ · ราคาปรับ offset รอบนั้นเหมือนกราฟ
     fetchHist: async (t, fromMs, toMs) => { const rows = await fetchRangeRaw(t, fromMs, toMs); return rows ? rows.filter(k => !cmeClosed(k[0])).map(k => Object.assign(toBar(k), { volume: k[5] || 0 })) : null; },
+    envelopeBands: closes => envelopeArr(closes, cfgOf(IND.find(d => d.type === 'env')).p),
+    chartBars: () => displayedTF === tf ? rawBars.map(toBar) : [],
+    chartM1: n => tf === '1m' && displayedTF === '1m' ? (n ? rawBars.slice(-n) : rawBars).map(toBar) : [],
     get paused() { return paused; },
     get unlimited() { return !!authCode && (!authExpire || String(authExpire) >= '9999'); }, // V4.9.32 รหัสไม่จำกัดวัน
-    get tf() { return tf; }, tzShift: TZ_SHIFT, sym: SYM, cfg: SC, sfx: SYMSFX, psfx: PSFX,
+    get tf() { return tf; }, get displayedTF() { return displayedTF; }, tzShift: TZ_SHIFT, sym: SYM, cfg: SC, sfx: SYMSFX, psfx: PSFX,
     chart, series, chartEl, hooks: overlayHooks, bgHooks,
+    get drawingActive() { return !!drawTool || clickMeas || !!(g1 && meas); },
     get oi() { return oi; }, get lastClose() { return lastClose; }, get cfgData() { return lastCfg; }, setLevels, get rawBars() { return rawBars; }, get adj() { return adj; }, get src() { return prov ? prov.id : null; }, worker: GC_WORKER, beep: () => { try { beep(); } catch (e) {} },
     showToast, hideToast, lockChart,
     markDirty() { dirty = true; },
@@ -2788,25 +2993,46 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   if (saved) { $('login').hidden = true; $('chips').innerHTML = '<span class="chip">กำลังตรวจสอบรหัสผ่าน…</span>'; tryLogin(saved, true); }
 })();
 </script>
-<script src="trade.js?v=0.12.00"></script>
-<script src="dash.js?v=0.12.00"></script>
-<script src="goldscalp.js?v=0.12.00"></script>
-<script src="live.js?v=0.12.00"></script>
-<script src="intraday.js?v=0.12.00"></script>
-<script src="retail.js?v=0.12.00"></script>
-<script src="bigtrade.js?v=0.12.00"></script>
-<script src="dealer.js?v=0.12.00"></script>
-<script src="ivbadge.js?v=0.12.00"></script>
-<script src="oistep.js?v=0.12.00"></script>
-<script src="osf.js?v=0.12.00"></script>
-<script src="squeeze.js?v=0.12.00"></script>
-<script src="cotgroups.js?v=0.12.00"></script>
-<script src="crowd.js?v=0.12.00"></script>
-<script src="oistat.js?v=0.12.00"></script>
-<script src="trap.js?v=0.12.00"></script>
-<script src="volreg.js?v=0.12.00"></script>
-<script src="oidiv.js?v=0.12.00"></script>
-<script src="dealerbox.js?v=0.12.00"></script>
-<script src="autoui.js?v=0.12.00"></script>
+<script src="trade.js?v=0.13.00"></script>
+<script src="dash.js?v=0.13.00"></script>
+<script src="goldscalp.js?v=0.13.00"></script>
+<script src="live.js?v=0.13.00"></script>
+<script src="intraday.js?v=0.13.00"></script>
+<script src="retail.js?v=0.13.00"></script>
+<script src="volume-profile.js?v=0.13.00"></script>
+<script type="module" src="liquidity-heatmap.js?v=0.13.00"></script>
+<script src="bigtrade.js?v=0.13.00"></script>
+<script src="dealer.js?v=0.13.00"></script>
+<script src="ivbadge.js?v=0.13.00"></script>
+<script src="oistep.js?v=0.13.00"></script>
+<dialog id="sfDetails" aria-labelledby="sfDetailsTitle">
+  <header>
+    <strong>🌏 OI Session Fade</strong>
+    <form method="dialog"><button class="icon" type="submit" aria-label="ปิดรายละเอียด">×</button></form>
+  </header>
+  <h2 id="sfDetailsTitle"></h2>
+  <p id="sfDetailsZone"></p>
+  <strong>เหตุผลของสัญญาณ</strong>
+  <p id="sfDetailsReason"></p>
+  <p id="sfDetailsStatus"></p>
+  <p id="sfDetailsRisk"></p>
+</dialog>
+<script src="osf.js?v=0.13.00"></script>
+<script src="squeeze.js?v=0.13.00"></script>
+<script src="cotgroups.js?v=0.13.00"></script>
+<script src="crowd.js?v=0.13.00"></script>
+<script src="oistat.js?v=0.13.00"></script>
+<script src="trap.js?v=0.13.00"></script>
+<script src="volreg.js?v=0.13.00"></script>
+<script src="oidiv.js?v=0.13.00"></script>
+<script src="dealerbox.js?v=0.13.00"></script>
+<script src="footprint.js?v=0.13.00"></script>
+<script src="opposite-delta-diamonds.js?v=0.13.00"></script>
+<script src="tpo.js?v=0.13.00"></script>
+<script src="volume-ema.js?v=0.13.00"></script>
+<script src="range-retest-core.js?v=0.13.00"></script>
+<script src="donchian-trend.js?v=0.13.00"></script>
+<script src="range-retest.js?v=0.13.00"></script>
+<script src="autoui.js?v=0.13.00"></script>
 </body>
 </html>

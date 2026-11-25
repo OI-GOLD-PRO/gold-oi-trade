@@ -24,6 +24,10 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### OI Trade V0.13.00 — 2026-11-25 — ChatGPT
+- อัปเดตกราฟจาก OI Gold Pro V4.9.163 รวม DON, Footprint, TPO, Volume Profile, Liquidity Heatmap และโซน Opposite Delta ข้าม TF พร้อมรายละเอียด Session Fade
+- ไฟล์หลัก: index.html, tools/port.py และโมดูลกราฟ ใช้ราคาโบรกและระบบส่งคำสั่งเดิมของ Trade
+
 ### gcw /osf/v1 counters — 2026-11-10 — Claude
 - ไฟล์: gcw/src/osf.js, gcw/test.mjs
 - แก้อะไร: `/osf/v1` (แบบเต็ม ไม่ใช่ `?view=ea`) เพิ่ม `counters: { session, c: { strike: [arm, touches] } }` ของช่วงที่แท่งล่าสุดอยู่ — แอป OI Gold Pro V4.9.105 ใช้แสดงตัวนับแตะในหน้า OI / Gamma

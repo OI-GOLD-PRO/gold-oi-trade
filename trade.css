@@ -237,3 +237,9 @@ body.oit-max #ticket { border-top: 0; }
 .au-r { display: flex; align-items: baseline; gap: 6px; padding: 6px 0; border-bottom: 1px solid var(--line); font-size: 13px; } .au-r .sp { flex: 1; } .au-r .b { color: var(--buy); font-weight: 700; } .au-r .s { color: var(--sell); font-weight: 700; } .au-r i { font-style: normal; font-size: 11px; opacity: .85; }
 .au-log { font-size: 12px; line-height: 1.5; } .au-log > div { padding: 3px 0; border-bottom: 1px dashed var(--line); } .au-log .warn { color: var(--sell); } .au-log .place, .au-log .fill { color: var(--buy); }
 #autoBtn { background: var(--bg); border: 1px solid var(--line); border-radius: 8px; padding: 2px 6px; }
+
+@media (max-width: 600px) {
+  #tfs { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+  #tfs button, #tfs .chart-type { min-width: 0; width: auto; padding-inline: 2px; }
+  #tfs #maxBtn { position: static; box-shadow: none; }
+}

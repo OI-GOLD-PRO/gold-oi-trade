@@ -51,6 +51,8 @@ rep_re(r"const APP_VER = '[^']*';", f"const APP_VER = '{APP_VER}'; // based on O
 # own localStorage keys (same origin as OI Gold Pro)
 s = re.sub(r"localStorage\.(getItem|setItem|removeItem)\('oi_", r"localStorage.\1('oit_", s)
 
+# The upstream page may have additional inline styles between its theme and </head>.
+s = re.sub(r'<link rel="stylesheet" href="v3[^"]*">\n', '', s)
 # --- trade UI containers + script ---
 # V1.10+: the page body is wrapped in #main and has a 2nd-chart iframe; the trade app is single chart only
 rep('''  </div>
@@ -75,6 +77,8 @@ rep_re(r'<script src="goldscalp\.js"></script>\n.*?</body>', '''<script src="tra
 <script src="live.js"></script>
 <script src="intraday.js"></script>
 <script src="retail.js"></script>
+<script src="volume-profile.js"></script>
+<script type="module" src="liquidity-heatmap.js"></script>
 <script src="bigtrade.js"></script>
 <script src="dealer.js"></script>
 <script src="ivbadge.js"></script>
@@ -88,14 +92,23 @@ rep_re(r'<script src="goldscalp\.js"></script>\n.*?</body>', '''<script src="tra
 <script src="volreg.js"></script>
 <script src="oidiv.js"></script>
 <script src="dealerbox.js"></script>
+<script src="footprint.js"></script>
+<script src="opposite-delta-diamonds.js"></script>
+<script src="tpo.js"></script>
+<script src="volume-ema.js"></script>
+<script src="range-retest-core.js"></script>
+<script src="donchian-trend.js"></script>
+<script src="range-retest.js"></script>
 <script src="autoui.js"></script>
 </body>''')
 # not ported (dashboard / AI text / luxury shell / Apps-Script data): colorize.js, quant.js, aitray.js, v33-luxury.js, historical-oi.js
 rep('<div class="row"><button data-oih="1">Historical OI Zones</button></div>', '')
+details = re.search(r'<dialog id="sfDetails".*?</dialog>', src, re.S).group()
+rep('<script src="osf.js">', details + '\n<script src="osf.js">')
 # (source aitray.js = secret AI price-action tray via the owner's Apps Script: not ported)
 # single chart only: no 2nd-chart layout
 rep_re(r"  // ---- เลย์เอาต์ 2 กราฟ: กราฟที่ 2 = iframe.*?\n  let SYM = 'gold';", "  const EMBED = false, PSFX = '', LAY = '';\n  let SYM = 'gold';")
-rep_re(r"  // ---------- เลือกสัญลักษณ์ [^\n]*----------\n  \$\('symName'\)\.textContent = SC\.name;\n.*?(?=  const ftCache = new Map\(\);\n  window\.OI = \{)", "  $('symName').textContent = SC.name;\n")
+rep_re(r"  // ---------- เลือกสัญลักษณ์ [^\n]*----------\n  \$\('symName'\)\.textContent = SC\.name;\n.*?(?=  const ftCache = new Map\(\);)", "  $('symName').textContent = SC.name;\n")
 rep_re(r"    // ดึงข้อมูลชีตของสัญลักษณ์ใดก็ได้ \(ใช้ในแดชบอร์ด dash\.js\)\n    async fetchData\(sym\) \{.*?\n    \},\n(?=    showToast)", "")
 
 # --- gold only (V1.9+ has a symbol switcher; the trade app trades the MT5 gold symbol only) ---
@@ -332,3 +345,16 @@ for name in ["retail.js", "dealerbox.js", "volreg.js", "oidiv.js", "crowd.js", "
         tr("const body = Object.keys(fzNew).length ? JSON.stringify(fzNew) : null;", "const body = null; // shared plans are read-only in Trade")
     open(os.path.join(OUT_DIR, name), "w", encoding="utf-8").write(m)
     print(f"{name} copied from OI Gold Pro (Trade adapter)")
+
+# Shared chart extensions use Trade preferences and the broker chart's price basis.
+for name in ['volume-profile.js', 'liquidity-heatmap.js', 'footprint.js', 'opposite-delta-diamonds.js', 'tpo.js', 'volume-ema.js', 'range-retest-core.js', 'donchian-trend.js', 'range-retest.js', 'liquidity-levels.mjs']:
+    with open(os.path.join(SRC_DIR, name), encoding="utf-8") as source:
+        module = re.sub(r"(['\"])oi_", r"\1oit_", source.read())
+    if name == "range-retest.js":
+        module = module.replace("fetch('news.json?", "fetch('https://oi-gold-pro.github.io/gold-oi-pro/news.json?")
+    if name == "liquidity-heatmap.js":
+        # Book ticks are exchange prices. Render downloaded rows on this broker's scale.
+        module = module.replace("const offset = s.offset;", "const offset = O.adj;")
+        module = module.replace("offset:O.adj", "offset:O.adj-O.gcOff()")
+    with open(os.path.join(OUT_DIR, name), "w", encoding="utf-8") as target:
+        target.write(module)

@@ -314,14 +314,27 @@
     // ป้ายจากอินดี้อื่น (เช่น dealer.js) → [ข้อความ, สี, key สำหรับแตะ]
     { const first = []; (window.OIBadgeExtra || []).forEach(f => { try { const x = f(); if (x) { if (x[4] === 'first') first.push(x); else badges.push(x); } } catch (e) {} }); badges.unshift(...first); }
     // V4.5.2: ลำดับที่ผู้ใช้กำหนด: ⚠️ Squeeze (เมื่อมีสัญญาณ) → Dealer → IV → OI Divergence (High/Low + OI) → HV (🌡) → ที่เหลือตามเดิม
-    { const ORD = ['sfmom', 'squeeze', 'dealer', 'iv', 'oidiv', 'volreg'], rk = x => { const i = ORD.indexOf(x[2]); return i < 0 ? ORD.length : i; }; badges.splice(0, badges.length, ...badges.map((x, i) => [x, i]).sort((a, b) => rk(a[0]) - rk(b[0]) || a[1] - b[1]).map(z => z[0])); } // V4.5.0: ป้าย 'first' หลายอันเรียงตามลำดับโหลด // [ข้อความ, สี, key, พื้นหลัง, 'first' = ขึ้นหน้าสุด]
+    { const ORD = ['sfmom', 'sfmom-hot', 'squeeze', 'dealer', 'iv', 'oidiv', 'volreg'], rk = x => { const i = ORD.indexOf(x[2]); return i < 0 ? ORD.length : i; }; badges.splice(0, badges.length, ...badges.map((x, i) => [x, i]).sort((a, b) => rk(a[0]) - rk(b[0]) || a[1] - b[1]).map(z => z[0])); } // V4.5.0: ป้าย 'first' หลายอันเรียงตามลำดับโหลด // [ข้อความ, สี, key, พื้นหลัง, 'first' = ขึ้นหน้าสุด]
     // V3.5.7: ป้ายสถานะอยู่ในแถบของตัวเองเหนือกราฟ (เดิมวาดทับกราฟ ทำให้ซ้อนกับป้ายราคา/OI มุมซ้ายบน)
     const wrap = document.getElementById('wrap');
     if (wrap) {
       let bar = document.getElementById('badges');
-      if (!bar) { bar = document.createElement('div'); bar.id = 'badges'; wrap.appendChild(bar); }
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'badges';
+        bar.addEventListener('click', e => {
+          if (e.target.closest('button[data-k="sfmom"], button[data-k="sfmom-hot"]')) window.OI_sfade?.openPlan();
+        });
+        wrap.appendChild(bar);
+      }
       const esc = t => String(t).replace(/[&<>"]/g, ch => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[ch]));
-      const html = badges.map(([t, col, k, bg]) => `<span style="color:${col};border-color:${col}${bg ? ';background:' + bg : ''}"${k ? ` data-k="${esc(k)}"` : ''}>${esc(t)}</span>`).join('');
+      const html = badges.map(([t, col, k, bg]) => {
+        const attrs = `style="color:${col};border-color:${col}${bg ? ';background:' + bg : ''}"${k ? ` data-k="${esc(k)}"` : ''}`;
+        if (k === 'sfmom' || k === 'sfmom-hot') {
+          return `<button type="button" ${attrs}>${esc(t)} · 📋 แผน</button>`;
+        }
+        return `<span ${attrs}>${esc(t)}</span>`;
+      }).join('');
       if (bar.dataset.h !== html) { bar.dataset.h = html; bar.innerHTML = html; wrap.classList.toggle('bdg', badges.length > 0); }
     }
   });

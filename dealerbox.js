@@ -12,8 +12,9 @@
   if (!O || !O.hooks || !(O.sym === 'gold' || O.sym === 'gcy')) return;
   const $ = id => document.getElementById(id);
   const KEY = 'oit_dbox' + (O.psfx || '');
-  const cfg = { on: !window.OI_NEWDEV, minTests: 3 }; // V4.9.29 เครื่องใหม่ปิดเป็นค่าเริ่ม
+  const cfg = { on: !window.OI_NEWDEV, line: false, minTests: 3 }; // V4.9.29 เครื่องใหม่ปิดเป็นค่าเริ่ม
   try { Object.assign(cfg, JSON.parse(localStorage.getItem(KEY) || '{}')); } catch (e) {}
+  const enabled = () => cfg.on || cfg.line;
   const normTests = v => Number.isFinite(+v) && +v > 0 ? Math.max(1, Math.min(20, Math.round(+v))) : null;
   cfg.minTests = normTests(cfg.minTests) ?? 3;
   let requestFrameUpdate = () => {};
@@ -120,7 +121,7 @@
     return out;
   }
   async function run(force) {
-    if (!cfg.on || busy) return;
+    if (!enabled() || busy) return;
     if (!force && Date.now() - lastRun < 25000) return;
     busy = true; lastRun = Date.now();
     try {
@@ -137,10 +138,28 @@
 
   // ---------- วาด ----------
   const csec = () => TFS[O.tf] || 60, toChart = t => Math.floor(t / csec()) * csec();
+  function rejectionTime(time, side, chartBars) {
+    if (O.tf !== '1m') return toChart(time);
+    let lo = 0, hi = chartBars.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >>> 1;
+      if (chartBars[mid].time < time) lo = mid + 1;
+      else hi = mid;
+    }
+    const field = side > 0 ? 'low' : 'high';
+    let best;
+    for (let i = lo; i < chartBars.length && chartBars[i].time < time + 300; i++) {
+      const bar = chartBars[i];
+      if (!Number.isFinite(bar[field])) continue;
+      if (!best || (bar[field] - best[field]) * side < 0) best = bar;
+    }
+    return best?.time;
+  }
+
   let hit = [];
   function drawFrames(ctx, w, h) {
     hit = [];
-    if (!cfg.on || !boxes.length || !bars.length || csec() >= 86400) return;
+    if (!enabled() || !boxes.length || !bars.length || csec() >= 86400) return;
     const ts = O.chart.timeScale(), sr = O.series, plotW = ts.width(), plotH = h - ts.height();
     const X = i => ts.timeToCoordinate(toChart(bars[Math.min(i, bars.length - 1)].time)), Y = p => sr.priceToCoordinate(p);
     const step = ts.options().barSpacing || 6;
@@ -148,12 +167,54 @@
     const latestX = lastBar ? ts.timeToCoordinate(lastBar.time) : X(bars.length - 1);
     ctx.save();
     ctx.beginPath(); ctx.rect(0, 0, plotW, plotH); ctx.clip();
+    if (cfg.line) {
+      const width = step * 0.8, depth = 1;
+      for (const box of boxes) {
+        const active = box.live === true && box.broke === undefined;
+        const top = Y(box.p + (box.side > 0 ? depth : 0));
+        const bottom = Y(box.p - (box.side < 0 ? depth : 0));
+        if (top === null || bottom === null || bottom < 0 || top > plotH) continue;
+        // Keep each rejection attached to its own dealer level and counted candle.
+        const times = new Set(box.tests.map(i => rejectionTime(bars[i].time, box.side, chartBars)));
+        const height = Math.max(1, bottom - top);
+        ctx.globalAlpha = active ? 1 : 0.45;
+        ctx.fillStyle = 'rgba(255,255,255,.15)';
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = active ? 1 : 0.75;
+        ctx.setLineDash(active ? [] : [4, 3]);
+        for (const time of times) {
+          if (time === undefined) continue;
+          const x = ts.timeToCoordinate(time);
+          if (x === null) continue;
+          const left = Math.max(0, x - width / 2), right = Math.min(plotW, x + width / 2);
+          if (left >= right) continue;
+          if (active) ctx.fillRect(left, top, right - left, height);
+          ctx.strokeRect(left, top, right - left, height);
+          hit.push({ x0: left, x1: right, y1: top - 3, y2: bottom + 3, bx: box });
+        }
+      }
+      ctx.setLineDash([]);
+    }
     boxes.forEach(bx => { // Every ended/broken frame uses the same faint dashed outline.
       const inactive = bx.live !== true || bx.broke !== undefined;
       let x0 = X(bx.start), x1 = !inactive ? (latestX === null ? null : latestX + 3 * step) : X(bx.end);
       if (x1 === null || x0 === null) { if (x0 === null && x1 !== null) x0 = 0; else return; }
       x0 -= step / 2; if (inactive) x1 += step / 2;
       if (x1 < 0 || x0 > plotW) return;
+      if (cfg.line) {
+        const y = Y(bx.p);
+        if (y === null || y < 0 || y > plotH) return;
+        const left = Math.max(0, x0), right = Math.min(plotW, x1);
+        if (left >= right) return;
+        ctx.globalAlpha = inactive ? 0.45 : 1;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = inactive ? 0.75 : 1;
+        ctx.setLineDash(inactive ? [4, 3] : bx.est ? [6, 2] : []);
+        ctx.beginPath(); ctx.moveTo(left, y); ctx.lineTo(right, y); ctx.stroke();
+        ctx.setLineDash([]);
+        hit.push({ x0: left, x1: right, y1: y - 5, y2: y + 5, bx });
+        return;
+      }
       // V4.9.39: กรอบคลุมตั้งแต่ไส้ที่ทดสอบ (ซึ่งอาจหยุดก่อนถึง strike) ถึง strike
       const { top, bot } = bounds(bx);
       const yt = Y(top), yb = Y(bot); if (yt === null || yb === null || yb < 0 || yt > plotH) return;
@@ -198,7 +259,7 @@
   let dn = null;
   O.chartEl.addEventListener('pointerdown', e => { dn = { x: e.clientX, y: e.clientY }; }, true);
   O.chartEl.addEventListener('pointerup', e => {
-    if (!cfg.on || !dn || Math.hypot(e.clientX - dn.x, e.clientY - dn.y) > 8) { dn = null; return; } dn = null;
+    if (!enabled() || !dn || Math.hypot(e.clientX - dn.x, e.clientY - dn.y) > 8) { dn = null; return; } dn = null;
     const r = O.chartEl.getBoundingClientRect(), x = e.clientX - r.left, y = e.clientY - r.top;
     const z = hit.filter(b => x >= b.x0 && x <= b.x1 && y >= b.y1 && y <= b.y2).sort((a, b) => (a.y2 - a.y1) - (b.y2 - b.y1))[0];
     if (z && O.showToast) setTimeout(() => O.showToast(txtOf(z.bx), 9000), 160);
@@ -213,15 +274,26 @@
   }
   function section() {
     const d = document.createElement('div'); d.id = 'dbBox'; d.className = 'gsbox';
-    d.innerHTML = `<div class="row"><button class="gsb${cfg.on ? ' on' : ''}" data-db="on"><i style="background:#fff"></i>🛡 กรอบดีลเลอร์รับ (ราคาผ่านไม่ได้)</button><span class="gsinfo">${cfg.on ? info() : ''}</span></div>` +
-      (cfg.on ? `<div class="row ps"><label>ชนไม่ผ่านก่อนแสดง (ครั้ง)<input type="number" inputmode="numeric" min="1" max="20" step="1" data-dbtests value="${cfg.minTests}" style="width:64px"></label></div><div class="row ps"><span class="gsinfo">นับแท่ง M5 ที่ปิดกลับฝั่งเดิม ห่างจากครั้งก่อนอย่างน้อย 3 แท่ง · หลักฐานรับจริงดูได้เมื่อแตะกรอบ · ประยาว = แนววันนั้นยังไม่มีประวัติ (ใช้แนววันนี้) · ประจาง = จบหรือแตกแล้ว · แตะกรอบดูรายละเอียด/ทะลุไปไกลแค่ไหน</span></div>` : '');
+    d.innerHTML = `<div class="row"><button class="gsb${cfg.on ? ' on' : ''}" data-db="on"><i style="background:#fff"></i>🛡 กรอบดีลเลอร์รับ (ราคาผ่านไม่ได้)</button><button class="gsb${cfg.line ? ' on' : ''}" data-db="line"><i style="background:#fff"></i>เส้นดีลเลอร์รับ</button><span class="gsinfo">${enabled() ? info() : ''}</span></div>` +
+      (enabled() ? `<div class="row ps"><label>ชนไม่ผ่านก่อนแสดง (ครั้ง)<input type="number" inputmode="numeric" min="1" max="20" step="1" data-dbtests value="${cfg.minTests}" style="width:64px"></label></div><div class="row ps"><span class="gsinfo">นับแท่ง M5 ที่ปิดกลับฝั่งเดิม ห่างจากครั้งก่อนอย่างน้อย 3 แท่ง · แตะ${cfg.line ? 'เส้น' : 'กรอบ'}ดูหลักฐานรับจริง · ประยาว = แนววันนั้นยังไม่มีประวัติ (ใช้แนววันนี้) · ประจาง = จบหรือแตกแล้ว · แตะ${cfg.line ? 'เส้น' : 'กรอบ'}ดูระยะที่ทะลุ</span></div>` : '');
     return d;
   }
   function mount() { const m = $('indMenu'); if (!m || m.hidden || $('dbBox')) return; const box = section(), anchor = $('dhBox') || $('s3Box') || $('btBox') || m.querySelector('.t'); anchor ? anchor.after(box) : m.prepend(box); }
   const menu = $('indMenu');
   if (menu) {
     new MutationObserver(() => mount()).observe(menu, { childList: true });
-    menu.addEventListener('click', e => { if (!e.target.closest('[data-db]')) return; cfg.on = !cfg.on; save(); boxes = []; invalidate(); const b = $('dbBox'); if (b) b.remove(); mount(); run(true); });
+    menu.addEventListener('click', e => {
+      const button = e.target.closest('[data-db]');
+      if (!button) return;
+      const mode = button.dataset.db;
+      const turnOn = !cfg[mode];
+      cfg.on = mode === 'on' && turnOn;
+      cfg.line = mode === 'line' && turnOn;
+      save();
+      invalidate();
+      $('dbBox')?.remove(); mount();
+      if (enabled() && !boxes.length) run(true);
+    });
   }
   if (menu) menu.addEventListener('change', e => {
     const input = e.target.closest('[data-dbtests]'); if (!input) return;

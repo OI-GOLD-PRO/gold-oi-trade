@@ -199,21 +199,31 @@
   }
 
   // ---------- สด ----------
+  let liveFrom = 0, liveThrough = 0, liveId = 0;
+  function acceptLive(time, id = 0) {
+    if (!Number.isFinite(time)) return;
+    if (!liveFrom || (id && liveId && id > liveId + 1)) {
+      liveFrom = time;
+      liveThrough = time;
+    }
+    liveThrough = Math.max(liveThrough, time);
+    if (id) liveId = Math.max(liveId, id);
+  }
   function openWS() {
     closeWS();
     try {
       if (src === 'binance') {
         ws = new WebSocket(`wss://fstream.binance.com/ws/${SYM.toLowerCase()}@aggTrade`);
-        ws.onmessage = e => { const x = JSON.parse(e.data); if (x.e === 'aggTrade') { lastMsg = Date.now(); if (lastId && x.a > lastId + 1) gapFill(); if (x.a > lastId) { if (covHi === lastId) covHi = x.a; lastId = x.a; addTrade(x.T, +x.p, +x.q, x.m ? -1 : 1, false, x.a); live(x.T); } } };
+        ws.onmessage = e => { const x = JSON.parse(e.data); if (x.e === 'aggTrade') { lastMsg = Date.now(); acceptLive(+x.T, +x.a); if (lastId && x.a > lastId + 1) gapFill(); if (x.a > lastId) { if (covHi === lastId) covHi = x.a; lastId = x.a; addTrade(x.T, +x.p, +x.q, x.m ? -1 : 1, false, x.a); live(x.T); } } };
       } else {
         ws = new WebSocket('wss://ws.bitget.com/v2/ws/public');
         ws.onopen = () => { ws.send(JSON.stringify({ op: 'subscribe', args: [{ instType: 'USDT-FUTURES', channel: 'trade', instId: SYM }] })); wsTimer = setInterval(() => { try { ws.send('ping'); } catch (e) {} }, 25000); };
-        ws.onmessage = e => { lastMsg = Date.now(); if (e.data === 'pong') return; const m = JSON.parse(e.data); (m.data || []).forEach(x => { if (window.OIVolumeSink) window.OIVolumeSink('bitget', x.tradeId, +x.ts, +x.price, +x.size, /buy/i.test(x.side) ? 1 : -1); addTrade(+x.ts, +x.price, +x.size, /buy/i.test(x.side) ? 1 : -1); live(+x.ts); }); };
+        ws.onmessage = e => { lastMsg = Date.now(); if (e.data === 'pong') return; const m = JSON.parse(e.data); (m.data || []).forEach(x => { acceptLive(+x.ts); if (window.OIVolumeSink) window.OIVolumeSink('bitget', x.tradeId, +x.ts, +x.price, +x.size, /buy/i.test(x.side) ? 1 : -1); addTrade(+x.ts, +x.price, +x.size, /buy/i.test(x.side) ? 1 : -1); live(+x.ts); }); };
       }
       ws.onclose = () => { if (collecting()) setTimeout(() => { if (collecting() && (!ws || ws.readyState > 1)) openWS(); }, 5000); };
     } catch (e) {}
   }
-  function closeWS() { clearInterval(wsTimer); if (ws) { ws.onclose = null; try { ws.close(); } catch (e) {} ws = null; } }
+  function closeWS() { liveFrom = liveThrough = liveId = 0; clearInterval(wsTimer); if (ws) { ws.onclose = ws.onmessage = null; try { ws.close(); } catch (e) {} ws = null; } }
   let lastLive = 0, lastAlert = 0;
   function live(t) {
     // ไม้ใหม่ใหญ่มาก (≥ 3 เท่าเกณฑ์) → แจ้งในแอป
@@ -301,9 +311,9 @@
         for (let i = i0; i <= i1; i++) {
           const b = B[i], d = delta.get(b.time); if (!d) continue;
           const x = ts.timeToCoordinate(b.time); if (x === null) continue;
-          const v = d.b - d.s, col = v >= 0 ? '#22e39a' : '#ff4d6a';
+          const v = d.b - d.s, col = v >= 0 ? '#22e39a' : '#ff7900';
           if (sp >= 26) { ctx.globalAlpha = 0.95; ctx.font = `bold 9px ${mono}`; ctx.fillStyle = col; ctx.textAlign = 'center'; ctx.textBaseline = 'bottom'; ctx.fillText((v > 0 ? '+' : '') + (Math.abs(v) >= 100 ? Math.round(v) : v.toFixed(1)), x, base); }
-          else { const hh = Math.max(1, Math.abs(v) / mx * H); ctx.globalAlpha = 0.75; ctx.fillStyle = col; ctx.fillRect(x - Math.max(1, sp * 0.35), v >= 0 ? base - hh : base - H, Math.max(2, sp * 0.7), v >= 0 ? hh : Math.max(1, hh)); }
+          else { const hh = Math.max(1, Math.abs(v) / mx * H); ctx.globalAlpha = 0.75; ctx.fillStyle = col; ctx.fillRect(x - Math.max(1, sp * 0.35), base - hh, Math.max(2, sp * 0.7), hh); }
         }
         ctx.globalAlpha = 0.6; ctx.font = `9px ${mono}`; ctx.fillStyle = '#8a93ad'; ctx.textAlign = 'left'; ctx.textBaseline = 'bottom'; ctx.fillText('Δ ซื้อ−ขาย', 4, base - (sp >= 26 ? 10 : H + 1));
       }
@@ -351,6 +361,6 @@
   }
   if (collecting()) setTimeout(reload, 3500);
   if (window.OIAlerts) OIAlerts.reg('whale', 'ไม้ใหญ่ 🐋 Big Traders', { desc: 'ไม้ไล่ซื้อ/ไล่ขายใหญ่กว่าเกณฑ์ 3 เท่า', active: () => cfg.on });
-  window.OI_bigtr = { get pxOff() { return pxOff; }, offAt, anchorMs, get busy() { return busy; }, get status() { return status; }, get limited() { return limited; }, syncCollection() { if (collecting()) { if (busy) pendingCollection = true; else reload(); } else closeWS(); }, get cfg() { return cfg; }, get trades() { return trades; }, get delta() { return delta; }, get src() { return src; }, thr, reload };
+  window.OI_bigtr = { coversLive: (from, end) => !busy && !filling && ws?.readyState === 1 && liveFrom > 0 && liveFrom <= from && liveThrough >= end, get pxOff() { return pxOff; }, offAt, anchorMs, get busy() { return busy; }, get status() { return status; }, get limited() { return limited; }, syncCollection() { if (collecting()) { if (busy) pendingCollection = true; else reload(); } else closeWS(); }, get cfg() { return cfg; }, get trades() { return trades; }, get delta() { return delta; }, get src() { return src; }, thr, reload };
 })();
 
