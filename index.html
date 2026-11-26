@@ -391,7 +391,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   }
   #tfs button[data-trend].on { border-color: #f0d58d !important; box-shadow: inset 0 0 0 1px #f0d58d !important; }
 </style>
-<link rel="stylesheet" href="trade.css?v=0.13.00">
+<link rel="stylesheet" href="trade.css?v=0.13.01">
 </head>
 <body>
   <div id="splash" aria-label="OI Trade กำลังเปิด">
@@ -724,7 +724,7 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   const IS_GOLD = SYM === 'gold' || SYM === 'gcy';
   const SYMBOL = SC.perp || (SC.yahoo === 'GC' ? 'XAUTUSDT' : null); // GC(Yahoo): ใช้ perp ทองต่อปลายกราฟ
   // เวอร์ชันแอป: แก้เล็กเพิ่มเลขท้าย (2 หลัก), เพิ่มฟีเจอร์ใหญ่เพิ่มเลขกลาง
-  const APP_VER = '0.13.00'; // based on OI Gold Pro V4.9.163
+  const APP_VER = '0.13.01'; // based on OI Gold Pro V4.9.163
   { const sv = document.getElementById('spVer'); if (sv) sv.textContent = 'V' + APP_VER; }
   // ตรวจเวอร์ชันเมื่อเปิดแอป กลับจากพื้นหลัง หรือกลับมาออนไลน์
   (() => {
@@ -2993,18 +2993,18 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   if (saved) { $('login').hidden = true; $('chips').innerHTML = '<span class="chip">กำลังตรวจสอบรหัสผ่าน…</span>'; tryLogin(saved, true); }
 })();
 </script>
-<script src="trade.js?v=0.13.00"></script>
-<script src="dash.js?v=0.13.00"></script>
-<script src="goldscalp.js?v=0.13.00"></script>
-<script src="live.js?v=0.13.00"></script>
-<script src="intraday.js?v=0.13.00"></script>
-<script src="retail.js?v=0.13.00"></script>
-<script src="volume-profile.js?v=0.13.00"></script>
-<script type="module" src="liquidity-heatmap.js?v=0.13.00"></script>
-<script src="bigtrade.js?v=0.13.00"></script>
-<script src="dealer.js?v=0.13.00"></script>
-<script src="ivbadge.js?v=0.13.00"></script>
-<script src="oistep.js?v=0.13.00"></script>
+<script src="trade.js?v=0.13.01"></script>
+<script src="dash.js?v=0.13.01"></script>
+<script src="goldscalp.js?v=0.13.01"></script>
+<script src="live.js?v=0.13.01"></script>
+<script src="intraday.js?v=0.13.01"></script>
+<script src="retail.js?v=0.13.01"></script>
+<script src="volume-profile.js?v=0.13.01"></script>
+<script type="module" src="liquidity-heatmap.js?v=0.13.01"></script>
+<script src="bigtrade.js?v=0.13.01"></script>
+<script src="dealer.js?v=0.13.01"></script>
+<script src="ivbadge.js?v=0.13.01"></script>
+<script src="oistep.js?v=0.13.01"></script>
 <dialog id="sfDetails" aria-labelledby="sfDetailsTitle">
   <header>
     <strong>🌏 OI Session Fade</strong>
@@ -3017,22 +3017,23 @@ header{min-height:54px;padding:6px 12px 5px;gap:8px!important;background:linear-
   <p id="sfDetailsStatus"></p>
   <p id="sfDetailsRisk"></p>
 </dialog>
-<script src="osf.js?v=0.13.00"></script>
-<script src="squeeze.js?v=0.13.00"></script>
-<script src="cotgroups.js?v=0.13.00"></script>
-<script src="crowd.js?v=0.13.00"></script>
-<script src="oistat.js?v=0.13.00"></script>
-<script src="trap.js?v=0.13.00"></script>
-<script src="volreg.js?v=0.13.00"></script>
-<script src="oidiv.js?v=0.13.00"></script>
-<script src="dealerbox.js?v=0.13.00"></script>
-<script src="footprint.js?v=0.13.00"></script>
-<script src="opposite-delta-diamonds.js?v=0.13.00"></script>
-<script src="tpo.js?v=0.13.00"></script>
-<script src="volume-ema.js?v=0.13.00"></script>
-<script src="range-retest-core.js?v=0.13.00"></script>
-<script src="donchian-trend.js?v=0.13.00"></script>
-<script src="range-retest.js?v=0.13.00"></script>
-<script src="autoui.js?v=0.13.00"></script>
+<script src="osf.js?v=0.13.01"></script>
+<script src="squeeze.js?v=0.13.01"></script>
+<script src="cotgroups.js?v=0.13.01"></script>
+<script src="crowd.js?v=0.13.01"></script>
+<script src="oistat.js?v=0.13.01"></script>
+<script src="trap.js?v=0.13.01"></script>
+<script src="volreg.js?v=0.13.01"></script>
+<script src="oidiv.js?v=0.13.01"></script>
+<script src="dealerbox.js?v=0.13.01"></script>
+<script src="footprint.js?v=0.13.01"></script>
+<script src="opposite-delta-diamonds.js?v=0.13.01"></script>
+<script src="tpo.js?v=0.13.01"></script>
+<script src="volume-ema.js?v=0.13.01"></script>
+<script src="range-retest-core.js?v=0.13.01"></script>
+<script src="donchian-trend.js?v=0.13.01"></script>
+<script src="donchian-channel.js?v=0.13.01"></script>
+<script src="range-retest.js?v=0.13.01"></script>
+<script src="autoui.js?v=0.13.01"></script>
 </body>
 </html>

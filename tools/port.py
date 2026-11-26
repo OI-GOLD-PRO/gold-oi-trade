@@ -98,6 +98,7 @@ rep_re(r'<script src="goldscalp\.js"></script>\n.*?</body>', '''<script src="tra
 <script src="volume-ema.js"></script>
 <script src="range-retest-core.js"></script>
 <script src="donchian-trend.js"></script>
+<script src="donchian-channel.js"></script>
 <script src="range-retest.js"></script>
 <script src="autoui.js"></script>
 </body>''')

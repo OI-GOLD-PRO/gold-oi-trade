@@ -24,6 +24,9 @@ repo นี้มี Worker ข้อมูล (gcw/), Trade app (hub/, ea/), OI
 
 ## รายการ
 
+### OI Trade V0.13.01 — 2026-11-26 — ChatGPT
+- เพิ่ม Don Up / Don Low จาก 20 แท่งก่อนหน้า มีตัวเลือกในตาราง DON (donchian-channel.js, index.html, tools/port.py)
+
 ### OI Trade V0.13.00 — 2026-11-25 — ChatGPT
 - อัปเดตกราฟจาก OI Gold Pro V4.9.163 รวม DON, Footprint, TPO, Volume Profile, Liquidity Heatmap และโซน Opposite Delta ข้าม TF พร้อมรายละเอียด Session Fade
 - ไฟล์หลัก: index.html, tools/port.py และโมดูลกราฟ ใช้ราคาโบรกและระบบส่งคำสั่งเดิมของ Trade
