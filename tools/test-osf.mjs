@@ -7,7 +7,7 @@ const a = s.indexOf('const ARM'), b = s.indexOf('// ---------- OI ย้อน�
 let code = s.slice(a, b);
 // cut the news loader (needs window/fetch); keep levels/atr/scan/view
 code = code.replace(/let news = \[\];[\s\S]*?setInterval\(loadNews, 10 \* 60e3\);/, '');
-const O = new Function('O', 'const cfg={rr:1}; ' + code + '; return {scan, levels, sessOf, dayStart};')({ oi: null });
+const O = new Function('O', 'const cfg={rr:1, boCap:5, dedupe:true, rrAuto:true, trendDay:false, atrMax:3}; ' + code + '; return {scan, levels, sessOf, dayStart};')({ oi: null }); // V4.9.166 defaults
 let seed = 7; const rnd = () => (seed = (seed * 1664525 + 1013904223) % 4294967296) / 4294967296;
 // synthetic gold: 4 trading days of M1 bars (Thai T), random walk with mean reversion round the walls
 const day0 = Math.floor((Date.UTC(2026, 9, 12) / 1000 + 7 * 3600 - 6 * 3600) / 86400) * 86400 + 6 * 3600;
@@ -22,7 +22,7 @@ const L1 = O.levels(4000, rows), L2 = H.levels(4000, rows);
 if (JSON.stringify(L1) !== JSON.stringify(L2)) { bad++; console.log('levels differ'); }
 const news = [day0 + 8 * 3600, day0 + 86400 + 15 * 3600];
 for (const N of [[], news]) {
-  const r1 = O.scan(B, L1, N), r2 = H.scan(B, L2, N);
+  const r1 = O.scan(B, L1, N).filter(x => !x.bo), r2 = H.scan(B, L2, N); // hub ไม่มี NY เบรก (อยู่ที่ gcw/EA) — เทียบเฉพาะไม้ fade
   tot += r1.length;
   if (r1.length !== r2.length) { bad++; console.log('count', r1.length, r2.length); continue; }
   r1.forEach((x, i) => {

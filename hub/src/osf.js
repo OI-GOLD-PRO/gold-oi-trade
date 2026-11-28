@@ -4,6 +4,8 @@
 // parity test: tools/test-osf.mjs runs both this file and OI Gold Pro's osf.js on the same bars.
 
 export const ARM = 3, SLB = 3, RRS = [1, 1.6, 5], RANGE = 60, MOM_N = 5, ATR_N = 60, NB = 30 * 60, NA = 90 * 60;
+// V4.9.166 sync (2026-11-28): dedupe ไม้ซ้ำจากโซนซ้อน + ตัดไม้ ATR สูง — ต้องตรงกับ gold-oi-pro/osf.js เสมอ (parity test)
+export const DED_TOL = 0.5, DED_WIN = 3600, ATR_MAX = 3;
 // Thai minute-of-day windows · half = zone half width ($) · real = touches that count as real trades · realA = same for grade A
 export const SESS = [
   { id: "AM", lab: "Asia เช้า", a: 360, b: 600, half: 2, real: 2, realA: 3, mom: 3 },
@@ -53,7 +55,7 @@ export function scan(B, L, N, opt) {
   opt = opt || {}; N = N || [];
   const from = opt.from || 0, until = opt.until || Infinity, ATR = atrArr(B);
   const out = [], n = B.length;
-  let cur = null, st = new Map(), curS = null;
+  let cur = null, st = new Map(), curS = null, reals = [];
   const inNews = (t) => N.some((x) => t >= x - NB && t <= x + NA);
   for (let i = 0; i < n; i++) {
     const b = B[i]; if (b.time < from || b.time >= until) continue;
@@ -71,6 +73,9 @@ export function scan(B, L, N, opt) {
         const mv = momAt(B, ATR, i, dir), atr = ATR[i] > 0 ? ATR[i] : null, fast = !!(real && S.mom && mv !== null && mv > S.mom);
         if (fast) real = false;
         const entry = dir > 0 ? hi : lo, sl = dir > 0 ? lo - SLB : hi + SLB;
+        if (real && reals.some((r) => r.sid === S.id && r.dir === dir && Math.abs(r.entry - entry) <= DED_TOL && b.time - r.t <= DED_WIN)) real = false; // V4.9.166: โซนซ้อน = ไม้เดียวกัน นับครั้งเดียว
+        if (real && atr !== null && atr > ATR_MAX) real = false; // V4.9.166: ตัดไม้ช่วงความผันผวนสูง
+        if (real) reals.push({ sid: S.id, dir, entry, t: b.time });
         out.push({ z, S, dir, k: s.k, real, fast, mv: mv !== null ? Math.round(mv * 10) / 10 : null, atr, ei: i, entry, sl, st: 3 });
         return;
       }
