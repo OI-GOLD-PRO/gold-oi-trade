@@ -1,6 +1,6 @@
 // 🌏 OI Session Fade — auto-trader runner (hub side). Pure-ish: all I/O is injected so tools/test-auto.mjs can drive it offline.
 // Called from Hub.eaSync() on every EA sync; does real work at most every STEP_MS.
-import { wanted, lotsFor, oiRows, levels, newsTimes, gcOffset, dayStart, sessOf, toT } from "./osf.js";
+import { wanted, lotsFor, oiRows, levels, newsTimes, gcOffset, dayStart, sessOf, toT, atrNext } from "./osf.js";
 
 export const AUTO_DEFAULT = {
   mode: "off",       // off | dry (log only, no orders) | live
@@ -10,7 +10,12 @@ export const AUTO_DEFAULT = {
   riskPct: 1,
   maxOpen: 2,        // open positions + resting orders from this system
   dailyLossPct: 5,   // stop for the day when today's P/L ≤ −x % of balance
+  regimeGate: true,  // V2: พักไม้ fade อัตโนมัติเมื่อ ATR พุ่ง (ตลาดแรง/เทรนด์) กลับมาเองเมื่อสงบ
+  atrHot: 1.5,       // ATR ปัจจุบัน ≥ ×1.5 ของค่าปกติ = เข้าโหมดแรง
+  atrCool: 1.2,      // กลับโหมดปกติเมื่อ ≤ ×1.2 (hysteresis กันสลับประปา)
 };
+const ATR_EMA = 0.0002; // ค่าปกติของ ATR: EMA ช้า (~14 ชม.) จากตัวอย่างทุก 10 วินาที
+const HOT_STEPS = 3;    // ต้องแรงต่อเนื่อง 3 รอบ (30 วินาที) ก่อนพัก
 export const STEP_MS = 10_000;
 const OI_TTL = 300_000, NEWS_TTL = 600_000, GF_TTL = 60_000, RETRY_MS = 60_000, ORDER_GRACE_MS = 25_000, LOG_MAX = 60;
 const near = (a, b) => Math.abs(a - b) < 0.011;
@@ -20,6 +25,9 @@ export function cleanCfg(inp, cur) {
   if (!inp || typeof inp !== "object") return c;
   const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n : null; };
   if (["off", "dry", "live"].includes(inp.mode)) c.mode = inp.mode;
+  if (typeof inp.regimeGate === "boolean") c.regimeGate = inp.regimeGate;
+  if ((n = num(inp.atrHot, 1.1, 5)) !== null) c.atrHot = n;
+  if ((n = num(inp.atrCool, 0.8, 4)) !== null && c.atrCool < c.atrHot) c.atrCool = n;
   if ([1, 1.6, 5].includes(Number(inp.rr))) c.rr = Number(inp.rr);
   if (["risk", "fixed"].includes(inp.lotMode)) c.lotMode = inp.lotMode;
   let n;
@@ -30,7 +38,7 @@ export function cleanCfg(inp, cur) {
   return c;
 }
 
-export function newAuto() { return { cfg: { ...AUTO_DEFAULT }, reg: {}, log: [], dayLv: null, off: null, offAt: 0, status: "", at: 0 }; }
+export function newAuto() { return { cfg: { ...AUTO_DEFAULT }, reg: {}, log: [], dayLv: null, off: null, offAt: 0, status: "", at: 0, atrAvg: null, hotN: 0, paused: false }; }
 
 function log(a, now, msg, kind) { a.log.unshift({ at: now, kind: kind || "info", msg }); if (a.log.length > LOG_MAX) a.log.length = LOG_MAX; }
 
@@ -113,8 +121,26 @@ export async function autoStep(a, S, io, now) {
   // ---- what should rest now?
   const sym = st.symbol, bal = Number(st.account.balance) || 0, todayPL = st.pl && Number(st.pl.today);
   const minDist = Math.max((Number(sym.stops_level) || 0) * (Number(sym.point) || 0) + (Number(sym.spread) || 0) * (Number(sym.point) || 0), 0.3);
-  const w = wanted(bars, Lb, news ? newsTimes(news) : [], nowT, cfg, { bid: Number(sym.bid), ask: Number(sym.ask) }, minDist);
-  const want = new Map(w.orders.map((o) => [day + "|" + o.key.split("|").slice(1).join("|"), o]));
+  // ---- V2 regime gate: ATR ปัจจุบันเทียบค่าปกติ → พักไม้ fade ช่วงตลาดแรง ----
+  let want = new Map(), w = { orders: [], skipped: [] };
+  if (cfg.regimeGate) {
+    const atrNow = atrNext(bars);
+    if (Number.isFinite(atrNow) && atrNow > 0) {
+      a.atrAvg = a.atrAvg === null ? atrNow : a.atrAvg * (1 - ATR_EMA) + atrNow * ATR_EMA;
+      const ratio = atrNow / a.atrAvg;
+      if (ratio >= cfg.atrHot) a.hotN++; else if (ratio <= cfg.atrCool) a.hotN = 0;
+      const wasPaused = a.paused;
+      a.paused = a.hotN >= HOT_STEPS;
+      if (a.paused !== wasPaused) {
+        log(a, now, a.paused ? `ตลาดแรง (ATR ×${ratio.toFixed(2)}) → พักไม้ fade ชั่วคราว ยกเลิก limit ที่ค้าง` : `ตลาดสงบ (ATR ×${ratio.toFixed(2)}) → กลับมาเทรด fade`, a.paused ? "warn" : "info");
+        dirty = true;
+      }
+    }
+  }
+  if (!a.paused) {
+    w = wanted(bars, Lb, news ? newsTimes(news) : [], nowT, cfg, { bid: Number(sym.bid), ask: Number(sym.ask) }, minDist);
+    want = new Map(w.orders.map((o) => [day + "|" + o.key.split("|").slice(1).join("|"), o]));
+  } else if (a.status.indexOf("พัก") === -1) setStatus("พัก fade (ตลาดแรง)");
   const lossStop = cfg.dailyLossPct > 0 && bal > 0 && Number.isFinite(todayPL) && todayPL <= -(bal * cfg.dailyLossPct) / 100;
 
   // cancel orders that are no longer wanted (condition changed, TP setting changed, loss stop)

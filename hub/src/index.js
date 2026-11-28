@@ -368,7 +368,7 @@ export class Hub {
   appAuto(now) {
     this.lastAppAt = now;
     const a = this.auto;
-    return json({ ok: true, cfg: a.cfg, status: a.status, off: a.off, zones: a.dayLv ? a.dayLv.L : [], reg: a.reg, log: a.log.slice(0, 30), bars: this.bars.length, online: !!this.stateAt && now - this.stateAt < ONLINE_MS });
+    return json({ ok: true, cfg: a.cfg, status: a.status, off: a.off, zones: a.dayLv ? a.dayLv.L : [], reg: a.reg, paused: !!a.paused, atrAvg: a.atrAvg, hotN: a.hotN, log: a.log.slice(0, 30), bars: this.bars.length, online: !!this.stateAt && now - this.stateAt < ONLINE_MS });
   }
 
   async appAutoSet(req, now) {
