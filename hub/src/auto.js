@@ -26,8 +26,7 @@ export function cleanCfg(inp, cur) {
   const num = (v, lo, hi) => { const n = Number(v); return Number.isFinite(n) && n >= lo && n <= hi ? n : null; };
   if (["off", "dry", "live"].includes(inp.mode)) c.mode = inp.mode;
   if (typeof inp.regimeGate === "boolean") c.regimeGate = inp.regimeGate;
-  if ((n = num(inp.atrHot, 1.1, 5)) !== null) c.atrHot = n;
-  if ((n = num(inp.atrCool, 0.8, 4)) !== null && c.atrCool < c.atrHot) c.atrCool = n;
+  { const nh = num(inp.atrHot, 1.1, 5); if (nh !== null) c.atrHot = nh; const nc = num(inp.atrCool, 0.8, 4); if (nc !== null && nc < c.atrHot) c.atrCool = nc; }
   if ([1, 1.6, 5].includes(Number(inp.rr))) c.rr = Number(inp.rr);
   if (["risk", "fixed"].includes(inp.lotMode)) c.lotMode = inp.lotMode;
   let n;
