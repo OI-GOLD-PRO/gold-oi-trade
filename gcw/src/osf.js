@@ -73,9 +73,13 @@ function decision(state, z, t, news) {
   const blocked = news.some(x => t >= x - 1800 && t <= x + 5400);
   const eligible = k <= S.real || (z.grade === 'A' && k <= (S.realA || 0));
   const fast = eligible && !!S.mom && mv !== null && mv > S.mom;
+  // V2026-11-28 sync กับแอป V4.9.166: dedupe ไม้ซ้ำจากโซนซ้อน (ทิศ+entry ใกล้กันในเซสชันเดียว ภายใน 60 นาที) + ตัดไม้ ATR(M1) > 3
+  const entry = z.k + dir * S.half;
+  const dup = (state.events || []).some(e => e.real && e.sid === S.id && e.dir === dir && Math.abs(e.entry - entry) <= 0.5 && t - e.t <= 3600);
+  const hotAtr = atr !== null && atr > 3;
   const key = [state.day, state.expiry, S.id, z.k, k].join('|');
-  return { key, z, sid: S.id, dir, k, entry: z.k + dir * S.half, sl: z.k - dir * (S.half + 3),
-    mv: mv === null ? null : Math.round(mv * 10) / 10, atr, fast, blocked, real: k <= 4 && eligible && !fast && !blocked };
+  return { key, z, sid: S.id, dir, k, entry, sl: z.k - dir * (S.half + 3),
+    mv: mv === null ? null : Math.round(mv * 10) / 10, atr, fast, blocked, dup, hotAtr, real: k <= 4 && eligible && !fast && !blocked && !dup && !hotAtr };
 }
 
 // Inputs are contiguous closed M1 bars. Previously committed bars and decisions stay fixed.
